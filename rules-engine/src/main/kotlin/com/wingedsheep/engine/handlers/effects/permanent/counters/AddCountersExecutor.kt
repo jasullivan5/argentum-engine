@@ -1,5 +1,7 @@
 package com.wingedsheep.engine.handlers.effects.permanent.counters
 
+import com.wingedsheep.sdk.core.CounterType
+import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.core.CountersAddedEvent
 import com.wingedsheep.engine.core.EffectResult
@@ -45,17 +47,27 @@ class AddCountersExecutor(
             context.resolveTarget(effect.target, state)
         } ?: return EffectResult.error(state, "No valid target for counters")
 
+        return placeOn(state, targetId, effect.counterType, effect.count, context, totalLimit)
+    }
+
+    /** Synchronous placement on one resolved recipient; no settling or trigger processing here. */
+    internal fun placeOn(
+        state: GameState,
+        targetId: EntityId,
+        counterType: CounterType,
+        count: Int,
+        context: EffectContext,
+        totalLimit: Int? = null
+    ): EffectResult {
         if (!state.projectedState.canReceiveCounters(targetId)) {
             return EffectResult.success(state, emptyList())
         }
-
-        val counterType = effect.counterType
 
         val current = state.getEntity(targetId)?.get<CountersComponent>() ?: CountersComponent()
 
         // Apply counter placement replacement effects (e.g., Hardened Scales)
         val replacedCount = ReplacementEffectUtils.applyCounterPlacementModifiers(
-            state, targetId, counterType, effect.count, placerId = context.controllerId,
+            state, targetId, counterType, count, placerId = context.controllerId,
             predicateEvaluator = predicateEvaluator, byEffect = true
         )
 
@@ -79,7 +91,7 @@ class AddCountersExecutor(
 
         return EffectResult.success(
             newState,
-            listOf(CountersAddedEvent(targetId, effect.counterType, modifiedCount, entityName, firstThisTurn, firstOfTypeThisTurn = firstOfTypeThisTurn, placedBy = context.controllerId))
+            listOf(CountersAddedEvent(targetId, counterType, modifiedCount, entityName, firstThisTurn, firstOfTypeThisTurn = firstOfTypeThisTurn, placedBy = context.controllerId))
         )
     }
 }
