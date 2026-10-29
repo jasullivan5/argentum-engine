@@ -20,8 +20,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: argentum-engine
+      - name: Check private application access
+        env:
+          APPLICATION_READ_TOKEN: ${{ secrets.APPLICATION_READ_TOKEN }}
+        run: |
+          if [ -z "$APPLICATION_READ_TOKEN" ]; then
+            echo "::error::Configure APPLICATION_READ_TOKEN in engine repository Actions secrets, with Contents: read for the private application repository. Never paste it into logs or chat."
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
+          token: ${{ secrets.APPLICATION_READ_TOKEN }}
+          persist-credentials: false
           repository: jasullivan5/mtg-deckbuilding-assistant
           ref: ${{ inputs.application_ref || 'main' }}
           path: mtg-deckbuilding-assistant
