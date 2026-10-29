@@ -1,10 +1,23 @@
 # AGENTS.md
 
-Argentum Engine — Magic: The Gathering rules engine + online play platform in Kotlin. Pure ECS,
+## Application-focused fork policy
+
+Canonical development repository: https://github.com/jasullivan5/argentum-engine.
+This fork is maintained for MTG Deckbuilding Assistant. This policy overrides upstream contribution/loop guidance below.
+
+- `app-stable` is our normal development base and default branch. Start feature/fix branches here; internal PRs target `jasullivan5/argentum-engine:app-stable`.
+- `main` tracks the original project for comparison only. Upstream is `https://github.com/wingedsheep/argentum-engine`; origin is our fork. Never merge upstream/main or the modern historical correction branch into app-stable wholesale.
+- Do not open upstream PRs unless the human explicitly changes this direction. Automatic loop recipes that submit upstream contributions are not authorized by this policy.
+- The deckbuilding application pins exact approved commits, never a floating branch. Engine acceptance and application pin adoption are separate reviews; preserve source-first evidence and provisional assurance.
+- `fix/collection-counter-placement` at d72f2c365a3006b0c3eb41271c4f0e35f782c392 is the historical modern-upstream experiment, not the application base. Retain it; deletion requires explicit approval.
+- Review upstream approximately monthly or before a substantial engine phase. Fetch upstream references in an isolated checkout, compare with the last recorded revision, group changes by mechanism, and evaluate selected fixes against application needs. Prefer reviewed cherry-picks with native/application regressions, source identities and explicit decisions recorded. No automatic updates or scheduled updater.
+- Sync only origin/main explicitly, using a verified fast-forward. GitHub's generic fork-sync UI can target the default app-stable branch: do not use it there. Fetch/compare does not authorize app-stable integration.
+
+Argentum Engine â€” Magic: The Gathering rules engine + online play platform in Kotlin. Pure ECS,
 immutable `GameState`, pure functional `(GameState, GameAction) -> ExecutionResult(GameState, List<GameEvent>)`.
 
 **Stack:** Kotlin / JDK 21 / Gradle / Kotest / Spring Boot; React / TypeScript / Zustand / Vite. Exact
-versions live in `gradle/libs.versions.toml` and `web-client/package.json` — don't trust remembered ones.
+versions live in `gradle/libs.versions.toml` and `web-client/package.json` â€” don't trust remembered ones.
 
 This file is a map plus the gotchas that aren't discoverable from the code. Depth lives in the skills and
 docs it points at; load those when the work needs them.
@@ -12,7 +25,7 @@ docs it points at; load those when the work needs them.
 ## Hard rules
 
 - **Focus on your own work.** If a change you didn't make breaks the build, report it and stop. Never
-  revert, stash, or discard others' changes — that's likely another agent's in-flight work. Pause until
+  revert, stash, or discard others' changes â€” that's likely another agent's in-flight work. Pause until
   the user confirms it's safe to continue. If the user confirms or explicitly asks for a PR despite the
   unrelated failure, opening the PR is allowed; disclose the failure and the verification that did pass
   in the PR body. **Exception: mtgish-only issues are non-blocking**, as specified below; continue without
@@ -21,63 +34,63 @@ docs it points at; load those when the work needs them.
   Assay's job (`just assay parse/explain/compile`, `just assay-differential`) plus behavioural scenario
   tests. Don't use `:mtgish-tooling` drafts, don't teach its bridge/emitter new capabilities, and don't
   cite its coverage numbers. mtgish differences, coverage gaps, and mtgish-only tooling/test failures
-  must not stop implementation, verification of unaffected modules, commits, or PR creation — report
+  must not stop implementation, verification of unaffected modules, commits, or PR creation â€” report
   them briefly and continue; don't take on mtgish repairs unless the task explicitly asks. If a mtgish
   failure prevents a broader gate from completing, report that gate as incomplete and run the
   unaffected checks rather than claiming it passed. Assay divergences and real engine/card regressions
   remain actionable; an Assay decline is not a pass.
 - **Route to the matching skill, don't freelance:**
-  - Implementing a card — or a batch of them — from a backlog file or by name → **`add-card`** (Scryfall
+  - Implementing a card â€” or a batch of them â€” from a backlog file or by name â†’ **`add-card`** (Scryfall
     lookup, oracle errata, canonical-printing placement, a scenario test when the card earns one).
-  - Any engine/SDK/server/client capability that isn't a single card — effect, trigger, condition,
-    keyword, decision flow → **`add-feature`** (composition-first design, cross-layer tracing, perf + UX).
-  - Starting a set that has no `backlog/sets/` entry yet → **`create-backlog-for-set`** (Scryfall dump,
+  - Any engine/SDK/server/client capability that isn't a single card â€” effect, trigger, condition,
+    keyword, decision flow â†’ **`add-feature`** (composition-first design, cross-layer tracing, perf + UX).
+  - Starting a set that has no `backlog/sets/` entry yet â†’ **`create-backlog-for-set`** (Scryfall dump,
     `cards.md` checklist, `definitions/<code>/` scaffold, `mechanics.md`). It runs *before* `set-loop`.
-  - Implementing every *Assay-ready* card for a set — the ⚡ badge on the Set Completion view, i.e.
-    the cards Argentum Assay reads whole that the set hasn't authored → **`assay-ready-sweep`**
+  - Implementing every *Assay-ready* card for a set â€” the âš¡ badge on the Set Completion view, i.e.
+    the cards Argentum Assay reads whole that the set hasn't authored â†’ **`assay-ready-sweep`**
     (`just assay-ready <CODE>` for the four-way split; canonical placement + reprint rows are half
     the job, and the half that gets forgotten).
-  - Running the build/test gates and reading the results → **`verify`**.
-  - Working autonomously through a whole set, one PR at a time, until it's done → **`set-loop`** (launches
-    the harness's own loop — Claude Code `/loop`, Codex `/goal`; every PR it opens is titled
+  - Running the build/test gates and reading the results â†’ **`verify`**.
+  - Working autonomously through a whole set, one PR at a time, until it's done â†’ **`set-loop`** (launches
+    the harness's own loop â€” Claude Code `/loop`, Codex `/goal`; every PR it opens is titled
     `[agent-loop: <model-id>]`).
   - Widening Assay's grammar autonomously, one band per PR, over Oracle text the engine already
-    expresses (declines on hand-written cards; never new SDK vocabulary) → **`just assay-loop [model]
+    expresses (declines on hand-written cards; never new SDK vocabulary) â†’ **`just assay-loop [model]
     [focus]`** (fresh headless session per step, like `just set-loop`), or the **`assay-loop`** skill for an
     in-session `/loop`.
-  - Implementing the cards popular Commander decks run, autonomously, one PR at a time →
+  - Implementing the cards popular Commander decks run, autonomously, one PR at a time â†’
     **`just commander-loop [model] [top]`** (fresh headless session per step, like `just set-loop`). It
     finishes EDHREC's top decks in the order `just commander-staples` ranks them: the most real decks made
     playable per card added.
-  - Implementing the missing cards of a card list or decklist, autonomously →
+  - Implementing the missing cards of a card list or decklist, autonomously â†’
     **`just card-loop <list-file> [model] [--local]`** (`just card-list-status <list-file>` shows what's
     missing). `--local` gates, reviews and commits each unit on one local branch instead of opening a PR
     per unit, for contributors who submit a single PR once the list is done.
-  - A human asking how to contribute, or wanting their deck/set implemented → point them at
+  - A human asking how to contribute, or wanting their deck/set implemented â†’ point them at
     **`just contribute`** (guided: checks tools, takes a pasted decklist or a set, picks Claude Code or
-    Codex + model + local/PR mode, then launches the loop above). Don't run it for them — it's interactive.
-  - Proving a set is *actually* finished once its backlog reads N/N, and archiving it → **`verify-set`**
+    Codex + model + local/PR mode, then launches the loop above). Don't run it for them â€” it's interactive.
+  - Proving a set is *actually* finished once its backlog reads N/N, and archiving it â†’ **`verify-set`**
     (Scryfall field verification of every compiled card, reprint and basic-land coverage, self-play pass).
     A green backlog is a claim; that skill is the proof.
 - **Verify MTG rule numbers before citing them** in code, comments, commit messages, PR bodies, or chat.
   613.8 vs 613.7 and 704.5 vs 704.6 are easy to swap. Check the official Comprehensive Rules
-  <https://magic.wizards.com/en/rules> — the plain-text `.txt` is too large to fetch into context, so
+  <https://magic.wizards.com/en/rules> â€” the plain-text `.txt` is too large to fetch into context, so
   `curl -o` it and `grep` locally. If you can't verify, describe the rule by name instead of guessing.
-- **One card, one test file — never batch cards into a shared test.** Not every card gets a test: a card
+- **One card, one test file â€” never batch cards into a shared test.** Not every card gets a test: a card
   composed of well-trodden primitives is covered by the snapshot and lint nets (`add-card` Step 5 says
   when one is earned). When a card does get one, it covers exactly that card: `<CardName>ScenarioTest.kt`
   holding that card's tests. Five tested cards means five test files, not one `FooBatchScenarioTest`. Batched files hide which card a failure belongs to, make
   `just test-class` useless for a single card, and turn every later edit into a merge conflict between
-  agents. Engine-level tests (a mechanic, a replacement effect) are the exception — those are named for
+  agents. Engine-level tests (a mechanic, a replacement effect) are the exception â€” those are named for
   the mechanic and may exercise several cards. This bans the shared test *file*, not the shared *PR*:
   bundling several cards that all compose existing primitives into one PR is the house shape, and
   `CONTRIBUTING.md` encourages it. A card needing new engine vocabulary still gets a PR of its own.
 - **Keep [`docs/card-sdk-language-reference.md`](docs/card-sdk-language-reference.md) in sync.** Every SDK
-  addition or change — effect, trigger, condition, keyword, dynamic amount, modal shape, replacement
-  effect — updates it in the *same* change. It's the canonical catalog; drift makes it useless. The
+  addition or change â€” effect, trigger, condition, keyword, dynamic amount, modal shape, replacement
+  effect â€” updates it in the *same* change. It's the canonical catalog; drift makes it useless. The
   generated one-line-per-type [`docs/sdk-index.md`](docs/sdk-index.md) is regenerated with
   `just sdk-index` (`SdkIndexTest` fails when it's stale), and a new sealed SDK type needs its line in
-  `mtg-sdk/src/test/resources/sdk-surface-baseline.txt` (`SdkSurfaceBaselineTest`) — see
+  `mtg-sdk/src/test/resources/sdk-surface-baseline.txt` (`SdkSurfaceBaselineTest`) â€” see
   [`sdk-design-principles.md`](docs/sdk-design-principles.md), "Extend before you add".
 - **Announce milestones in the "What's new" feed.** The PR that finishes a set (drops
   `override val incomplete = true`, i.e. `scripts/card-status --set X` reads 100%) or ships a new game
@@ -87,20 +100,20 @@ docs it points at; load those when the work needs them.
   `tryIf`; never change a shipped `id`. Card batches, fixes and UI polish don't go in. The file's header
   comment has the bar.
 - **Log engine AI behaviour changes in [`ai/CHANGELOG.md`](ai/CHANGELOG.md).** A PR that changes how
-  the engine AI plays or builds decks — a decision it makes, or the profile live players face — adds
+  the engine AI plays or builds decks â€” a decision it makes, or the profile live players face â€” adds
   a line at the top of its list in the *same* PR: `- #<pr> <what the AI now does differently>`. The
   admin dashboard's **AI vs humans** screen marks each entry on its win-rate timeline and credits it
   to the first deployed build that carried it, so an unlogged change is an improvement nobody can see
   paying off. Refactors, perf work, tooling, per-card advisors and archetype data stay out; the file's
   header has the rules.
 - **Document user-facing features in the in-app Help wiki.** A new mode, screen, or change to how
-  players use the site updates [`web-client/src/help/topics.ts`](web-client/src/help/topics.ts) — the
-  single source behind `/help` and the inline `HelpTip` popovers — in the *same* PR: add a topic, or
+  players use the site updates [`web-client/src/help/topics.ts`](web-client/src/help/topics.ts) â€” the
+  single source behind `/help` and the inline `HelpTip` popovers â€” in the *same* PR: add a topic, or
   correct the ones the change makes wrong, and link it from `related` on its neighbours. Audience: knows
-  Magic, new to Argentum — explain what the app does, not the rules.
+  Magic, new to Argentum â€” explain what the app does, not the rules.
 - **Try frontend changes in a real browser, and put screenshots in the PR.** Any change players can
-  see — a new or changed component, decision flow, layout, label, or an engine/server change that
-  shows up through existing UI — is checked by hand before the PR: run this checkout's app
+  see â€” a new or changed component, decision flow, layout, label, or an engine/server change that
+  shows up through existing UI â€” is checked by hand before the PR: run this checkout's app
   (`just ui-dev <server-port> <client-port>`), set the board up with a dev scenario
   (`generate-scenario` skill), click through the flow as a player would, and fix what looks off
   (layout, labels, highlighting, overlap, clipping, stale state). Typechecks and unit tests don't
@@ -113,26 +126,26 @@ docs it points at; load those when the work needs them.
 
 | Module | Purpose | Deps |
 |--------|---------|------|
-| `mtg-sdk` | DSLs, data models, primitives — pure data, no logic | — |
+| `mtg-sdk` | DSLs, data models, primitives â€” pure data, no logic | â€” |
 | `mtg-sdk-tooling` | Tooling over SDK data: card-JSON load/export + compact form, filter query language, `CardValidator`, `CardLinter` | sdk |
-| `mtg-sets` | Aggregator — re-exports the whole card corpus; catalog, Scryfall sync, corpus-wide tests | sdk, sets/* |
+| `mtg-sets` | Aggregator â€” re-exports the whole card corpus; catalog, Scryfall sync, corpus-wide tests | sdk, sets/* |
 | `mtg-sets/core` | `CardDiscovery`, token art, the setless `custom/` cards | sdk |
 | `mtg-sets/<era>` | Card definitions, one module per fixed release-year range, independent of each other | sdk, sets/core |
 | `mtg-sets/<era>/tests` | Card scenario tests for that era's sets | engine, sets |
 | `rules-engine` | Core MTG rules (zero server deps) | sdk |
 | `ai` | Built-in AI player + draft/deckbuild advisors | engine, sdk |
-| `mtg-search` | Scryfall-style search query language over a `SearchCard` projection. Kotlin Multiplatform: the server runs it on the JVM, the web-client runs it compiled to JS (`web-client/src/generated/mtg-search/`, refreshed by `just search-js`) — never a TypeScript port | — |
+| `mtg-search` | Scryfall-style search query language over a `SearchCard` projection. Kotlin Multiplatform: the server runs it on the JVM, the web-client runs it compiled to JS (`web-client/src/generated/mtg-search/`, refreshed by `just search-js`) â€” never a TypeScript port | â€” |
 | `gym` / `gym-server` / `gym-trainer` | RL/MCTS env + HTTP transport + self-play SPI | engine, sdk |
 | `game-server` | Spring Boot orchestration, WebSocket, state masking | engine, sdk |
-| `mtgish-tooling` | Predictive coverage / auto-gen analyzer | — (scans source as text) |
-| [`oracle-assay`](oracle-assay/README.md) | Argentum Assay — bidirectional Oracle-text parser; touchstone gate (`just assay-gate`), differential gate against the hand-written cards (`just assay-differential`), browser explorer over the live grammar (`just assay-explore`, also framed as a tab on the Set Completion view), the baked whole-card verdict ledger behind that view's "Assay-ready" badges (`just assay-bake`), and the Scenario Builder's dev-gated custom-card sandbox (`just assay compile`) | sdk |
-| `web-client` | React UI (dumb terminal — no game logic) | — |
+| `mtgish-tooling` | Predictive coverage / auto-gen analyzer | â€” (scans source as text) |
+| [`oracle-assay`](oracle-assay/README.md) | Argentum Assay â€” bidirectional Oracle-text parser; touchstone gate (`just assay-gate`), differential gate against the hand-written cards (`just assay-differential`), browser explorer over the live grammar (`just assay-explore`, also framed as a tab on the Set Completion view), the baked whole-card verdict ledger behind that view's "Assay-ready" badges (`just assay-bake`), and the Scenario Builder's dev-gated custom-card sandbox (`just assay compile`) | sdk |
+| `web-client` | React UI (dumb terminal â€” no game logic) | â€” |
 
 **Key principle:** the engine is pure (no card-specific code), content is data-driven (no execution
 logic), and the API is an anti-corruption layer between engine and clients.
 
 **Finding a set's module.** The card corpus and its scenario tests are split by release year so that
-no single Kotlin compilation holds all of it — that split is why the build stopped running the
+no single Kotlin compilation holds all of it â€” that split is why the build stopped running the
 compile daemon out of heap. Every era lives under `mtg-sets/`, cards and tests in one directory:
 
 ```
@@ -148,42 +161,42 @@ just test-class MyrIncubatorScenarioTest   # finds the file, runs only its modul
 just test-scenarios 2003-2007              # one era; bare `just test-scenarios` runs all of them
 ```
 
-Depend on `project(":mtg-sets")` as before — it re-exports every era, so nothing downstream changed.
+Depend on `project(":mtg-sets")` as before â€” it re-exports every era, so nothing downstream changed.
 
 ## Load-bearing rules
 
 These are the ones that have actually caused bugs here.
 
-- **Immutability** — never mutate components in place; return new state.
-- **Projected state for battlefield filters** — filtering battlefield permanents by
+- **Immutability** â€” never mutate components in place; return new state.
+- **Projected state for battlefield filters** â€” filtering battlefield permanents by
   type/subtype/color/keywords/P/T MUST read *projected* state, because base state can't see continuous
   effects. `predicateEvaluator.matches(state, projected, entityId, filter, context)` takes `projected` as
-  a **required** parameter — pass `state.projectedState` (mid-projection callers such as
+  a **required** parameter â€” pass `state.projectedState` (mid-projection callers such as
   `EffectApplicator` pass their intermediate one instead). Passing it is always correct: entities outside
   the battlefield have no projection entry, so the matchers fall back to base `CardComponent` data on
-  their own. The real hazard is reading characteristics off the card directly — always
+  their own. The real hazard is reading characteristics off the card directly â€” always
   `projected.isCreature(entityId)`, never `cardComponent.typeLine.isCreature`.
-- **Layer dependencies (Rule 613.8)** — sort same-layer effects by trial application before falling back
+- **Layer dependencies (Rule 613.8)** â€” sort same-layer effects by trial application before falling back
   to timestamp. Never `toMutableSet()` a `ContinuousEffect` list; it dedupes equal lord effects.
-- **Events, not silent mutations** — every state change emits a `GameEvent` so triggers and animations
+- **Events, not silent mutations** â€” every state change emits a `GameEvent` so triggers and animations
   can react.
-- **Server is authoritative** — never compute legal actions in the client; the server sends them.
-- **Last-known information** — dies/leaves triggers read `triggerContext.lastKnownPower`,
+- **Server is authoritative** â€” never compute legal actions in the client; the server sends them.
+- **Last-known information** â€” dies/leaves triggers read `triggerContext.lastKnownPower`,
   `lastKnownCardDefinitionId`, and `lastKnownCounters` off the `ZoneChangeEvent`; the entity is already
   gone when the trigger resolves.
 
 ## Card / effect authoring
 
-- **Cards are data** — `cardDef { }` DSL, never class inheritance. No registration step: `CardDiscovery`
+- **Cards are data** â€” `cardDef { }` DSL, never class inheritance. No registration step: `CardDiscovery`
   scans `definitions/{set}/cards/` for top-level `val`s, so a card in the right package is picked up
-  automatically. A new *set* only needs an `MtgSet` object under `definitions/` — `MtgSetCatalog` finds it
+  automatically. A new *set* only needs an `MtgSet` object under `definitions/` â€” `MtgSetCatalog` finds it
   the same way.
-- **Facades, not raw constructors** — `Effects.DrawCards(1)`, `Effects.Destroy()`. `FacadeBoundaryTest`
+- **Facades, not raw constructors** â€” `Effects.DrawCards(1)`, `Effects.Destroy()`. `FacadeBoundaryTest`
   enforces this for cards. Compositions (Scry, Mill, SearchLibrary) live behind the single `Patterns`
   index: `Patterns.Library`, `.Hand`, `.Group`, `.Exile`, `.CreatureType`, `.Mechanic`, `.Sideboard`.
-- **Composition before new types** — a new `Effect` + executor is the last resort, and it's `add-feature`
+- **Composition before new types** â€” a new `Effect` + executor is the last resort, and it's `add-feature`
   territory. The bar and the reusability rules: [`docs/sdk-design-principles.md`](docs/sdk-design-principles.md).
-- **Reprints** — only a card's *earliest real printing* gets a full `card(...)`; later sets get a
+- **Reprints** â€” only a card's *earliest real printing* gets a full `card(...)`; later sets get a
   `Printing(...)` row, never a duplicate canonical. `just check-card-printing "<Card>"` is the gate.
 
 ## Commands
@@ -216,12 +229,12 @@ Set Completion view's Assay-ready badges; for a head start on a card use `just a
 | [`architecture-principles.md`](docs/architecture-principles.md) | Core design (ECS, continuations, layer system, mana, priority) |
 | [`build-performance-plan.md`](docs/build-performance-plan.md) | Why the card corpus and scenario suite are split into per-era modules; daemon heap and cache tuning |
 | [`sdk-design-principles.md`](docs/sdk-design-principles.md) | The bar for a new SDK type: composition, reusability, naming |
-| [`card-sdk-language-reference.md`](docs/card-sdk-language-reference.md) | Full card SDK / DSL catalog — update on any SDK change |
-| [`sdk-index.md`](docs/sdk-index.md) | Generated: every sealed SDK type, one line each, by family — grep it before adding a type |
+| [`card-sdk-language-reference.md`](docs/card-sdk-language-reference.md) | Full card SDK / DSL catalog â€” update on any SDK change |
+| [`sdk-index.md`](docs/sdk-index.md) | Generated: every sealed SDK type, one line each, by family â€” grep it before adding a type |
 | [`api-guide.md`](docs/api-guide.md) | Adding cards/mechanics step-by-step |
 | [`continuous-effect-dependency-system.md`](docs/continuous-effect-dependency-system.md) | Rule 613.8 dependency resolution |
 | [`managing-complex-and-rare-abilities.md`](docs/managing-complex-and-rare-abilities.md) | Patterns for complex abilities |
-| [`engine-server-interface.md`](docs/engine-server-interface.md) | Engine ↔ API contract |
+| [`engine-server-interface.md`](docs/engine-server-interface.md) | Engine â†” API contract |
 | [`accounts-and-persistence.md`](docs/accounts-and-persistence.md) | Opt-in accounts, magic-link auth, PostgreSQL |
 | [`player-input.md`](docs/player-input.md) | Async I/O and decision protocol |
 | [`data-contracts.md`](docs/data-contracts.md) | Client/server JSON payloads |
@@ -230,4 +243,4 @@ Set Completion view's Assay-ready badges; for a head start on a card use `just a
 | [`gym-deckbuild-env.md`](docs/gym-deckbuild-env.md) | Sealed deckbuild gym env + custom win-rate reward |
 | [`gym-self-play-testing.md`](docs/gym-self-play-testing.md) | Driving the gym server over HTTP to surface broken cards |
 | [`agent-loops/`](docs/agent-loops/) | Long-running set-implementation prompts for Claude Code `/loop` and Codex `/goal` |
-| [`oracle-assay.md`](docs/oracle-assay.md) | Argentum Assay design — first-party Scryfall→SDK Oracle parser; also audits `mtg-sdk` vocabulary. **Phase 1 + the differential gate shipped** ([`:oracle-assay`](oracle-assay/README.md)); the MVP and remaining phases are in [`docs/plans/oracle-assay.md`](docs/plans/oracle-assay.md) |
+| [`oracle-assay.md`](docs/oracle-assay.md) | Argentum Assay design â€” first-party Scryfallâ†’SDK Oracle parser; also audits `mtg-sdk` vocabulary. **Phase 1 + the differential gate shipped** ([`:oracle-assay`](oracle-assay/README.md)); the MVP and remaining phases are in [`docs/plans/oracle-assay.md`](docs/plans/oracle-assay.md) |

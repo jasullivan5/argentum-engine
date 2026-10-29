@@ -1,4 +1,14 @@
-# Argentum Engine
+# Argentum Engine — application-focused fork
+
+Canonical fork: [jasullivan5/argentum-engine](https://github.com/jasullivan5/argentum-engine), maintained as the native engine foundation of [MTG Deckbuilding Assistant](https://github.com/jasullivan5/mtg-deckbuilding-assistant).
+
+`app-stable` is the development base; the application adopts exact reviewed commits from it. `main` is reserved for original-project tracking and explicit fast-forward synchronization. Feature/fix branches and internal PRs normally target `app-stable`; upstream PRs are not part of our workflow. See [AGENTS.md](AGENTS.md) for the fork policy and selective upstream review procedure.
+
+The original correction from the application's approved baseline is maintained here without importing the modern catalog. `fix/collection-counter-placement` (d72f2c365a3006b0c3eb41271c4f0e35f782c392) remains a historical modern-upstream compatibility experiment. Do not merge it into app-stable or delete it without approval.
+
+**Fork-sync caution:** the default branch is app-stable. Synchronize upstream only into `main` with explicit Git refs and a fast-forward check; do not use the generic GitHub fork-sync action on app-stable. Changes selected for app-stable require separate native/application regression evidence.
+
+The original project's overview and links follow as upstream documentation, not instructions to contribute or deploy from this fork.
 
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/wingedsheep/6bdaf97194bddfe4924f1d5c17a08d4f/raw/coverage.json)](https://github.com/wingedsheep/argentum-engine/actions/workflows/ci.yml)
 
@@ -8,9 +18,9 @@
 
 An unofficial Magic: The Gathering rules engine and online play platform. Not affiliated with, endorsed, sponsored, or specifically approved by Wizards of the Coast LLC.
 
-**[Play now at magic.wingedsheep.com](https://magic.wingedsheep.com)** · **[Join our Discord](https://discord.gg/dy6eSRPWzu)**
+**[Play now at magic.wingedsheep.com](https://magic.wingedsheep.com)** Â· **[Join our Discord](https://discord.gg/dy6eSRPWzu)**
 
-**Want to help?** Missing a card from your deck? Run `just contribute` and let Claude Code or Codex build it — see [Contributing](#contributing).
+**Want to help?** Missing a card from your deck? Run `just contribute` and let Claude Code or Codex build it â€” see [Contributing](#contributing).
 
 ---
 
@@ -18,18 +28,18 @@ An unofficial Magic: The Gathering rules engine and online play platform. Not af
 
 Argentum Engine is a modular MTG implementation composed of:
 
-- **Rules Engine** — A deterministic Kotlin library implementing MTG comprehensive rules
-- **Game Server** — Spring Boot backend for online multiplayer
-- **Web Client** — Browser-based UI
-- **Gym** — An RL/MCTS environment wrapper around the rules engine, with an HTTP transport for Python training loops
-- **Argentum Assay** — A bidirectional Oracle-text parser that measures, card by card, how much of Magic the card SDK can express
+- **Rules Engine** â€” A deterministic Kotlin library implementing MTG comprehensive rules
+- **Game Server** â€” Spring Boot backend for online multiplayer
+- **Web Client** â€” Browser-based UI
+- **Gym** â€” An RL/MCTS environment wrapper around the rules engine, with an HTTP transport for Python training loops
+- **Argentum Assay** â€” A bidirectional Oracle-text parser that measures, card by card, how much of Magic the card SDK can express
 
 ## Implementation Progress
 
-**[Live set completion tracker → magic.wingedsheep.com/set-completion](https://magic.wingedsheep.com/set-completion)** —
+**[Live set completion tracker â†’ magic.wingedsheep.com/set-completion](https://magic.wingedsheep.com/set-completion)** â€”
 per-set coverage, and every card in a set marked implemented, missing, or not planned. Missing cards
 that [Argentum Assay](#argentum-assay--how-much-of-magic-can-the-sdk-say) already reads end to end
-are flagged **⚡ Assay-ready**: they need no new engine vocabulary, so they're the cheapest ones to
+are flagged **âš¡ Assay-ready**: they need no new engine vocabulary, so they're the cheapest ones to
 pick up. The same page carries the Assay explorer as a second tab.
 
 Distinct implemented cards, day by day since the project began. Regenerated daily by the
@@ -82,7 +92,7 @@ The client runs at `http://localhost:5173` and connects to the server at `http:/
 | Command | Description |
 |---------|-------------|
 | `just server` | Start the game server (port 8080) |
-| `just gym-server` | Start the gym HTTP server (port 8081) — for RL/MCTS training |
+| `just gym-server` | Start the gym HTTP server (port 8081) â€” for RL/MCTS training |
 | `just client` | Start the web client dev server |
 | `just client-install` | Install web client dependencies |
 
@@ -128,13 +138,13 @@ Host booster drafts with up to 8 players. Create a draft lobby, invite friends, 
 
 <img src="assets/play.jpeg" alt="Play" width="900px">
 
-Play Magic against friends with fully implemented MTG rules. The engine automatically handles the stack, priority, combat, triggers, and state-based actions—so you can focus on the game.
+Play Magic against friends with fully implemented MTG rules. The engine automatically handles the stack, priority, combat, triggers, and state-based actionsâ€”so you can focus on the game.
 
 ### Free-for-All Multiplayer
 
-Play multiplayer Free-for-All games for 2–6 players (CR 806). From a lobby, switch the mode toggle
+Play multiplayer Free-for-All games for 2â€“6 players (CR 806). From a lobby, switch the mode toggle
 from **Tournament** to **Free-for-All** to seat every player in a single shared game instead of a
-2-player bracket — any pool-building format (sealed, draft, custom decks) composes with it.
+2-player bracket â€” any pool-building format (sealed, draft, custom decks) composes with it.
 
 Eliminated players are removed from the table while the remaining seats play on: conceding (or losing)
 takes you out, your opponents' boards keep going, and the opponent rail shows a live tombstone for
@@ -149,7 +159,7 @@ Play against an AI opponent using the built-in engine, a chat model, or Jev (loc
 
 The built-in rules-engine AI runs locally with no external dependencies. It uses multi-ply game tree search with alpha-beta pruning, a composite board evaluator, and a specialized combat advisor.
 
-**Works out of the box** — no API key or configuration needed:
+**Works out of the box** â€” no API key or configuration needed:
 
 ```bash
 # AI is enabled by default in engine mode
@@ -220,7 +230,7 @@ The `jev` provider is registered only under the `local` profile; other profiles 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GAME_AI_ENABLED` | `true` | Enable the AI opponent feature |
-| `GAME_AI_MODE` | `engine` | `engine` — built-in AI (no API key needed); `llm` — LLM-powered AI; `jev` — local Jev opponent; or the mode of an `AiControllerProvider` bean supplied by another build. An unrecognised value fails startup. |
+| `GAME_AI_MODE` | `engine` | `engine` â€” built-in AI (no API key needed); `llm` â€” LLM-powered AI; `jev` â€” local Jev opponent; or the mode of an `AiControllerProvider` bean supplied by another build. An unrecognised value fails startup. |
 | `GAME_AI_BASE_URL` | `https://openrouter.ai/api/v1` | LLM API endpoint (LLM mode only) |
 | `GAME_AI_API_KEY` | | API key for LLM provider (LLM mode only) |
 | `GAME_AI_MODEL` | `google/gemini-3.1-flash-lite-preview` | LLM model name (LLM mode only) |
@@ -230,18 +240,18 @@ The `jev` provider is registered only under the `local` profile; other profiles 
 
 ```
 argentum-engine/
-├── mtg-sdk/              # Shared contract — DSLs, data models, primitives
-├── mtg-sets/             # Aggregator — re-exports the whole card corpus, plus the set catalog
-│   ├── core/             # CardDiscovery, token art, cards belonging to no set
-│   └── <era>/            # Card definitions, one module per release-year range (`just where <SET>`)
-│       └── tests/        # That era's card scenario tests
-├── rules-engine/         # Core MTG rules engine (no server dependencies)
-├── gym/           # RL/MCTS environment wrapper (GameEnvironment, MultiEnvService)
-├── gym-server/    # Spring Boot HTTP transport for gym (Python trainers)
-├── gym-trainer/   # JVM-side MCTS + self-play SPI for AlphaZero-style projects
-├── game-server/          # Spring Boot game server & matchmaking
-├── web-client/           # React/TypeScript browser UI
-└── e2e-scenarios/        # Playwright end-to-end tests
+â”œâ”€â”€ mtg-sdk/              # Shared contract â€” DSLs, data models, primitives
+â”œâ”€â”€ mtg-sets/             # Aggregator â€” re-exports the whole card corpus, plus the set catalog
+â”‚   â”œâ”€â”€ core/             # CardDiscovery, token art, cards belonging to no set
+â”‚   â””â”€â”€ <era>/            # Card definitions, one module per release-year range (`just where <SET>`)
+â”‚       â””â”€â”€ tests/        # That era's card scenario tests
+â”œâ”€â”€ rules-engine/         # Core MTG rules engine (no server dependencies)
+â”œâ”€â”€ gym/           # RL/MCTS environment wrapper (GameEnvironment, MultiEnvService)
+â”œâ”€â”€ gym-server/    # Spring Boot HTTP transport for gym (Python trainers)
+â”œâ”€â”€ gym-trainer/   # JVM-side MCTS + self-play SPI for AlphaZero-style projects
+â”œâ”€â”€ game-server/          # Spring Boot game server & matchmaking
+â”œâ”€â”€ web-client/           # React/TypeScript browser UI
+â””â”€â”€ e2e-scenarios/        # Playwright end-to-end tests
 ```
 
 ## Rules Engine
@@ -259,7 +269,7 @@ exposes a pure functional API:
 - Rule 613 layer system for continuous effects
 - Replacement effects
 
-Cards are defined as pure data using a Kotlin DSL — no card-specific logic in the engine.
+Cards are defined as pure data using a Kotlin DSL â€” no card-specific logic in the engine.
 
 ## Gameplay Platform
 
@@ -268,29 +278,29 @@ Cards are defined as pure data using a Kotlin DSL — no card-specific logic in 
 - Create games with invite links
 - Booster draft with up to 8 players
 - Sealed deck tournaments
-- Free-for-All multiplayer games (2–6 players, CR 806)
+- Free-for-All multiplayer games (2â€“6 players, CR 806)
 
 ### Client
 
 - Real-time game state sync via WebSocket
 - Targeting, combat, and decision UIs
 
-## Gym — RL & MCTS Environment
+## Gym â€” RL & MCTS Environment
 
 For agent research and reinforcement-learning training, the engine also ships as a Gymnasium-style environment. A trainer drives many games in parallel against a stable JSON contract, without touching the game server or the browser UI.
 
-### Library — `gym`
+### Library â€” `gym`
 
 A transport-agnostic Kotlin library that wraps the rules engine in a stateful `reset / step / observe / legalActions` API with MCTS-friendly affordances:
 
-- **Immutable state + O(1) fork** — `GameEnvironment.fork()` returns a sibling env pointing at the same `GameState`. Because state is never mutated in place, tree expansion is free.
-- **Snapshot / restore** — `MultiEnvService.snapshot()` returns an opaque handle; `restore()` swaps the env back to that state in O(1). Designed to grow a byte-blob variant for cross-process MCTS workers.
-- **Batch stepping** — `MultiEnvService.stepBatch()` fans out per-env steps across a work-stealing pool, so vectorised rollouts run in parallel.
-- **Decision-aware** — pauses on `PendingDecision`s (scry, targets, search, distribute…); simple decisions fold into the numeric action-ID space, complex ones expose a structured response channel.
-- **Stable observation schema** — `TrainingObservation` has a `schemaHash` so Python clients fail fast on contract drift; every observation carries a `stateDigest` usable as an MCTS transposition-table key.
-- **Information hiding** — opponent hand and libraries are masked by default; `revealAll` is available for debug scripts.
+- **Immutable state + O(1) fork** â€” `GameEnvironment.fork()` returns a sibling env pointing at the same `GameState`. Because state is never mutated in place, tree expansion is free.
+- **Snapshot / restore** â€” `MultiEnvService.snapshot()` returns an opaque handle; `restore()` swaps the env back to that state in O(1). Designed to grow a byte-blob variant for cross-process MCTS workers.
+- **Batch stepping** â€” `MultiEnvService.stepBatch()` fans out per-env steps across a work-stealing pool, so vectorised rollouts run in parallel.
+- **Decision-aware** â€” pauses on `PendingDecision`s (scry, targets, search, distributeâ€¦); simple decisions fold into the numeric action-ID space, complex ones expose a structured response channel.
+- **Stable observation schema** â€” `TrainingObservation` has a `schemaHash` so Python clients fail fast on contract drift; every observation carries a `stateDigest` usable as an MCTS transposition-table key.
+- **Information hiding** â€” opponent hand and libraries are masked by default; `revealAll` is available for debug scripts.
 
-### HTTP transport — `gym-server`
+### HTTP transport â€” `gym-server`
 
 A thin Spring Boot shell that exposes `MultiEnvService` over HTTP so a Python agent can drive the engine without a JVM embedding:
 
@@ -310,13 +320,13 @@ A thin Spring Boot shell that exposes `MultiEnvService` over HTTP so a Python ag
 | `GET /schema-hash` | observation-schema version (fail-fast on drift) |
 | `GET /health` | liveness probe |
 
-JSON is handled end-to-end by kotlinx.serialization — sealed hierarchies (`DeckSpec`, `DecisionResponse`) round-trip via `@SerialName` discriminators without extra adapter code.
+JSON is handled end-to-end by kotlinx.serialization â€” sealed hierarchies (`DeckSpec`, `DecisionResponse`) round-trip via `@SerialName` discriminators without extra adapter code.
 
 Start the server with `just gym-server` (port **8081**, so it doesn't collide with the game server on 8080). Running it does not require the web client or Redis.
 
 **Deliberately out of scope for the current scaffold:** authentication, env-lifetime TTLs, byte-based snapshots, metrics. Bind to localhost until you add auth.
 
-### JVM-side trainer — `gym-trainer`
+### JVM-side trainer â€” `gym-trainer`
 
 For AlphaZero-shaped projects that want tree search in the JVM and only use Python as a stateless NN inference server (MageZero-style): a small SPI + a PUCT MCTS + a self-play loop.
 
@@ -324,7 +334,7 @@ For AlphaZero-shaped projects that want tree search in the JVM and only use Pyth
 - **Built-in `AlphaZeroSearch`** with PUCT, optional Dirichlet root noise, using `GameEnvironment.fork()` for O(1) tree expansion.
 - **Built-in `SelfPlayLoop`** with temperature schedule that labels training rows with the final outcome before flushing.
 - **Batteries-included defaults** so a training loop runs end-to-end with zero NN setup: a heuristic evaluator wrapping the engine's `BoardEvaluator`, a structural featurizer, a hash-bucket action featurizer, a JSONL sink, and a random structured-decision resolver.
-- **Wire format kept minimal** — `RemoteHttpEvaluator` POSTs features + legal slots and parses `{priors, value}`. Swap codec by subclassing.
+- **Wire format kept minimal** â€” `RemoteHttpEvaluator` POSTs features + legal slots and parses `{priors, value}`. Swap codec by subclassing.
 
 See [`gym-trainer/README.md`](gym-trainer/README.md) for the full design write-up and a 30-line hello-world.
 
@@ -335,7 +345,7 @@ healthy, there's one rule above all others:
 
 > **No slop PRs.** A reviewer's time is the scarcest resource here. Please open a PR only when
 > it's been tested, it's faithful to the actual Magic rules (no shortcuts), and every change in it is
-> there on purpose. Built with a frontier model through `just contribute`? Great — the gate and review
+> there on purpose. Built with a frontier model through `just contribute`? Great â€” the gate and review
 > it runs are exactly that check. A large unverified PR is still worth less than a small careful one.
 
 ### Quick start: contribute cards with an AI agent
@@ -348,12 +358,12 @@ just contribute
 
 It checks your setup, then asks three questions:
 
-1. **What to build** — your deck or card list (paste any Moxfield / Archidekt / MTGA export, type
+1. **What to build** â€” your deck or card list (paste any Moxfield / Archidekt / MTGA export, type
    card names, or drop the file into the terminal), or a whole set by code or name. It shows how many
    of the cards already work before anything starts.
-2. **Which agent and model** — whichever of [Claude Code](https://claude.com/claude-code) and
+2. **Which agent and model** â€” whichever of [Claude Code](https://claude.com/claude-code) and
    [Codex](https://github.com/openai/codex) you have installed, with a model of your choice.
-3. **How to deliver it** —
+3. **How to deliver it** â€”
    - **Local branch, one PR at the end** (the default, and the only option without push access). The
      agent works through the missing cards a batch at a time; each batch is tested (`just loop-gate`),
      reviewed by fresh-context subagents, and committed on one local branch. Nothing is pushed. When
@@ -365,7 +375,7 @@ Cards that need new engine features aren't faked: the agent records them as gaps
 missing capability properly (with the `add-feature` skill) before the cards that need it.
 
 **You'll need:** JDK 21+, [`just`](https://github.com/casey/just), `git`, `jq`, Python 3, and
-Claude Code or Codex. The [GitHub CLI](https://cli.github.com) (`gh`) is optional — it lets the agent
+Claude Code or Codex. The [GitHub CLI](https://cli.github.com) (`gh`) is optional â€” it lets the agent
 skip cards someone else's open PR already adds.
 
 **Before you start:** `main` is the source of truth for what's implemented; open PRs are what's in
@@ -388,24 +398,24 @@ Models: `opus`, `sonnet`, `astra` (Codex `gpt-6-astra`), any `claude-*` ID, or `
 
 ### Using AI to implement cards by hand
 
-Using AI to implement cards is encouraged — most of the card catalog is data, and the project ships
+Using AI to implement cards is encouraged â€” most of the card catalog is data, and the project ships
 agent skills that automate the workflow correctly (Scryfall
 lookup, oracle errata, set registration, scenario tests, reprint handling). They live in
 `.claude/skills/` (Claude Code) and `.agents/skills/` (Codex):
 
-- **`add-card <CARD_NAME> <SET_CODE>`** — implement a specific card.
-- **`add-random-card <SET_CODE>`** — pick a random unimplemented card from a set and implement it.
+- **`add-card <CARD_NAME> <SET_CODE>`** â€” implement a specific card.
+- **`add-random-card <SET_CODE>`** â€” pick a random unimplemented card from a set and implement it.
 
-**If a card adds a new UI / UX element, test it manually** before opening the PR — AI can build the
+**If a card adds a new UI / UX element, test it manually** before opening the PR â€” AI can build the
 flow, but a human needs to confirm it actually feels right in the client. Run the app (`just server`
 + `just client`), set up the situation (the `generate-scenario` skill can inject a board state), and
 click through the decision yourself.
 
-### Argentum Assay — how much of Magic can the SDK say?
+### Argentum Assay â€” how much of Magic can the SDK say?
 
 [`:oracle-assay`](oracle-assay/README.md) is a first-party Oracle-text grammar: Scryfall JSON in,
-`mtg-sdk` models out. Its trick is that **every rule is written in both directions** — a rule that can
-parse a phrase must also print it — so the whole corpus checks the grammar without a human reading
+`mtg-sdk` models out. Its trick is that **every rule is written in both directions** â€” a rule that can
+parse a phrase must also print it â€” so the whole corpus checks the grammar without a human reading
 the output. If `print(parse(text)) == text`, the reading was right.
 
 That makes it an **auditor before it is a generator**, and the thing it audits is *us*. A card Assay
@@ -418,7 +428,7 @@ just assay parse "Serra Angel"      # the normalized lines, and the SDK model ea
 just assay explain "Wall of Omens"  # the same, with a caret on the token a decline died on
 just assay-gate                     # the touchstone over all 34,882 cards; exits 1 on a bug
 just assay-report --rank tail       # the SDK gap report, ranked by what each family would unlock
-just assay-differential             # Assay's readings vs. the hand-written cards — the sharper gate
+just assay-differential             # Assay's readings vs. the hand-written cards â€” the sharper gate
 just assay-explore                  # all of it in a browser, against the grammar on your classpath
 just assay-bake                     # re-bless the per-card verdict ledger the coverage page reads
 ```
@@ -426,11 +436,11 @@ just assay-bake                     # re-bless the per-card verdict ledger the c
 Two gates keep it honest. The **touchstone** proves a reading round-trips; the **differential** compares
 Assay's reading of a card against the hand-written `cardDef` we already ship, which is the only thing
 that catches a parse that round-trips byte-perfectly while meaning something else. It has found real
-bugs in hand-written cards — the outcome worth the most.
+bugs in hand-written cards â€” the outcome worth the most.
 
 It is deliberately **not a card loader**, and won't become one: a human-authored `cardDef` with a
 passing scenario test stays the only ground truth. The one carve-out is the Scenario Builder's
-dev-gated sandbox, where you can paste a custom card and play it if — and only if — Assay reads every
+dev-gated sandbox, where you can paste a custom card and play it if â€” and only if â€” Assay reads every
 line of it.
 
 The **explorer** (`just assay-explore`, or the *Assay Explorer* tab on the set completion page) is the
@@ -445,7 +455,7 @@ gates have found so far.
 Assay replaced the earlier `:mtgish-tooling` pipeline, which mapped the
 [**mtgish**](https://github.com/i5jb/mtgish) oracle-IR corpus by [**i5jb**](https://github.com/i5jb)
 onto our SDK. That project's clean IR got the first auto-drafts off the ground, and its explorer is
-what Assay's is modelled on — thank you. The module is deprecated and kept only for reference.
+what Assay's is modelled on â€” thank you. The module is deprecated and kept only for reference.
 
 ### Implementing a whole set
 
@@ -456,37 +466,37 @@ time (it's how Invasion was done):
    keywords, costs, or mechanics are *missing* that you need before any card can be implemented
    cleanly? Produce the full list up front. (Invasion needed roughly 25 new features.)
 2. **Plan each missing feature for elegance and reuse.** For every gap, design the implementation so
-   it composes complex effects from small reusable atoms rather than a one-off type per card — think
+   it composes complex effects from small reusable atoms rather than a one-off type per card â€” think
    about the SDK as a whole and the *next* card, not just the one in front of you. Use the
    **`add-feature`** skill, which encodes these principles end to end.
 3. **Implement the features one by one, with care.** This is the step that pays off later, so give it
    attention: write tests, and **manually test the UX** for anything that touches the client. Some
-   features are deep — Invasion's banding required rewriting the whole combat system — so don't rush
+   features are deep â€” Invasion's banding required rewriting the whole combat system â€” so don't rush
    them.
 4. **Then fan out the cards.** Once the building blocks exist, most cards need no engine changes. Add
-   them in parallel — e.g. spawn a few agents, each using the `add-card` skill to implement a handful
+   them in parallel â€” e.g. spawn a few agents, each using the `add-card` skill to implement a handful
    of cards, and have each open a PR when its batch is done.
 5. **Review engine changes.** Cards will occasionally still need a small engine tweak. When a PR adds
-   or changes engine/SDK code, run **`review-changes <PR_URL>`** on it — this checks for elegance and
+   or changes engine/SDK code, run **`review-changes <PR_URL>`** on it â€” this checks for elegance and
    correctness and keeps the engine/SDK clean. (Card-only PRs with no engine changes don't need it.)
 6. **Check the set against Assay.** Run `just assay-differential --set <SET>`: any `DIVERGENT` row
-   means Assay's reading of a card and the hand-written `cardDef` disagree — classify it before calling
+   means Assay's reading of a card and the hand-written `cardDef` disagree â€” classify it before calling
    the set done. New SDK vocabulary you added isn't taught to Assay in the same PR; name it in the PR
    body, and the [`assay-loop`](.agents/skills/assay-loop/SKILL.md) widens the grammar to read it as its
    own measured band.
 
-A set can also finish with a card or two deliberately left out — Legends' Falling Star needs physical
+A set can also finish with a card or two deliberately left out â€” Legends' Falling Star needs physical
 dexterity the Chaos Orb table-flip doesn't cover. Add those to
 [`coverage/card-exclusions.json`](coverage/card-exclusions.json) with a reason (required) and re-run
 `scripts/gen-set-totals`: they drop out of the denominator and show as "not planned" on the
 [set completion tracker](https://magic.wingedsheep.com/set-completion), so completion means
-*everything we intend to build is built*. It's a policy list, not a backlog — a card that's merely
+*everything we intend to build is built*. It's a policy list, not a backlog â€” a card that's merely
 hard, or waiting on a feature we do plan to build, stays a normal gap.
 
 ### Guidelines
 
 - Read [`AGENTS.md`](AGENTS.md) and [`docs/architecture-principles.md`](docs/architecture-principles.md)
-  first — they describe the load-bearing rules (immutability, projected state, events-not-mutations,
+  first â€” they describe the load-bearing rules (immutability, projected state, events-not-mutations,
   server-authoritative client) that PRs are reviewed against.
 - Prefer composing existing primitives over adding new SDK types; when you do add a type, parameterize
   it and name the mechanic, not the card.
@@ -494,10 +504,10 @@ hard, or waiting on a feature we do plan to build, stays a normal gap.
   change whenever you add or change anything in the SDK.
 - Verify Comprehensive Rules numbers via the official WotC rules page <https://magic.wizards.com/en/rules>
   before citing them in code, comments, or commit messages. The linked plain-text `.txt` is too large to fetch
-  into context — download it and `grep` locally.
+  into context â€” download it and `grep` locally.
 - Run `just loop-gate` (it runs the tests your diff can break; CI runs the full suite) and confirm
   green before opening the PR. Card changes: `just loop-gate --rebless` and check only your cards moved.
-- AI-built PRs are welcome — frontier models (current Claude and GPT models) implement cards well.
+- AI-built PRs are welcome â€” frontier models (current Claude and GPT models) implement cards well.
   Say which agent and model built it.
 
 Questions or ideas? [Join the Discord](https://discord.gg/dy6eSRPWzu).
