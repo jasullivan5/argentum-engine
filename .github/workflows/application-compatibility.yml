@@ -20,21 +20,18 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: argentum-engine
-      - name: Check private application access
-        env:
-          APPLICATION_READ_TOKEN: ${{ secrets.APPLICATION_READ_TOKEN }}
-        run: |
-          if [ -z "$APPLICATION_READ_TOKEN" ]; then
-            echo "::error::Configure APPLICATION_READ_TOKEN in engine repository Actions secrets, with Contents: read for the private application repository. Never paste it into logs or chat."
-            exit 1
-          fi
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.APPLICATION_READ_TOKEN }}
           persist-credentials: false
           repository: jasullivan5/mtg-deckbuilding-assistant
           ref: ${{ inputs.application_ref || 'main' }}
           path: mtg-deckbuilding-assistant
+      - name: Require sibling integration in application
+        run: |
+          if [ ! -f mtg-deckbuilding-assistant/cli/src/main/kotlin/dev/mtg/assistant/EngineBuild.kt ]; then
+            echo "::error::Merge application migration PR #12 first, or dispatch this workflow with application_ref=feature/sibling-app-stable to validate the migration."
+            exit 1
+          fi
       - name: Identify exact engine candidate
         working-directory: argentum-engine
         run: |
@@ -54,6 +51,8 @@ jobs:
         working-directory: mtg-deckbuilding-assistant
         run: |
           bash scripts/bootstrap.sh
+          grep -Fx "revision=$ARGENTUM_CANDIDATE_REVISION" cli/build/generated/engine-resources/engine-build.properties
+          grep -Fx 'mode=candidate' cli/build/generated/engine-resources/engine-build.properties
           ./dev test
           python3 scripts/test-bootstrap.py
           bash scripts/check-catalog.sh
