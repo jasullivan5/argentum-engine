@@ -2,7 +2,7 @@
 
 Canonical fork: [jasullivan5/argentum-engine](https://github.com/jasullivan5/argentum-engine), maintained as the native engine foundation of [MTG Deckbuilding Assistant](https://github.com/jasullivan5/mtg-deckbuilding-assistant).
 
-`app-stable` is the development base; the application adopts exact reviewed commits from it. `main` is reserved for original-project tracking and explicit fast-forward synchronization. Feature/fix branches and internal PRs normally target `app-stable`; upstream PRs are not part of our workflow. See [AGENTS.md](AGENTS.md) for the fork policy and selective upstream review procedure.
+`app-stable` is the maintained application-compatible integration branch. The application normally uses its sibling checkout and records the actual engine SHA in builds/results. `main` is reserved for original-project tracking and explicit fast-forward synchronization. Feature/fix branches and internal PRs normally target `app-stable`; upstream PRs are not part of our workflow. See [AGENTS.md](AGENTS.md) for the fork policy and selective upstream review procedure.
 
 The original correction from the application's approved baseline is maintained here without importing the modern catalog. `fix/collection-counter-placement` (d72f2c365a3006b0c3eb41271c4f0e35f782c392) remains a historical modern-upstream compatibility experiment. Do not merge it into app-stable or delete it without approval.
 
@@ -12,7 +12,7 @@ The original correction from the application's approved baseline is maintained h
 
 Human assignments define our scope. We are not automatically implementing upstream's full card backlog, running autonomous card loops, adding server features or deploying a public game. The inherited technical documentation remains useful; its roadmap, contribution invitations and public service links do not set this fork's priorities.
 
-Use a feature/fix branch from `app-stable` in the primary engine checkout, and open internal PRs targeting `app-stable`. Native generic changes need appropriate mechanical regressions; integration against an exact candidate commit is separate from application adoption. The application keeps its clean exact-revision `argentum/` dependency apart from ordinary engine development. Documentation-only changes here do not automatically change that dependency pin.
+Keep the normal sibling engine checkout on clean app-stable. Isolate feature/fix work when the application is using that checkout and open internal PRs targeting app-stable. Require native and complete application compatibility checks against the exact candidate before acceptance. There is no separate application dependency-pin PR. The Application compatibility workflow runs on PRs into app-stable and after stable pushes; inspect its results before merging. See the [application workflow](https://github.com/jasullivan5/mtg-deckbuilding-assistant/blob/main/docs/ENGINE_WORKFLOW.md).
 
 Reserve temporary worktrees for simultaneous revisions, isolated application integration or independent build outputs. Reuse a suitable clean checkout; preserve results and check active consumers, status, untracked/unpushed work and locks before removing ended temporary worktrees with `git worktree remove` without force. Preserve branches and published history. Shared Git storage and nested independent clones require special care; a directory name alone never establishes obsolescence.
 
