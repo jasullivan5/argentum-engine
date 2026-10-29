@@ -8,7 +8,21 @@ The original correction from the application's approved baseline is maintained h
 
 **Fork-sync caution:** the default branch is app-stable. Synchronize upstream only into `main` with explicit Git refs and a fast-forward check; do not use the generic GitHub fork-sync action on app-stable. Changes selected for app-stable require separate native/application regression evidence.
 
-The original project's overview and links follow as upstream documentation, not instructions to contribute or deploy from this fork.
+## Fork scope and everyday development
+
+Human assignments define our scope. We are not automatically implementing upstream's full card backlog, running autonomous card loops, adding server features or deploying a public game. The inherited technical documentation remains useful; its roadmap, contribution invitations and public service links do not set this fork's priorities.
+
+Use a feature/fix branch from `app-stable` in the primary engine checkout, and open internal PRs targeting `app-stable`. Native generic changes need appropriate mechanical regressions; integration against an exact candidate commit is separate from application adoption. The application keeps its clean exact-revision `argentum/` dependency apart from ordinary engine development. Documentation-only changes here do not automatically change that dependency pin.
+
+Reserve temporary worktrees for simultaneous revisions, isolated application integration or independent build outputs. Reuse a suitable clean checkout; preserve results and check active consumers, status, untracked/unpushed work and locks before removing ended temporary worktrees with `git worktree remove` without force. Preserve branches and published history. Shared Git storage and nested independent clones require special care; a directory name alone never establishes obsolescence.
+
+This fork owns engine/SDK implementation and native regressions. The [application repository](https://github.com/jasullivan5/mtg-deckbuilding-assistant) owns assistant architecture, discovery, assurance, eligibility and integration. Project references own long-term research vision. Technical entry points here are [engine architecture](docs/architecture-principles.md), [SDK design](docs/sdk-design-principles.md), [DSL reference](docs/card-sdk-language-reference.md) and [authoring/verification guide](docs/api-guide.md). Keep those inherited sources authoritative instead of copying the catalog into the application.
+
+For approximately monthly upstream review, or before substantial engine work, fetch references in isolation, compare with the last recorded review, group relevant changes by mechanism and evaluate only selected improvements. Record exact upstream commits and acceptance/deferral reasons in the internal integration PR; require native/application regression evidence before integration. Preserve earlier application transition decisions at [the review receipt](https://github.com/jasullivan5/mtg-deckbuilding-assistant/blob/main/reference/fork-foundation/upstream-review.json). Fetching or fast-forwarding tracking `main` never authorizes integration into `app-stable`. No scheduled updater is required.
+
+## Inherited upstream overview
+
+The original project's overview and links follow as inherited documentation. Public site links, progress claims, upstream contribution invitations and autonomous-loop recipes refer to that project; they are not a claim of deployment, completeness or an instruction to act from this fork.
 
 [![Coverage](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/wingedsheep/6bdaf97194bddfe4924f1d5c17a08d4f/raw/coverage.json)](https://github.com/wingedsheep/argentum-engine/actions/workflows/ci.yml)
 
