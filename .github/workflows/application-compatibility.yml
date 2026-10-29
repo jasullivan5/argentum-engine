@@ -1,0 +1,68 @@
+name: Application compatibility
+on:
+  pull_request:
+    branches: [app-stable]
+  push:
+    branches: [app-stable]
+  workflow_dispatch:
+    inputs:
+      application_ref:
+        description: Application ref (main normally; migration branch for rollout validation)
+        required: false
+        default: main
+permissions:
+  contents: read
+jobs:
+  application-compatibility:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: argentum-engine
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: jasullivan5/mtg-deckbuilding-assistant
+          ref: ${{ inputs.application_ref || 'main' }}
+          path: mtg-deckbuilding-assistant
+      - name: Require sibling integration in application
+        run: |
+          if [ ! -f mtg-deckbuilding-assistant/cli/src/main/kotlin/dev/mtg/assistant/EngineBuild.kt ]; then
+            echo "::error::Merge application migration PR #12 first, or dispatch this workflow with application_ref=feature/sibling-app-stable to validate the migration."
+            exit 1
+          fi
+      - name: Identify exact engine candidate
+        working-directory: argentum-engine
+        run: |
+          echo "ARGENTUM_ENGINE_DIR=$GITHUB_WORKSPACE/argentum-engine" >> "$GITHUB_ENV"
+          echo "ARGENTUM_CANDIDATE_REVISION=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "Engine under test: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "Application: $(git -C ../mtg-deckbuilding-assistant rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - name: Native rules regressions
+        working-directory: argentum-engine
+        run: bash scripts/gradle-locked --no-daemon --no-configuration-cache --max-workers=2 -PkotlinCompileParallelism=1 -Pkotlin.daemon.jvmargs=-Xmx4g :rules-engine:test
+      - name: Application compatibility
+        working-directory: mtg-deckbuilding-assistant
+        run: |
+          bash scripts/bootstrap.sh
+          grep -Fx "revision=$ARGENTUM_CANDIDATE_REVISION" cli/build/generated/engine-resources/engine-build.properties
+          grep -Fx 'mode=candidate' cli/build/generated/engine-resources/engine-build.properties
+          ./dev test
+          python3 scripts/test-bootstrap.py
+          bash scripts/check-catalog.sh
+      - name: Preserve compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: application-compatibility
+          path: |
+            mtg-deckbuilding-assistant/cli/build/generated/engine-resources/
+            mtg-deckbuilding-assistant/cli/build/reports/tests/
+            mtg-deckbuilding-assistant/generated/handoff/catalog/comparison-summary.json
+            argentum-engine/rules-engine/build/reports/tests/
