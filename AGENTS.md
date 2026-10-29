@@ -3,8 +3,12 @@
 ## Application-focused fork policy
 
 Canonical development repository: https://github.com/jasullivan5/argentum-engine.
-This fork is maintained for MTG Deckbuilding Assistant. This policy overrides upstream contribution/loop guidance below.
+This fork is maintained for MTG Deckbuilding Assistant. This policy overrides inherited upstream contribution/loop guidance below. The human assignment determines scope: this fork is not automatically pursuing the upstream card backlog, autonomous implementation loops, server features or public game deployment. Retained technical instructions explain available code and tools, not authorization to start that work.
 
+The application repository owns discovery, eligibility, translation assurance, integration and research diagnostics. This fork owns engine/SDK implementation, native regressions and upstream integration decisions; Project references own long-term vision and research principles. Link to the authoritative implementation rather than duplicating its documentation.
+
+- Ordinary development uses a feature/fix branch in the primary engine checkout. A branch does not require another worktree. The application's clean detached `argentum/` is a dependency, not the ordinary engine development branch.
+- Temporary worktrees require simultaneous revisions, isolated integration/build outputs or protection of active changes. Reuse clean checkouts when appropriate. After evidence is preserved, verify modifications, untracked/unpushed work, locks, active processes and consumers before normal `git worktree remove` without force. Keep branches/history; retain ambiguous independent clones and active validation. Never delete shared Git storage or force cleanup to make a removal succeed.
 - `app-stable` is our normal development base and default branch. Start feature/fix branches here; internal PRs target `jasullivan5/argentum-engine:app-stable`.
 - `main` tracks the original project for comparison only. Upstream is `https://github.com/wingedsheep/argentum-engine`; origin is our fork. Never merge upstream/main or the modern historical correction branch into app-stable wholesale.
 - Do not open upstream PRs unless the human explicitly changes this direction. Automatic loop recipes that submit upstream contributions are not authorized by this policy.
@@ -12,6 +16,10 @@ This fork is maintained for MTG Deckbuilding Assistant. This policy overrides up
 - `fix/collection-counter-placement` at d72f2c365a3006b0c3eb41271c4f0e35f782c392 is the historical modern-upstream experiment, not the application base. Retain it; deletion requires explicit approval.
 - Review upstream approximately monthly or before a substantial engine phase. Fetch upstream references in an isolated checkout, compare with the last recorded revision, group changes by mechanism, and evaluate selected fixes against application needs. Prefer reviewed cherry-picks with native/application regressions, source identities and explicit decisions recorded. No automatic updates or scheduled updater.
 - Sync only origin/main explicitly, using a verified fast-forward. GitHub's generic fork-sync UI can target the default app-stable branch: do not use it there. Fetch/compare does not authorize app-stable integration.
+
+## Inherited technical guidance
+
+The following upstream guidance describes the inherited implementation. Fork priorities and contribution destinations above take precedence.
 
 Argentum Engine — Magic: The Gathering rules engine + online play platform in Kotlin. Pure ECS,
 immutable `GameState`, pure functional `(GameState, GameAction) -> ExecutionResult(GameState, List<GameEvent>)`.
