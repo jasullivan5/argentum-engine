@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       application_ref:
-        description: Application ref (main normally; migration branch for rollout validation)
+        description: Application ref to validate (main normally)
         required: false
         default: main
 permissions:
@@ -28,8 +28,8 @@ jobs:
           path: mtg-deckbuilding-assistant
       - name: Require sibling integration in application
         run: |
-          if [ ! -f mtg-deckbuilding-assistant/cli/src/main/kotlin/dev/mtg/assistant/EngineBuild.kt ]; then
-            echo "::error::Merge application migration PR #12 first, or dispatch this workflow with application_ref=feature/sibling-app-stable to validate the migration."
+          if [ ! -f mtg-deckbuilding-assistant/argentum.init.gradle ] || [ ! -f mtg-deckbuilding-assistant/dev ]; then
+            echo "::error::Application ref must expose the sibling-engine Gradle integration and dev wrapper."
             exit 1
           fi
       - name: Identify exact engine candidate
@@ -51,8 +51,15 @@ jobs:
         working-directory: mtg-deckbuilding-assistant
         run: |
           bash scripts/bootstrap.sh
-          grep -Fx "revision=$ARGENTUM_CANDIDATE_REVISION" cli/build/generated/engine-resources/engine-build.properties
-          grep -Fx 'mode=candidate' cli/build/generated/engine-resources/engine-build.properties
+          # Discover the one generated provenance record; application source/module
+          # layout is owned by the application, not this compatibility workflow.
+          mapfile -t metadata < <(find . -type f -path '*/build/generated/engine-resources/engine-build.properties')
+          if [ "${#metadata[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one generated engine provenance record."
+            exit 1
+          fi
+          grep -Fx "revision=$ARGENTUM_CANDIDATE_REVISION" "${metadata[0]}"
+          grep -Fx 'mode=candidate' "${metadata[0]}"
           ./dev test
           python3 scripts/test-bootstrap.py
           bash scripts/check-catalog.sh
@@ -62,7 +69,7 @@ jobs:
         with:
           name: application-compatibility
           path: |
-            mtg-deckbuilding-assistant/cli/build/generated/engine-resources/
-            mtg-deckbuilding-assistant/cli/build/reports/tests/
+            mtg-deckbuilding-assistant/**/build/generated/engine-resources/
+            mtg-deckbuilding-assistant/**/build/reports/tests/
             mtg-deckbuilding-assistant/generated/handoff/catalog/comparison-summary.json
             argentum-engine/rules-engine/build/reports/tests/
