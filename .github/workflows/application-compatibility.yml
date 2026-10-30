@@ -48,16 +48,18 @@ jobs:
         working-directory: argentum-engine
         run: bash scripts/gradle-locked --no-daemon --no-configuration-cache --max-workers=2 -PkotlinCompileParallelism=1 -Pkotlin.daemon.jvmargs=-Xmx4g :rules-engine:test
       - name: Application compatibility
+        id: application
         working-directory: mtg-deckbuilding-assistant
         run: |
           bash scripts/bootstrap.sh
           # Discover the one generated provenance record; application source/module
           # layout is owned by the application, not this compatibility workflow.
-          mapfile -t metadata < <(find . -type f -path '*/build/generated/engine-resources/engine-build.properties')
+          mapfile -t metadata < <(find . -type d \( -name .git -o -name node_modules -o -name 'archive-export-*' \) -prune -o -type f -path '*/build/generated/engine-resources/engine-build.properties' -print)
           if [ "${#metadata[@]}" -ne 1 ]; then
             echo "::error::Expected exactly one generated engine provenance record."
             exit 1
           fi
+          echo "build-directory=${metadata[0]%/generated/engine-resources/engine-build.properties}" >> "$GITHUB_OUTPUT"
           grep -Fx "revision=$ARGENTUM_CANDIDATE_REVISION" "${metadata[0]}"
           grep -Fx 'mode=candidate' "${metadata[0]}"
           ./dev test
@@ -69,7 +71,8 @@ jobs:
         with:
           name: application-compatibility
           path: |
-            mtg-deckbuilding-assistant/**/build/generated/engine-resources/
-            mtg-deckbuilding-assistant/**/build/reports/tests/
+            mtg-deckbuilding-assistant/${{ steps.application.outputs.build-directory }}/generated/engine-resources/
+            mtg-deckbuilding-assistant/${{ steps.application.outputs.build-directory }}/reports/tests/
+            mtg-deckbuilding-assistant/generated/verification/catalog/comparison-summary.json
             mtg-deckbuilding-assistant/generated/handoff/catalog/comparison-summary.json
             argentum-engine/rules-engine/build/reports/tests/
