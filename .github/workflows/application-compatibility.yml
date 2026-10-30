@@ -59,7 +59,8 @@ jobs:
             echo "::error::Expected exactly one generated engine provenance record."
             exit 1
           fi
-          echo "build-directory=${metadata[0]%/generated/engine-resources/engine-build.properties}" >> "$GITHUB_OUTPUT"
+          build_directory=${metadata[0]%/generated/engine-resources/engine-build.properties}
+          echo "build-directory=${build_directory#./}" >> "$GITHUB_OUTPUT"
           grep -Fx "revision=$ARGENTUM_CANDIDATE_REVISION" "${metadata[0]}"
           grep -Fx 'mode=candidate' "${metadata[0]}"
           ./dev test
