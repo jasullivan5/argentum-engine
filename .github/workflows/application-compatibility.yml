@@ -28,7 +28,11 @@ jobs:
           path: mtg-deckbuilding-assistant
       - name: Require sibling integration in application
         run: |
-          if [ ! -f mtg-deckbuilding-assistant/argentum.init.gradle ] || [ ! -f mtg-deckbuilding-assistant/dev ]; then
+          # Accept both locations while application branches transition.
+          if [ ! -f mtg-deckbuilding-assistant/dev ] || {
+            [ ! -f mtg-deckbuilding-assistant/gradle/argentum.init.gradle ] &&
+            [ ! -f mtg-deckbuilding-assistant/argentum.init.gradle ]
+          }; then
             echo "::error::Application ref must expose the sibling-engine Gradle integration and dev wrapper."
             exit 1
           fi
