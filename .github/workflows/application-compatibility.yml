@@ -1,9 +1,5 @@
 name: Application compatibility
 on:
-  pull_request:
-    branches: [app-stable]
-  push:
-    branches: [app-stable]
   workflow_dispatch:
     inputs:
       application_ref:
