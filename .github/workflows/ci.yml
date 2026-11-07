@@ -1,18 +1,11 @@
 name: CI
 
 on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    # Run on all pull requests (create and update)
-    types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
-# Cancel any in-progress run for the same branch/PR when a new commit is pushed, so superseded
-# builds don't keep occupying runners. head_ref is set on pull_request events (the PR's source
-# branch); for pushes it's empty, so we fall back to ref (e.g. refs/heads/main). Including the
-# workflow name keeps groups from colliding with other workflows.
+# A new dispatch on the same ref supersedes the previous run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 # actions: write lets a PR run delete its own superseded build-cache entries (see "Drop superseded
