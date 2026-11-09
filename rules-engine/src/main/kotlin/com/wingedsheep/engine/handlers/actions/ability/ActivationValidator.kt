@@ -133,6 +133,7 @@ internal class ActivationValidator(
             ?: checkLoyaltyAbilityTiming(state, action, container, ability)
             ?: checkSorcerySpeedTiming(state, action, ability)
             ?: checkAttachedCreatureSummoningSickness(state, container, effectiveCost)
+            ?: checkSourceTapCostPayable(container, effectiveCost)
             ?: checkExplicitPaymentSources(state, action)
             ?: checkAlternativePayment(state, action, ability)
             ?: checkCostPayable(state, action, cardComponent, abilityLookup, effectiveCost)
@@ -460,6 +461,10 @@ internal class ActivationValidator(
             "Enchanted creature has summoning sickness"
         } else null
     }
+
+    /** The source's mandatory tap is independent of how the mana portion is selected. */
+    private fun checkSourceTapCostPayable(container: ComponentContainer, effectiveCost: AbilityCost): String? =
+        if (effectiveCost.hasTapCost() && container.has<TappedComponent>()) "This permanent is already tapped" else null
 
     /** Validate explicit payment sources. */
     private fun checkExplicitPaymentSources(state: GameState, action: ActivateAbility): String? {

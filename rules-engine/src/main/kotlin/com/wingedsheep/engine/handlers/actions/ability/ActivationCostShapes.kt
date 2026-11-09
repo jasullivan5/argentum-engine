@@ -8,8 +8,8 @@ import com.wingedsheep.sdk.scripting.costs.manaCostOrNull
 
 /*
  * Shape queries over an activated ability's [AbilityCost], shared by the activation stages
- * (validation, the choice pauses, payment, stack placement). Each looks at the top-level cost and one
- * level into an [AbilityCost.Composite], exactly as the activation handler always has.
+ * (validation, the choice pauses, payment, stack placement). Queries document which shapes they
+ * inspect; mandatory source-tap presence follows composites recursively.
  */
 
 /** The first [CostAtom.TapPermanents] atom anywhere in this cost, or null if it has none. */
@@ -57,7 +57,7 @@ internal fun AbilityCost.hasExileAtom(): Boolean = when (this) {
  */
 internal fun AbilityCost.hasTapCost(): Boolean = when (this) {
     is AbilityCost.Tap -> true
-    is AbilityCost.Composite -> costs.any { it is AbilityCost.Tap }
+    is AbilityCost.Composite -> costs.any { it.hasTapCost() }
     else -> false
 }
 

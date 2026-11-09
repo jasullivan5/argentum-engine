@@ -283,6 +283,13 @@ class CostHandler(private val zones: ZoneTransitionService) {
             } ?: CostPaymentResult.failure("It has no mana cost to pay")
             is AbilityCost.Atom -> payAtom(state, cost.atom, sourceId, controllerId, manaPool, choices, abilityContext)
             is AbilityCost.Tap -> {
+                // Payment must make a real transition. The shared tap atom intentionally accepts
+                // an already-tapped no-op for effects, but that cannot pay a mandatory tap cost.
+                val source = state.getEntity(sourceId)
+                    ?: return CostPaymentResult.failure("Tap cost source not found")
+                if (source.has<TappedComponent>()) {
+                    return CostPaymentResult.failure("This permanent is already tapped")
+                }
                 // Route through the tap atom so the "{T}:" cost emits its TappedEvent — every
                 // payAbilityCost caller gets the event for free (ActivateAbilityHandler used to
                 // re-derive it by hand, silently dropping it on any other payment path).
