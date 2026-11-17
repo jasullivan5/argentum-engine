@@ -61,6 +61,7 @@ class CollectionCounterPlacementTest : FunSpec({
             events.single().entityId shouldBe yes;events.single().placedBy shouldBe d.player1
             events.single().amount shouldBe 2;events.single().counterType shouldBe kind
             events.single().entityName shouldBe ordinary.name
+            events.single().totalCount shouldBe 2
             events.single().firstThisTurn shouldBe true;events.single().firstOfTypeThisTurn shouldBe true
         }
     }
@@ -96,7 +97,7 @@ class CollectionCounterPlacementTest : FunSpec({
     test("doubling replacement does not override a prohibition") {
         val d=driver();val no=d.putCreatureOnBattlefield(d.player1,prohibited.name)
         val yes=d.putCreatureOnBattlefield(d.player1,ordinary.name)
-        val doubling=card("Collection Doubler") {typeLine="Enchantment";replacementEffect(DoubleCounterPlacement())}
+        val doubling=card("Collection Doubler") {typeLine="Enchantment";replacementEffect(ScaleCounterPlacement())}
         d.registerCard(doubling);d.putPermanentOnBattlefield(d.player1,doubling.name)
         spell(d,CounterType.PLUS_ONE_PLUS_ONE,2)
         counters(d,yes,CounterType.PLUS_ONE_PLUS_ONE) shouldBe 4;counters(d,no,CounterType.PLUS_ONE_PLUS_ONE) shouldBe 0
@@ -150,6 +151,7 @@ class CollectionCounterPlacementTest : FunSpec({
         val another=place(d,listOf(id),CounterType.CHARGE).events.filterIsInstance<CountersAddedEvent>().single()
         first.firstThisTurn shouldBe true;first.firstOfTypeThisTurn shouldBe true
         repeat.firstThisTurn shouldBe false;repeat.firstOfTypeThisTurn shouldBe false
+        first.totalCount shouldBe 1;repeat.totalCount shouldBe 2;another.totalCount shouldBe 1
         another.firstThisTurn shouldBe false;another.firstOfTypeThisTurn shouldBe true
     }
     test("state-based deaths happen after the following instruction, not between collection recipients") {

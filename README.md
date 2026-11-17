@@ -4,7 +4,7 @@ Canonical fork: [jasullivan5/argentum-engine](https://github.com/jasullivan5/arg
 
 `app-stable` is the maintained application-compatible integration branch. The application normally uses its sibling checkout and records the actual engine SHA in builds/results. `main` is reserved for original-project tracking and explicit fast-forward synchronization. Feature/fix branches and internal PRs normally target `app-stable`; upstream PRs are not part of our workflow. See [AGENTS.md](AGENTS.md) for the fork policy and selective upstream review procedure.
 
-The original correction from the application's approved baseline is maintained here without importing the modern catalog. `fix/collection-counter-placement` (d72f2c365a3006b0c3eb41271c4f0e35f782c392) remains a historical modern-upstream compatibility experiment. Do not merge it into app-stable or delete it without approval.
+This isolated integration branch merges upstream `21bc1908bad22b3a6d4c84e5447d7b736655dbd0` with app-stable `bd26b756b8b4d347f19e92bc77ef020919ebfa48` under the 17 November full-convergence assignment. It is a review candidate, not an accepted application-compatible baseline. JDK 21 and ClassGraph 4.8.184 are retained deliberately; all upstream modules remain present. `fix/collection-counter-placement` (d72f2c365a3006b0c3eb41271c4f0e35f782c392) remains a historical modern-upstream compatibility experiment. Do not merge it into app-stable or delete it without approval.
 
 **Fork-sync caution:** the default branch is app-stable. Synchronize upstream only into `main` with explicit Git refs and a fast-forward check; do not use the generic GitHub fork-sync action on app-stable. Changes selected for app-stable require separate native/application regression evidence.
 
@@ -65,7 +65,7 @@ Distinct implemented cards, day by day since the project began. Regenerated dail
 
 ### Prerequisites
 
-- JDK 25+
+- JDK 21+
 - Node.js 18+
 - Docker (optional, for Redis)
 - [just](https://github.com/casey/just) command runner
@@ -388,7 +388,7 @@ It checks your setup, then asks three questions:
 Cards that need new engine features aren't faked: the agent records them as gaps and builds each
 missing capability properly (with the `add-feature` skill) before the cards that need it.
 
-**You'll need:** JDK 25+, [`just`](https://github.com/casey/just), `git`, `jq`, Python 3, and
+**You'll need:** JDK 21+, [`just`](https://github.com/casey/just), `git`, `jq`, Python 3, and
 Claude Code or Codex. The [GitHub CLI](https://cli.github.com) (`gh`) is optional — it lets the agent
 skip cards someone else's open PR already adds.
 
