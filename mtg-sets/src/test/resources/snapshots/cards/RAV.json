@@ -15254,12 +15254,12 @@
                             "storeSelected": "selected1",
                             "prompt": "Search for a red or white instant card with mana value 4 or less to cast without paying its mana cost"
                         },
-                        "ShuffleLibrary",
-                        "EmitLibrarySearchedEvent",
                         {
                             "type": "CastFromCollectionWithoutPayingCost",
                             "from": "selected1"
-                        }
+                        },
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
                     ]
                 }
             },
@@ -15301,11 +15301,14 @@
         ]
     },
     "equipCost": "{3}",
+    "oracleId": "d1421070-a3cc-4af3-bf91-0f97372f4161",
     "metadata": {
         "collectorNumber": "272",
         "rarity": "RARE",
         "artist": "Darrell Riche",
         "imageUri": "https://cards.scryfall.io/normal/front/c/8/c8d5e027-aa74-444b-a945-1bafa9bdec4c.jpg?1783943594",
+        "scryfallId": "c8d5e027-aa74-444b-a945-1bafa9bdec4c",
+        "releaseDate": "2005-10-07",
         "rulings": [
             {
                 "date": "2020-08-07",
@@ -15321,7 +15324,10 @@
             }
         ]
     },
-    "colorIdentityOverride": []
+    "colorIdentityOverride": [
+        "RED",
+        "WHITE"
+    ]
 }
 
 // Sunhome Enforcer

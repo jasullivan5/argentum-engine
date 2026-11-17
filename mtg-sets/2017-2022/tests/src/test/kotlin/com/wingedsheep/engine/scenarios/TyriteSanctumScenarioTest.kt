@@ -34,7 +34,7 @@ class TyriteSanctumScenarioTest : FunSpec({
         val d=setup();val land=d.putPermanentOnBattlefield(d.player1,TyriteSanctum.name)
         val target=d.putPermanentOnBattlefield(d.player2,noncreatureGod.name);d.giveMana(d.player1,Color.GREEN,4)
         d.submit(ActivateAbility(d.player1,land,TyriteSanctum.activatedAbilities[2].id,targets=listOf(ChosenTarget.Permanent(target)))).error shouldBe null
-        d.isInGraveyard(d.player1,TyriteSanctum.name) shouldBe true
+        d.state.getGraveyard(d.player1).contains(land) shouldBe true
         d.state.projectedState.hasKeyword(target,Keyword.INDESTRUCTIBLE) shouldBe false
         d.bothPass().error shouldBe null
         d.state.getEntity(target)!!.get<CountersComponent>()!!.getCount(CounterType.INDESTRUCTIBLE) shouldBe 1

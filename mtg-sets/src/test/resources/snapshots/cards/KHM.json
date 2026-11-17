@@ -22540,11 +22540,14 @@
             }
         ]
     },
+    "oracleId": "38c83332-2d21-450c-ae97-34109b565f59",
     "metadata": {
         "collectorNumber": "272",
         "rarity": "RARE",
         "artist": "Volkan Baǵa",
         "imageUri": "https://cards.scryfall.io/normal/front/3/0/309ff3bf-acd3-4bea-b518-6e25f6cfce61.jpg?1783928170",
+        "scryfallId": "309ff3bf-acd3-4bea-b518-6e25f6cfce61",
+        "releaseDate": "2021-02-05",
         "rulings": [
             {
                 "date": "2021-02-05",
