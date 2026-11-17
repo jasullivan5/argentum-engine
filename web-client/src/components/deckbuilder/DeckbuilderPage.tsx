@@ -60,6 +60,7 @@ import {
 } from './browser'
 import {
   canonicalNameIn,
+  catalogLookup,
   designatedCommanders,
   inferCommanders,
   parseArenaDeckList,
@@ -100,6 +101,7 @@ import {
 import {
   labelForFormat,
   DECK_FORMATS,
+  isSingletonFormat,
   useDeckLegalFormats,
 } from '@/utils/deckLegality'
 import {
@@ -108,6 +110,8 @@ import {
   computeDeckStats as computeStats,
   statusClass,
   statusLabel,
+  pointsClass,
+  pointsLabel,
   COLOR_DOT,
   type DeckValidationResult as ValidationResult,
   type DeckStats,
@@ -693,6 +697,12 @@ export function DeckbuilderPage() {
   //  - the designated commander gets removed from the deck list entirely.
   // Both conditions are quiet: we don't surface a toast, the crown just goes away.
   // A partner pair loses only the commander that left; the remaining one moves up.
+  // One copy of each non-basic: the commander shapes plus the Highlander formats.
+  const singletonFormat = useMemo(() => isSingletonFormat(activeFormat), [activeFormat])
+  // Canadian Highlander plays without a sideboard, so the panel stays out of the way — unless the
+  // deck already has one, which the validator rejects and the player needs the panel to clear.
+  const showSideboard = activeFormat !== 'CANADIAN_HIGHLANDER' || Object.keys(sideboardCards).length > 0
+
   useEffect(() => {
     if (!isCommanderFormat && commanders.length > 0) setCommanders([])
   }, [isCommanderFormat, commanders])
@@ -889,7 +899,7 @@ export function DeckbuilderPage() {
   const addCard = (card: CardSummary) => {
     setDeckCards((prev) => {
       const current = prev[card.name] ?? 0
-      const max = effectiveCopyCap(card, isCommanderFormat)
+      const max = effectiveCopyCap(card, singletonFormat)
       if (current >= max) return prev
       return { ...prev, [card.name]: current + 1 }
     })
@@ -938,11 +948,11 @@ export function DeckbuilderPage() {
     setSideboardCards((prev) => {
       const inSide = prev[card.name] ?? 0
       const inDeck = deckCards[card.name] ?? 0
-      const cap = effectiveCopyCap(card, isCommanderFormat)
+      const cap = effectiveCopyCap(card, singletonFormat)
       if (inDeck + inSide >= cap) return prev
       return { ...prev, [card.name]: inSide + 1 }
     })
-  }, [deckCards, isCommanderFormat])
+  }, [deckCards, singletonFormat])
 
   const removeFromSideboard = useCallback((name: string) => {
     setSideboardCards((prev) => {
@@ -1624,6 +1634,7 @@ export function DeckbuilderPage() {
               showCommanderControls={isCommanderFormat}
               onToggleCommander={handleToggleCommander}
               rowViolations={rowViolations}
+              cardPoints={validation?.points?.byCard}
               isCommanderFormat={isCommanderFormat}
               onSuggestBasics={handleSuggestBasics}
               pinnedPrintings={pinnedPrintings}
@@ -1633,7 +1644,7 @@ export function DeckbuilderPage() {
               onMoveFromSideboard={removeFromSideboard}
             />
 
-            <SideboardPanel
+            {showSideboard && <SideboardPanel
               deckCards={deckCards}
               sideboardCards={sideboardCards}
               catalogIndex={catalogIndex}
@@ -1645,7 +1656,7 @@ export function DeckbuilderPage() {
               onToggleCompanion={toggleCompanion}
               companionIssues={companionIssues}
               onMoveFromDeck={removeCard}
-            />
+            />}
 
             <div className={styles.deckSummaryWrap}>
               <DeckSummary
@@ -1701,6 +1712,7 @@ export function DeckbuilderPage() {
             showCommanderControls={isCommanderFormat}
             onToggleCommander={handleToggleCommander}
             rowViolations={rowViolations}
+            cardPoints={validation?.points?.byCard}
             isCommanderFormat={isCommanderFormat}
             onHoverEnter={handleDeckHoverEnter}
             onHoverLeave={handleDeckHoverLeave}
@@ -1709,7 +1721,7 @@ export function DeckbuilderPage() {
             onMoveFromSideboard={removeFromSideboard}
           />
 
-          <SideboardPanel
+          {showSideboard && <SideboardPanel
             deckCards={deckCards}
             sideboardCards={sideboardCards}
             catalogIndex={catalogIndex}
@@ -1721,7 +1733,7 @@ export function DeckbuilderPage() {
             onToggleCompanion={toggleCompanion}
             companionIssues={companionIssues}
             onMoveFromDeck={removeCard}
-          />
+          />}
 
           <DeckCentricFooter
             validation={validation}
@@ -1969,6 +1981,11 @@ function DeckCentricFooter({
         >
           {statusLabel(validation, totalCards)}
         </span>
+        {pointsLabel(validation) && (
+          <span className={`${styles.footerStatus} ${pointsClass(validation)}`}>
+            {pointsLabel(validation)}
+          </span>
+        )}
         {showStats && (
           <div className={styles.footerColorPips}>
             {stats.colorCounts.map(([color, n]) => (
@@ -2097,10 +2114,9 @@ function buildImportPreview(
   commanderFormat: boolean,
 ): ImportPreviewModel | null {
   if (text.trim() === '') return null
-  const byName = new Map(catalog.map((c) => [c.name.toLowerCase(), c]))
   const { parsed, inferredFrom } = inferCommanders(parseArenaDeckList(text), {
     commanderFormat,
-    lookup: (name) => byName.get(name.toLowerCase()),
+    lookup: catalogLookup(catalog),
   })
   const resolved = resolveAgainstCatalog([...parsed.commander, ...parsed.entries], catalog)
   const commanders = designatedCommanders(parsed.commander, canonicalNameIn(catalog))
@@ -2976,6 +2992,7 @@ function DeckListPanel({
   showCommanderControls,
   onToggleCommander,
   rowViolations,
+  cardPoints,
   isCommanderFormat,
   onSuggestBasics,
   pinnedPrintings,
@@ -2994,6 +3011,8 @@ function DeckListPanel({
   showCommanderControls: boolean
   onToggleCommander: (name: string) => void
   rowViolations: Map<string, Set<string>>
+  /** Points each card costs, for a points-list format (Canadian Highlander); from the server. */
+  cardPoints?: Readonly<Record<string, number>> | undefined
   isCommanderFormat: boolean
   onSuggestBasics: () => void
   pinnedPrintings: Record<string, PrintingRef>
@@ -3115,6 +3134,7 @@ function DeckListPanel({
               showCommanderControls={showCommanderControls}
               isCommanderFormat={isCommanderFormat}
               rowViolations={rowViolations}
+              points={cardPoints?.[entry.name] ?? 0}
               onAdd={onAdd}
               onRemove={onRemove}
               onToggleCommander={onToggleCommander}
@@ -3346,6 +3366,7 @@ const DeckRow = memo(function DeckRow({
   showCommanderControls,
   isCommanderFormat,
   rowViolations,
+  points = 0,
   onAdd,
   onRemove,
   onToggleCommander,
@@ -3364,6 +3385,8 @@ const DeckRow = memo(function DeckRow({
   showCommanderControls: boolean
   isCommanderFormat: boolean
   rowViolations: Map<string, Set<string>>
+  /** Points this row costs in a points-list format; 0 hides the tag. */
+  points?: number
   onAdd: (card: CardSummary) => void
   onRemove: (name: string) => void
   onToggleCommander: (name: string) => void
@@ -3407,7 +3430,7 @@ const DeckRow = memo(function DeckRow({
   // the user literally cannot exceed it; in commander-shape formats this is what
   // blocks adding a second copy of any non-basic non-override card.
   const cap = entry.card
-    ? effectiveCopyCap(entry.card, isCommanderFormat)
+    ? effectiveCopyCap(entry.card, isSingletonFormat(activeFormat))
     : Number.POSITIVE_INFINITY
   const atCap = entry.count >= cap
   const rowClasses = [
@@ -3435,9 +3458,9 @@ const DeckRow = memo(function DeckRow({
   }
   if (tooManyCopies) {
     violationReasons.push(
-      isCommanderFormat
-        ? `${activeFormat} is singleton — only 1 copy allowed`
-        : `Too many copies for ${activeFormat ?? 'this format'}`,
+      isSingletonFormat(activeFormat) && activeFormat
+        ? `${labelForFormat(activeFormat)} is singleton — only 1 copy allowed`
+        : `Too many copies for ${activeFormat ? labelForFormat(activeFormat) : 'this format'}`,
     )
   }
   const rowTitle = unknown
@@ -3493,6 +3516,11 @@ const DeckRow = memo(function DeckRow({
       <span className={styles.deckRowName}>
         {pinnedPrintedName(entry.card, pinnedPrinting) ?? entry.name}
         {unknown && <span className={styles.deckRowUnknownTag}>not implemented</span>}
+        {points > 0 && (
+          <span className={styles.deckRowPointsTag} title={`Costs ${points} point${points === 1 ? '' : 's'}`}>
+            {points} pt
+          </span>
+        )}
       </span>
       {showCommanderControls && (
         <button
@@ -3735,6 +3763,7 @@ function DeckCentricView({
   showCommanderControls,
   onToggleCommander,
   rowViolations,
+  cardPoints,
   isCommanderFormat,
   onHoverEnter,
   onHoverLeave,
@@ -3751,6 +3780,8 @@ function DeckCentricView({
   showCommanderControls: boolean
   onToggleCommander: (name: string) => void
   rowViolations: Map<string, Set<string>>
+  /** Points each card costs, for a points-list format (Canadian Highlander); from the server. */
+  cardPoints?: Readonly<Record<string, number>> | undefined
   isCommanderFormat: boolean
   onHoverEnter: (entry: { name: string; card: CardSummary | undefined }) => void
   onHoverLeave: () => void
@@ -3832,6 +3863,7 @@ function DeckCentricView({
                     showCommanderControls={showCommanderControls}
                     isCommanderFormat={isCommanderFormat}
                     rowViolations={rowViolations}
+                    points={cardPoints?.[entry.name] ?? 0}
                     onAdd={onAdd}
                     onRemove={onRemove}
                     onToggleCommander={onToggleCommander}
@@ -3919,11 +3951,11 @@ function parseDeckSizeOverride(card: CardSummary): number | null {
  * literally cannot exceed the cap from the deckbuilder UI. Server validation remains the
  * authoritative gate (e.g. for paste-imports that bypass these affordances).
  */
-function effectiveCopyCap(card: CardSummary, isCommanderShape: boolean): number {
+function effectiveCopyCap(card: CardSummary, singleton: boolean): number {
   if (card.basicLand) return Number.POSITIVE_INFINITY
   const override = parseDeckSizeOverride(card)
   if (override !== null) return override
-  return isCommanderShape ? 1 : 4
+  return singleton ? 1 : 4
 }
 
 /**

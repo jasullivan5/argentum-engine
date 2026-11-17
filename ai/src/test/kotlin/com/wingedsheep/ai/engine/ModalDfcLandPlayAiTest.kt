@@ -22,7 +22,13 @@ import io.kotest.matchers.types.shouldBeInstanceOf
  */
 class ModalDfcLandPlayAiTest : ScenarioTestBase() {
 
-    private val withoutFlag = AiProfile.LIVE.copy(id = "live-without-surpluslands", surplusAwareLands = false)
+    // The control also reads its playouts raw: with the static leaf as a prior playout
+    // (`RolloutSettings.staticPriorPlayouts`) it already plays the basic on its own.
+    private val withoutFlag = AiProfile.LIVE.copy(
+        id = "live-without-surpluslands",
+        surplusAwareLands = false,
+        rollouts = AiProfile.LIVE.rollouts?.copy(staticPriorPlayouts = 0.0),
+    )
 
     private fun TestGame.choose(profile: AiProfile): GameAction =
         AIPlayer.create(cardRegistry, player1Id, profile).chooseAction(state)

@@ -4140,7 +4140,7 @@
                                 ],
                                 "controllerPredicate": "ControlledByYou"
                             },
-                            "perAttackedPlayer": true
+                            "attackedPlayer": "Each"
                         },
                         "binding": "ANY",
                         "effect": {
@@ -9114,8 +9114,8 @@
                 }
             },
             {
-                "type": "ModifyUnlockCost",
-                "target": "YouUnlock",
+                "type": "ModifySpecialActionCost",
+                "action": "UNLOCK_DOOR",
                 "modification": {
                     "type": "ReduceGeneric",
                     "amount": 1
@@ -10398,7 +10398,7 @@
                 "modifier": 1
             }
         ],
-        "mayStartOnBattlefield": true
+        "beginOnBattlefield": {}
     },
     "metadata": {
         "collectorNumber": "18",
@@ -10424,7 +10424,7 @@
                 "cost": "{W}{U}{B}{R}{G}"
             }
         ],
-        "mayStartOnBattlefield": true
+        "beginOnBattlefield": {}
     },
     "metadata": {
         "collectorNumber": "188",
@@ -10479,7 +10479,7 @@
                 "triggerRestriction": "TriggeringSpellHasSingleTarget"
             }
         ],
-        "mayStartOnBattlefield": true
+        "beginOnBattlefield": {}
     },
     "metadata": {
         "collectorNumber": "143",
@@ -10533,7 +10533,7 @@
                 "choiceType": "CREATURE_TYPE"
             }
         ],
-        "mayStartOnBattlefield": true
+        "beginOnBattlefield": {}
     },
     "metadata": {
         "collectorNumber": "63",
@@ -11145,7 +11145,7 @@
                     ],
                     "controllerPredicate": "ControlledByYou"
                 },
-                "includeManaAbilities": true
+                "abilities": "ALL"
             }
         ]
     },
@@ -15770,11 +15770,7 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "DealDamage",
-                    "amount": {
-                        "type": "TurnTracking",
-                        "player": "You",
-                        "tracker": "PERMANENTS_SACRIFICED"
-                    },
+                    "amount": "PermanentsSacrificedThisTurn",
                     "target": {
                         "type": "BoundVariable",
                         "name": "t0"
@@ -15786,11 +15782,7 @@
                 },
                 "interveningIf": {
                     "type": "Compare",
-                    "left": {
-                        "type": "TurnTracking",
-                        "player": "You",
-                        "tracker": "PERMANENTS_SACRIFICED"
-                    },
+                    "left": "PermanentsSacrificedThisTurn",
                     "operator": "GTE",
                     "right": {
                         "type": "Fixed",
@@ -15967,7 +15959,8 @@
                                 "zone": "Battlefield"
                             }
                         },
-                        "ShuffleLibrary"
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
                     ]
                 },
                 "timing": "SorcerySpeed",
@@ -20064,6 +20057,9 @@
                             "type": "TargetObject",
                             "filter": {
                                 "baseFilter": {
+                                    "statePredicates": [
+                                        "HasSingleTarget"
+                                    ],
                                     "anyOf": [
                                         {},
                                         {

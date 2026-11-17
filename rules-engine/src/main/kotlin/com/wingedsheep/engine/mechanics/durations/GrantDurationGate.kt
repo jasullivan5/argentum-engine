@@ -1,8 +1,13 @@
 package com.wingedsheep.engine.mechanics.durations
 
+import com.wingedsheep.engine.core.untapCount
+import com.wingedsheep.engine.mechanics.layers.ActiveFloatingEffect
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.CountersComponent
+import com.wingedsheep.engine.state.components.battlefield.EncodedOnComponent
+import com.wingedsheep.engine.event.GrantedTriggeredAbility
+import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.Duration
@@ -42,6 +47,17 @@ object GrantDurationGate {
         !affectedGateFails(state, entityId, duration)
 
     /**
+     * Whether a granted triggered ability is live right now: its duration gate [holds], and — when
+     * the grant recorded its layer-6 timestamp — no later "loses all abilities" effect has stripped
+     * it (CR 613.7). Unlike the duration, the second half is not latched: the ability comes back
+     * when the removal ends, as an ability-adding effect does once a later removal stops applying.
+     */
+    fun triggeredGrantLive(state: GameState, grant: GrantedTriggeredAbility): Boolean =
+        holds(state, grant.entityId, grant.sourceId, grant.duration) &&
+            (grant.timestamp == null ||
+                !state.projectedState.lostAllAbilitiesAfter(grant.entityId, grant.timestamp))
+
+    /**
      * Whether a *source-keyed* "for as long as …" gate still holds for the grant/effect made by
      * [sourceId] on [affectedId]. Returns `true` for every other duration, so callers can apply it
      * unconditionally.
@@ -78,6 +94,36 @@ object GrantDurationGate {
             sourceId != null && state.getBattlefield().contains(sourceId) &&
                 state.getEntity(affectedId)?.get<AttachedToComponent>()?.targetId == sourceId
 
+        // Cipher (CR 702.99c): the source card is still the same object in exile, still encoded on
+        // the affected creature, which is still on the battlefield. (Its grants are dropped when it
+        // re-enters as a new object; until then this keeps a departed creature's grant inert.)
+        Duration.WhileSourceEncodedOnAffected -> sourceId != null &&
+            state.getBattlefield().contains(affectedId) &&
+            state.logicalZone(sourceId)?.zoneType == Zone.EXILE &&
+            state.getEntity(sourceId)?.get<EncodedOnComponent>()?.let {
+                it.creatureId == affectedId && state.isCurrentObject(it.cardObject)
+            } == true
+
+        else -> true
+    }
+
+    /**
+     * The controller-keyed gate a grant record carries its own "you" for:
+     * [Duration.WhileYouControlSource] holds while [sourceId] is on the battlefield and its
+     * *projected* controller is [controllerId] — so a Threaten-style steal of the source ends it,
+     * matching the floating-effect gate in `StateProjector`. A grant with no recorded controller
+     * fails closed rather than lasting forever. Returns `true` for every other duration.
+     */
+    fun controllerGateHolds(
+        state: GameState,
+        duration: Duration,
+        sourceId: EntityId?,
+        controllerId: EntityId?
+    ): Boolean = when (duration) {
+        is Duration.WhileYouControlSource ->
+            sourceId != null && controllerId != null &&
+                state.getBattlefield().contains(sourceId) &&
+                state.projectedState.getController(sourceId) == controllerId
         else -> true
     }
 
@@ -104,7 +150,20 @@ object GrantDurationGate {
         else -> false
     }
 
-    fun sourceTapped(state: GameState, sourceId: EntityId?): Boolean =
-        sourceId != null && state.getBattlefield().contains(sourceId) &&
-            state.getEntity(sourceId)?.has<TappedComponent>() == true
+    /**
+     * "For as long as <source> remains tapped": the source is on the battlefield and tapped, and —
+     * when [untapCountAtActivation] is known — has not untapped since the ability that created the
+     * effect was activated. A source that untaps and is tapped again before that ability resolves
+     * has already ended the duration, so the effect does nothing (CR 611.2b; Entrancing Lyre ruling).
+     */
+    fun sourceTapped(state: GameState, sourceId: EntityId?, untapCountAtActivation: Int? = null): Boolean {
+        if (sourceId == null || !state.getBattlefield().contains(sourceId)) return false
+        val source = state.getEntity(sourceId) ?: return false
+        return source.has<TappedComponent>() &&
+            (untapCountAtActivation == null || untapCount(source) == untapCountAtActivation)
+    }
+
+    /** [sourceTapped] for a floating effect, honouring the untap clock it was stamped with. */
+    fun sourceTapped(state: GameState, floating: ActiveFloatingEffect): Boolean =
+        sourceTapped(state, floating.sourceId, floating.sourceUntapCount)
 }

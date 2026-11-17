@@ -3,8 +3,8 @@ package com.wingedsheep.engine.handlers.effects
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
+import com.wingedsheep.engine.replacement.ActiveReplacements
 import com.wingedsheep.engine.state.GameState
-import com.wingedsheep.engine.state.components.battlefield.ReplacementEffectSourceComponent
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.sdk.core.Zone
@@ -14,10 +14,12 @@ import com.wingedsheep.sdk.scripting.PermanentsEnterTapped
 
 /**
  * Applies "[filter] enter the battlefield tapped" replacement effects sourced from *other*
- * battlefield permanents (e.g. Zhao, the Moon Slayer's "Nonbasic lands enter tapped").
+ * battlefield permanents (e.g. Zhao, the Moon Slayer's "Nonbasic lands enter tapped"), emblems,
+ * and durational grants ([ActiveReplacements] enumerates all three; "you" is the grant's
+ * controller, so a resolved sorcery's "lands you control enter tapped this turn" outlives it).
  *
  * The global counterpart of the self-only [com.wingedsheep.sdk.scripting.EntersTapped]: a
- * [PermanentsEnterTapped] is stamped into the source's [ReplacementEffectSourceComponent]
+ * [PermanentsEnterTapped] is stamped into the source's [com.wingedsheep.engine.state.components.battlefield.ReplacementEffectSourceComponent]
  * (see `StaticAbilityHandler.isRuntimeReplacementEffect`) and consulted from the battlefield
  * whenever some *other* permanent enters. The entry paths (PlayLandHandler,
  * ZoneTransitionService) ask [entersTapped] and mark the permanent tapped when it returns true.
@@ -29,8 +31,10 @@ import com.wingedsheep.sdk.scripting.PermanentsEnterTapped
 object EnterTappedReplacements {
 
     /**
-     * True if any battlefield permanent grants a [PermanentsEnterTapped] replacement whose
-     * `appliesTo` filter matches [enteringEntityId] (controlled by [enteringControllerId]) and
+     * True if any [PermanentsEnterTapped] replacement in force — printed on a battlefield
+     * permanent, held by an emblem, or granted for a duration by `Effects.GrantReplacementEffect`
+     * (Nahiri's Lithoforming: "Lands you control enter tapped this turn") — has an
+     * `appliesTo` filter that matches [enteringEntityId] (controlled by [enteringControllerId]) and
      * whose optional `condition` gate holds. The entering entity must already carry its
      * [ControllerComponent] /
      * [com.wingedsheep.engine.state.components.identity.CardComponent] so the filter
@@ -41,28 +45,46 @@ object EnterTappedReplacements {
         enteringEntityId: EntityId,
         enteringControllerId: EntityId,
         predicateEvaluator: PredicateEvaluator
-    ): Boolean {
-        for (sourceId in state.getBattlefield()) {
-            if (sourceId == enteringEntityId) continue
-            val container = state.getEntity(sourceId) ?: continue
-            val replacementComponent = container.get<ReplacementEffectSourceComponent>() ?: continue
-            val sourceControllerId = container.get<ControllerComponent>()?.playerId ?: continue
-            for (effect in replacementComponent.replacementEffects) {
-                if (effect !is PermanentsEnterTapped) continue
-                if (!matchesEnterFilter(effect.appliesTo, enteringEntityId, sourceId, sourceControllerId, state, predicateEvaluator = predicateEvaluator)) continue
-                // Optional gate evaluated against the replacement *source*, mirroring
-                // RedirectDamage.condition — e.g. Ashling's Prerogative's tap clause applies only
-                // while the mode it chose as it entered is the one this effect was written for.
-                val gate = effect.condition
-                if (gate != null) {
-                    val gateContext = EffectContext(sourceId = sourceId, controllerId = sourceControllerId)
-                    if (!predicateEvaluator.conditions.evaluate(state, gate, gateContext)) continue
-                }
-                return true
-            }
+    ): Boolean = applicable(state, enteringEntityId, predicateEvaluator).any()
+
+    /**
+     * True if an applicable [PermanentsEnterTapped] says "instead it enters tapped **and attacking**"
+     * ([PermanentsEnterTapped.attackDefender] — Kira Nerys, Firebrand). Such an entry is a
+     * tapped-and-attacking one: the seam taps it whatever an "enters untapped" replacement says (like
+     * every other tapped-and-attacking entry) and hands it to [EnteringAttackChoice.enter], which
+     * decides whether and what it attacks.
+     */
+    fun entersAttacking(
+        state: GameState,
+        enteringEntityId: EntityId,
+        predicateEvaluator: PredicateEvaluator
+    ): Boolean = applicable(state, enteringEntityId, predicateEvaluator).any { it.attackDefender != null }
+
+    /**
+     * Tap [entityId], which just entered under [controllerId] through an applicable
+     * [entersAttacking] replacement, and make it attacking ([EnteringAttackChoice.enter]).
+     */
+    fun enterTappedAndAttacking(state: GameState, entityId: EntityId, controllerId: EntityId): GameState =
+        EnteringAttackChoice.enter(state.updateEntity(entityId) { it.with(TappedComponent) }, entityId, controllerId)
+
+    private fun applicable(
+        state: GameState,
+        enteringEntityId: EntityId,
+        predicateEvaluator: PredicateEvaluator
+    ): Sequence<PermanentsEnterTapped> = ActiveReplacements.all(state) { it is PermanentsEnterTapped }
+        .asSequence()
+        .filter { active ->
+            val effect = active.effect as PermanentsEnterTapped
+            if (!active.granted && active.sourceId == enteringEntityId) return@filter false
+            if (!matchesEnterFilter(effect.appliesTo, enteringEntityId, active.sourceId, active.controllerId, state, predicateEvaluator = predicateEvaluator)) return@filter false
+            // Optional gate evaluated against the replacement *source*, mirroring
+            // RedirectDamage.condition — e.g. Ashling's Prerogative's tap clause applies only
+            // while the mode it chose as it entered is the one this effect was written for.
+            val gate = effect.condition ?: return@filter true
+            val gateContext = EffectContext(sourceId = active.sourceId, controllerId = active.controllerId)
+            predicateEvaluator.conditions.evaluate(state, gate, gateContext)
         }
-        return false
-    }
+        .map { it.effect as PermanentsEnterTapped }
 
     /**
      * Resolve global "[filter] enter tapped/untapped" replacements for a token [tokenId] just
@@ -89,6 +111,9 @@ object EnterTappedReplacements {
         attacking: Boolean = false,
         predicateEvaluator: PredicateEvaluator
     ): GameState {
+        if (!attacking && entersAttacking(state, tokenId, predicateEvaluator)) {
+            return enterTappedAndAttacking(state, tokenId, controllerId)
+        }
         val entersUntapped = EnterUntappedReplacements.entersUntapped(state, tokenId, controllerId, predicateEvaluator = predicateEvaluator)
         return when {
             definedTapped && !attacking && entersUntapped ->

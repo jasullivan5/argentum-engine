@@ -60,6 +60,7 @@ import {
 } from './modeMatrix'
 import type { UnifiedLobbyView } from './lobbyViewModel'
 import { NO_PICK_TIME_LIMIT } from './pickTime'
+import { DEFAULT_JUMPSTART_SET } from './jumpstartSets'
 
 /**
  * Bumped when the stored shape changes incompatibly. Unknown versions are **dropped on read, never
@@ -80,10 +81,13 @@ export interface RecipeSettings {
   readonly pickTimeSeconds?: number
   readonly picksPerRound?: number
   readonly gamesPerMatch?: number
+  /** Games per match: 1, or 3 for a best-of-three. */
+  readonly bestOf?: number
   readonly deckFormat?: DeckFormat | null
   readonly rules?: GameRules
   readonly deckSizeMin?: number
   readonly allowDuplicates?: boolean
+  readonly limitedCopyLimit?: boolean
   readonly commanderPreset?: CommanderPreset
   readonly attackMode?: AttackMode
   readonly randomTeams?: boolean
@@ -160,7 +164,8 @@ export interface LobbyRecipe {
 /**
  * The recipe a fresh wizard selection describes.
  *
- * Jump In selects J22 published packs and one game per matchup. Other modes leave settings
+ * Jump In selects the newest Jumpstart set's published packs ([DEFAULT_JUMPSTART_SET]) and one
+ * game per matchup. Other modes leave settings
  * absent, which means the lobby opens on the server's defaults for that
  * shape — no sets, six packs, 45 seconds. That is the honest starting point, and notably *not* what
  * the old launch path did: it sent `['ECL']`, so every draft lobby created from the wizard opened
@@ -171,7 +176,7 @@ export function recipeFromSelection(selection: Selection): LobbyRecipe {
   return {
     v: RECIPE_VERSION,
     selection,
-    settings: cards.kind === 'JUMP_IN' ? { setCodes: ['J22'], useJumpstart: true, gamesPerMatch: 1 } : {},
+    settings: cards.kind === 'JUMP_IN' ? { setCodes: [DEFAULT_JUMPSTART_SET], useJumpstart: true, gamesPerMatch: 1, bestOf: 1 } : {},
     deck: deckForCards(cards),
     aiSeats: roster === 'SOLO' && lobbyNeedsAiSeats(selection)
       ? defaultSoloAiSeats(cards, shape)
@@ -246,10 +251,12 @@ export function recipeFromLobby(
         pickTimeSeconds: s.pickTimeSeconds,
         picksPerRound: s.picksPerRound,
         gamesPerMatch: s.gamesPerMatch,
+        ...(s.bestOf !== undefined ? { bestOf: s.bestOf } : {}),
         deckFormat: s.deckFormat ?? null,
         rules: view.axes.rules,
         deckSizeMin: s.deckSizeMin,
         allowDuplicates: s.allowDuplicates,
+        limitedCopyLimit: s.limitedCopyLimit ?? false,
         commanderPreset: s.commanderPreset,
         attackMode: s.attackMode,
         randomTeams: s.randomTeams,
@@ -449,6 +456,7 @@ function trimSettings(
   }
   if (raw.picksPerRound !== undefined) out.picksPerRound = clampInt(raw.picksPerRound, 1, 2, 1)
   if (raw.gamesPerMatch !== undefined) out.gamesPerMatch = clampInt(raw.gamesPerMatch, 1, 5, 1)
+  if (raw.bestOf !== undefined) out.bestOf = clampInt(raw.bestOf, 1, 3, 1) >= 3 ? 3 : 1
   if (raw.deckSizeMin !== undefined) out.deckSizeMin = clampInt(raw.deckSizeMin, 40, 100, 60)
   if (typeof raw.useJumpstart === 'boolean') out.useJumpstart = raw.useJumpstart
   if (typeof raw.chaosBoosters === 'boolean') out.chaosBoosters = raw.chaosBoosters
@@ -460,6 +468,7 @@ function trimSettings(
     )
   }
   if (typeof raw.allowDuplicates === 'boolean') out.allowDuplicates = raw.allowDuplicates
+  if (typeof raw.limitedCopyLimit === 'boolean') out.limitedCopyLimit = raw.limitedCopyLimit
   if (typeof raw.randomTeams === 'boolean') out.randomTeams = raw.randomTeams
   if (typeof raw.aiAssistEnabled === 'boolean') out.aiAssistEnabled = raw.aiAssistEnabled
   if (typeof raw.isPublic === 'boolean') out.isPublic = raw.isPublic

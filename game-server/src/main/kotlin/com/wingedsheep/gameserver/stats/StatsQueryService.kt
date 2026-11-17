@@ -3,10 +3,14 @@ package com.wingedsheep.gameserver.stats
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.registry.PrintingRegistry
+import com.wingedsheep.mtg.sets.MtgSetCatalog
 import com.wingedsheep.sdk.core.CardType
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.jdbc.core.JdbcTemplate
 import org.springframework.stereotype.Service
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 
 /** A `(label, count)` bucket for a stats breakdown. */
@@ -53,10 +57,24 @@ data class GameHistoryEntry(
     val gameId: String,
     /** True when a compact replay was stored for this game and can be watched/shared. */
     val hasReplay: Boolean,
+    /** Why this game's result doesn't count toward the record ([StatsEligibility]); null when it does. */
+    val notCounted: NotCountedReason? = null,
 )
 
-/** One card line in a stored deck (for the recent-games deck viewer). */
-data class DeckCardEntry(val cardName: String, val copies: Int)
+/** Why a listed game is left out of the win/loss record — see [StatsEligibility]. */
+enum class NotCountedReason {
+    /** This player never took an action past the mulligan. */
+    NO_ACTION,
+
+    /** This player did, but no opponent ever took an action past the mulligan. */
+    OPPONENT_NO_ACTION,
+}
+
+/**
+ * One card line in a stored deck (for the recent-games deck viewer). [printing] is the
+ * `"SET-CN"` printing the copies were played as; null = the card's default printing.
+ */
+data class DeckCardEntry(val cardName: String, val copies: Int, val printing: String? = null)
 
 /**
  * One card line enriched with the registry metadata the client needs to render a deck the polished
@@ -74,7 +92,8 @@ data class GameDeckCard(
     /** The card's own colours as enum names (e.g. ["WHITE","BLUE"]); empty = colourless/unresolved. */
     val colors: List<String>,
     /**
-     * Direct CDN art URL for the card's default printing, resolved the same way as the deckbuilder
+     * Direct CDN art URL for the printing the deck used (its default printing when none was pinned),
+     * resolved the same way as the deckbuilder
      * catalog ([CardsController]). `null` when the card can't be resolved, in which case the client
      * falls back to a Scryfall name lookup — slower and rate-limited, so we send this up front.
      */
@@ -84,9 +103,10 @@ data class GameDeckCard(
 /** One seat's recorded deck within a finished game, for the recent-games deck viewer. */
 data class GameDeckParticipant(
     val playerName: String,
-    val isAi: Boolean,
+    // Pinned: Jackson would otherwise emit `ai` / `self` for `is`-prefixed Booleans, which the client never reads.
+    @get:JsonProperty("isAi") val isAi: Boolean,
     /** True for the seat belonging to the requesting user. */
-    val isSelf: Boolean,
+    @get:JsonProperty("isSelf") val isSelf: Boolean,
     val won: Boolean,
     /** Color identity recomputed from the stored deck, canonical WUBRG order; "" = colorless. */
     val colors: String,
@@ -100,20 +120,74 @@ data class GameDecks(
     val endedAt: String,
     val gameMode: String?,
     val participants: List<GameDeckParticipant>,
+    /** The lobby's deck format (draft, sealed, …); only the admin by-match view fills it. */
+    val format: String? = null,
+    /** Whether the game's replay is stored; only the admin by-match view fills it. */
+    val hasReplay: Boolean? = null,
 )
 
 /** Global, cross-user totals for the admin dashboard. */
 data class GlobalOverview(
+    /** Counted games under the dashboard's filter. */
     val totalGames: Long,
     val totalPlayers: Long,
     val totalAccounts: Long,
     val totalTournaments: Long,
     val gamesLast24h: Long,
     val gamesLast7d: Long,
+    /** Counted games under the filter's period with no AI seat (people only). */
+    val gamesVsHumans: Long = 0,
+    /** Counted games under the filter's period where one person played the AI. */
+    val gamesVsAi: Long = 0,
+    /** Games under the filter whose result counts for no one — nobody, or only one seat, took an action. */
+    val notCountedGames: Long = 0,
 )
 
-/** One day's game count for the games-per-day chart. */
-data class DailyCount(val day: String, val count: Long)
+/**
+ * One bucket's game count for the games-over-time chart, split by who played. [day] is the bucket's
+ * first UTC day (`YYYY-MM-DD`).
+ */
+data class DailyCount(
+    val day: String,
+    val count: Long,
+    /** Of [count], games with no AI seat. */
+    val vsHumans: Long = 0,
+    /** Of [count], games where one person played the AI. */
+    val vsAi: Long = 0,
+)
+
+/** The games-over-time chart: [points] oldest first, gap-filled, one per [bucket]. */
+data class GamesOverTime(val bucket: AiBucket, val points: List<DailyCount>) {
+    companion object {
+        /** Daily up to 90 days (≤ 91 bars), weekly up to two years (≤ 105), monthly beyond. */
+        fun bucketFor(spanDays: Long): AiBucket = when {
+            spanDays <= 91 -> AiBucket.DAY
+            spanDays <= 731 -> AiBucket.WEEK
+            else -> AiBucket.MONTH
+        }
+
+        /**
+         * Folds per-day counts into buckets from the start of the range — [days] before [today], or
+         * the first game's day for all time — through [today], filling empty buckets with zeros so
+         * quiet stretches show as gaps instead of disappearing from the axis.
+         */
+        fun of(daily: List<DailyCount>, days: Int?, today: LocalDate): GamesOverTime {
+            val first = days?.let { today.minusDays(it.toLong()) }
+                ?: daily.firstOrNull()?.let { LocalDate.parse(it.day) }
+                ?: today
+            val bucket = bucketFor(ChronoUnit.DAYS.between(first, today) + 1)
+            val byStart = daily.groupBy { bucket.startOf(LocalDate.parse(it.day)) }
+            val points = generateSequence(bucket.startOf(first)) { bucket.next(it) }
+                .takeWhile { !it.isAfter(today) }
+                .map { start ->
+                    val inBucket = byStart[start].orEmpty()
+                    DailyCount(start.toString(), inBucket.sumOf { it.count }, inBucket.sumOf { it.vsHumans }, inBucket.sumOf { it.vsAi })
+                }
+                .toList()
+            return GamesOverTime(bucket, points)
+        }
+    }
+}
 
 /** One table's row count and on-disk footprint, for the admin dashboard's database panel. */
 data class DatabaseTableStat(
@@ -166,6 +240,10 @@ data class UserTournamentEntry(
     val wins: Int,
     val losses: Int,
     val draws: Int,
+    /** Of [wins], matches won because the opponent left the tournament — never played. */
+    val forfeitWins: Int = 0,
+    /** Of [losses], matches lost because this player left the tournament — never played. */
+    val forfeitLosses: Int = 0,
 )
 
 /** One player's final standing in a tournament. */
@@ -178,6 +256,10 @@ data class TournamentStanding(
     val wins: Int,
     val losses: Int,
     val draws: Int,
+    /** Of [wins], matches won because the opponent left the tournament — never played. */
+    val forfeitWins: Int = 0,
+    /** Of [losses], matches lost because this player left the tournament — never played. */
+    val forfeitLosses: Int = 0,
 )
 
 /** One seat in a single tournament game. */
@@ -228,6 +310,7 @@ data class AdminUserStat(
     /** Chosen avatar id (see `profile.Avatars`); null shows the display name's initial. */
     val avatar: String?,
     val createdAt: String,
+    /** Counted games under the roster's filter. */
     val games: Long,
     val wins: Long,
     val lastPlayed: String?,
@@ -251,8 +334,15 @@ data class TournamentSummary(
 data class AdminGamePlayer(
     val name: String,
     val userId: UUID?,
-    val isAi: Boolean,
+    // Pinned: Jackson would otherwise emit `ai`, which the client never reads (its AI tag went missing).
+    @get:JsonProperty("isAi") val isAi: Boolean,
     val won: Boolean,
+    /** The seat's deck colours, canonical WUBRG ("" colourless); null when no deck was recorded. */
+    val colors: String? = null,
+    /** The seat never took an action past the mulligan ([StatsEligibility]); false when unknown. */
+    val noAction: Boolean = false,
+    /** This seat's result counts toward win/loss stats ([StatsEligibility]). */
+    val counted: Boolean = true,
     // Coarse connection origin, resolved from the seat's recorded IP via [GeoIpService]. Null for AI
     // seats and when the IP couldn't be resolved. Raw IPs never reach the client — only the location.
     val location: GeoLocation? = null,
@@ -260,6 +350,8 @@ data class AdminGamePlayer(
 
 /** A recorded game for the admin global game list, newest first, with every seat. */
 data class AdminRecentGame(
+    /** Opens every seat's deck through the admin `/matches/{matchId}/decks` endpoint. */
+    val matchId: Long,
     val gameId: String,
     val endedAt: String,
     val gameMode: String?,
@@ -267,6 +359,8 @@ data class AdminRecentGame(
     val players: List<AdminGamePlayer>,
     val winnerName: String?,
     val hasReplay: Boolean,
+    /** True when at least one seat's decklist was recorded, so the deck viewer has something to show. */
+    val hasDecks: Boolean,
     val tournamentName: String?,
 )
 
@@ -300,8 +394,8 @@ class StatsQueryService(
      * was known. Games with no stored deck cards are omitted (we genuinely don't know their colors,
      * so they must not masquerade as "Colorless").
      */
-    fun colorBreakdown(userId: UUID): List<StatBucket> {
-        val byColors = decksByParticipant(userId).values
+    fun colorBreakdown(userId: UUID, filter: GameFilter = GameFilter.ALL_TIME): List<StatBucket> {
+        val byColors = decksByParticipant(userId, filter).values
             .map { cards -> deckProfiler.profile(cards.map { it.cardName }).colors }
             .groupingBy { it }
             .eachCount()
@@ -311,18 +405,21 @@ class StatsQueryService(
     }
 
     /** How often the user has played each set, most-played first. Splits the comma-separated codes. */
-    fun setBreakdown(userId: UUID): List<StatBucket> = jdbc.query(
-        """
-        SELECT trim(s) AS label, count(*) AS n
-        FROM match_participants p
-        CROSS JOIN LATERAL unnest(string_to_array(p.set_codes, ',')) AS s
-        WHERE p.user_id = ? AND p.set_codes IS NOT NULL AND p.set_codes <> ''
-        GROUP BY trim(s)
-        ORDER BY n DESC
-        """.trimIndent(),
-        { rs, _ -> StatBucket(rs.getString("label"), rs.getLong("n")) },
-        userId,
-    )
+    fun setBreakdown(userId: UUID, filter: GameFilter = GameFilter.ALL_TIME): List<StatBucket> {
+        val f = filter.seatSql("p")
+        return jdbc.query(
+            """
+            SELECT trim(s) AS label, count(*) AS n
+            FROM match_participants p
+            CROSS JOIN LATERAL unnest(string_to_array(p.set_codes, ',')) AS s
+            WHERE p.user_id = ? AND p.set_codes IS NOT NULL AND p.set_codes <> '' AND ${f.clause}
+            GROUP BY trim(s)
+            ORDER BY n DESC
+            """.trimIndent(),
+            { rs, _ -> StatBucket(rs.getString("label"), rs.getLong("n")) },
+            userId, *f.args.toTypedArray(),
+        )
+    }
 
     /**
      * How often the user has played each game mode, most-played first. The label is a composite
@@ -330,25 +427,32 @@ class StatsQueryService(
      * (e.g. "Tournament › Draft"); the client merges buckets whose display label collapses to the same
      * thing. `~` never occurs in the enum names being concatenated.
      */
-    fun modeBreakdown(userId: UUID): List<StatBucket> = jdbc.query(
-        """
-        SELECT COALESCE(r.game_mode, 'UNKNOWN') || '~' || COALESCE(r.format, '') AS label, count(*) AS n
-        FROM match_participants p
-        JOIN match_results r ON r.id = p.match_id
-        WHERE p.user_id = ?
-        GROUP BY COALESCE(r.game_mode, 'UNKNOWN') || '~' || COALESCE(r.format, '')
-        ORDER BY n DESC
-        """.trimIndent(),
-        { rs, _ -> StatBucket(rs.getString("label"), rs.getLong("n")) },
-        userId,
-    )
+    fun modeBreakdown(userId: UUID, filter: GameFilter = GameFilter.ALL_TIME): List<StatBucket> {
+        val f = filter.seatSql("p")
+        return jdbc.query(
+            """
+            SELECT COALESCE(r.game_mode, 'UNKNOWN') || '~' || COALESCE(r.format, '') AS label, count(*) AS n
+            FROM match_participants p
+            JOIN match_results r ON r.id = p.match_id
+            WHERE p.user_id = ? AND ${f.clause}
+            GROUP BY COALESCE(r.game_mode, 'UNKNOWN') || '~' || COALESCE(r.format, '')
+            ORDER BY n DESC
+            """.trimIndent(),
+            { rs, _ -> StatBucket(rs.getString("label"), rs.getLong("n")) },
+            userId, *f.args.toTypedArray(),
+        )
+    }
 
     /**
      * Win/loss against each human opponent the user has faced, most-played first. AI seats are
      * excluded — the head-to-head is about the most common *people* you play against, and the
-     * built-in AI would otherwise dominate every casual player's list.
+     * built-in AI would otherwise dominate every casual player's list. Under an AI-only [filter] it is
+     * empty by definition.
      */
-    fun headToHead(userId: UUID): List<HeadToHead> = jdbc.query(
+    fun headToHead(userId: UUID, filter: GameFilter = GameFilter.ALL_TIME): List<HeadToHead> {
+        if (filter.opponents == OpponentFilter.AI) return emptyList()
+        val f = filter.seatSql("me")
+        return jdbc.query(
         """
         SELECT COALESCE(u.display_name, opp.player_name) AS opponent,
                opp.user_id AS opponent_user_id,
@@ -358,7 +462,7 @@ class StatsQueryService(
         FROM match_participants me
         JOIN match_participants opp ON opp.match_id = me.match_id AND opp.id <> me.id
         LEFT JOIN users u ON u.id = opp.user_id
-        WHERE me.user_id = ? AND opp.is_ai = false
+        WHERE me.user_id = ? AND opp.is_ai = false AND ${f.clause}
         GROUP BY COALESCE(u.display_name, opp.player_name), opp.user_id
         ORDER BY count(*) DESC, opponent ASC
         """.trimIndent(),
@@ -371,15 +475,60 @@ class StatsQueryService(
                 losses = rs.getLong("losses"),
             )
         },
-        userId,
-    )
+        userId, *f.args.toTypedArray(),
+        )
+    }
 
-    /** Total number of games the user has played — drives the recent-games pager. */
-    fun recentGamesCount(userId: UUID): Long = jdbc.queryForObject(
-        "SELECT count(*) FROM match_participants WHERE user_id = ?",
-        Long::class.java,
-        userId,
-    ) ?: 0
+    /**
+     * The user's record under [filter]: counted games and wins, the same period split by opponent
+     * type, and how many games in the slice don't count (see [PlayerRecord]). One row per game the
+     * user played in the period, folded here — a few thousand at most.
+     */
+    fun playerRecord(userId: UUID, filter: GameFilter = GameFilter.ALL_TIME): PlayerRecord {
+        data class Seat(val won: Boolean, val counts: Boolean, val vsAi: Boolean, val vsHuman: Boolean)
+        val period = filter.copy(opponents = OpponentFilter.ALL).seatSql("p", countedOnly = false)
+        val seats = jdbc.query(
+            """
+            SELECT p.won, p.counts_in_stats,
+                   EXISTS (SELECT 1 FROM match_participants o WHERE o.match_id = p.match_id AND o.id <> p.id AND o.is_ai) AS vs_ai,
+                   EXISTS (SELECT 1 FROM match_participants o WHERE o.match_id = p.match_id AND o.id <> p.id AND NOT o.is_ai) AS vs_human
+            FROM match_participants p
+            WHERE p.user_id = ? AND ${period.clause}
+            """.trimIndent(),
+            { rs, _ -> Seat(rs.getBoolean("won"), rs.getBoolean("counts_in_stats"), rs.getBoolean("vs_ai"), rs.getBoolean("vs_human")) },
+            userId, *period.args.toTypedArray(),
+        )
+        fun Seat.inSlice() = when (filter.opponents) {
+            OpponentFilter.ALL -> true
+            OpponentFilter.HUMANS -> !vsAi
+            OpponentFilter.AI -> !vsHuman
+        }
+        fun record(of: List<Seat>) = WinLoss.of(of.size.toLong(), of.count { it.won }.toLong())
+        val counted = seats.filter { it.counts }
+        val slice = record(counted.filter { it.inSlice() })
+        return PlayerRecord(
+            games = slice.games,
+            wins = slice.wins,
+            losses = slice.losses,
+            winRate = slice.winRate,
+            vsHumans = record(counted.filter { !it.vsAi }),
+            vsAi = record(counted.filter { !it.vsHuman }),
+            notCounted = seats.count { !it.counts && it.inSlice() }.toLong(),
+        )
+    }
+
+    /**
+     * Number of games the user played under [filter] — drives the recent-games pager. Includes the
+     * games that don't count, which the list shows marked.
+     */
+    fun recentGamesCount(userId: UUID, filter: GameFilter = GameFilter.ALL_TIME): Long {
+        val f = filter.seatSql("p", countedOnly = false)
+        return jdbc.queryForObject(
+            "SELECT count(*) FROM match_participants p WHERE p.user_id = ? AND ${f.clause}",
+            Long::class.java,
+            userId, *f.args.toTypedArray(),
+        ) ?: 0
+    }
 
     /**
      * Most-recent games the user played, newest first, one page at a time. Each row's deck colors
@@ -387,7 +536,8 @@ class StatsQueryService(
      * real deck as "Colorless" because of a stale `colors` column; when no deck was recorded the
      * colors are left null and the client renders a dash.
      */
-    fun recentGames(userId: UUID, limit: Int, offset: Int): List<GameHistoryEntry> {
+    fun recentGames(userId: UUID, limit: Int, offset: Int, filter: GameFilter = GameFilter.ALL_TIME): List<GameHistoryEntry> {
+        val f = filter.seatSql("me", countedOnly = false)
         data class Row(
             val pid: Long,
             val mid: Long,
@@ -398,11 +548,12 @@ class StatsQueryService(
             """
             SELECT me.id AS pid, me.match_id AS mid, r.ended_at AS ended_at, r.game_mode AS game_mode,
                    r.format AS format, me.won AS won, me.colors AS colors, r.game_id AS game_id,
-                   (gr.id IS NOT NULL) AS has_replay
+                   (gr.id IS NOT NULL) AS has_replay, me.counts_in_stats AS counts_in_stats,
+                   me.took_action AS took_action
             FROM match_participants me
             JOIN match_results r ON r.id = me.match_id
             LEFT JOIN game_replays gr ON gr.game_id = r.game_id
-            WHERE me.user_id = ?
+            WHERE me.user_id = ? AND ${f.clause}
             ORDER BY r.ended_at DESC
             LIMIT ? OFFSET ?
             """.trimIndent(),
@@ -424,10 +575,15 @@ class StatsQueryService(
                         ratingDelta = null,
                         gameId = rs.getString("game_id"),
                         hasReplay = rs.getBoolean("has_replay"),
+                        notCounted = when {
+                            rs.getBoolean("counts_in_stats") -> null
+                            rs.getObject("took_action") == false -> NotCountedReason.NO_ACTION
+                            else -> NotCountedReason.OPPONENT_NO_ACTION
+                        },
                     ),
                 )
             },
-            userId, limit, offset,
+            userId, *f.args.toTypedArray(), limit, offset,
         )
         val cardsByPid = cardsForParticipants(rows.map { it.pid })
         val opponentsByMid = opponentsForMatches(rows.map { it.mid }, userId)
@@ -518,7 +674,6 @@ class StatsQueryService(
      * stranger's deck by guessing game ids). Colors are recomputed per seat from its stored deck.
      */
     fun decksForGame(userId: UUID, gameId: String): GameDecks? {
-        data class Seat(val pid: Long, val name: String, val isAi: Boolean, val isSelf: Boolean, val won: Boolean)
         val header = jdbc.query(
             """
             SELECT r.ended_at AS ended_at, r.game_mode AS game_mode
@@ -541,36 +696,84 @@ class StatsQueryService(
             ORDER BY COALESCE(p.user_id = ?, false) DESC, p.id
             """.trimIndent(),
             { rs, _ ->
-                Seat(rs.getLong("pid"), rs.getString("name"), rs.getBoolean("is_ai"), rs.getBoolean("is_self"), rs.getBoolean("won"))
+                DeckSeat(rs.getLong("pid"), rs.getString("name"), rs.getBoolean("is_ai"), rs.getBoolean("is_self"), rs.getBoolean("won"))
             },
             userId, gameId, userId,
         )
-        val cardsByPid = cardsForParticipants(seats.map { it.pid })
-        return GameDecks(
-            gameId = gameId,
-            endedAt = header.first,
-            gameMode = header.second,
-            participants = seats.map { seat ->
-                val cards = cardsByPid[seat.pid].orEmpty()
-                GameDeckParticipant(
-                    playerName = seat.name,
-                    isAi = seat.isAi,
-                    isSelf = seat.isSelf,
-                    won = seat.won,
-                    colors = deckProfiler.profile(cards.map { it.cardName }).colors,
-                    cards = enrichDeckCards(cards),
+        return GameDecks(gameId = gameId, endedAt = header.first, gameMode = header.second, participants = deckParticipants(seats))
+    }
+
+    /**
+     * Every seat's deck for one recorded match, for the admin screens — no participation check, so
+     * only an admin endpoint may call it. AI seats come first (the admin "AI vs humans" screen reads
+     * left to right as AI, then the humans it faced). Null when the match doesn't exist.
+     */
+    fun decksForMatch(matchId: Long): GameDecks? {
+        data class Header(val gameId: String, val endedAt: String, val gameMode: String?, val format: String?, val hasReplay: Boolean)
+        val header = jdbc.query(
+            """
+            SELECT r.game_id, r.ended_at, r.game_mode, r.format,
+                   EXISTS (SELECT 1 FROM game_replays gr WHERE gr.game_id = r.game_id) AS has_replay
+            FROM match_results r
+            WHERE r.id = ?
+            """.trimIndent(),
+            { rs, _ ->
+                Header(
+                    rs.getString("game_id"),
+                    rs.getTimestamp("ended_at").toInstant().toString(),
+                    rs.getString("game_mode"),
+                    rs.getString("format"),
+                    rs.getBoolean("has_replay"),
                 )
             },
+            matchId,
+        ).firstOrNull() ?: return null
+        val seats = jdbc.query(
+            """
+            SELECT p.id AS pid, COALESCE(u.display_name, p.player_name) AS name, p.is_ai AS is_ai, p.won AS won
+            FROM match_participants p
+            LEFT JOIN users u ON u.id = p.user_id
+            WHERE p.match_id = ?
+            ORDER BY p.is_ai DESC, p.id
+            """.trimIndent(),
+            { rs, _ -> DeckSeat(rs.getLong("pid"), rs.getString("name"), rs.getBoolean("is_ai"), false, rs.getBoolean("won")) },
+            matchId,
         )
+        return GameDecks(
+            gameId = header.gameId,
+            endedAt = header.endedAt,
+            gameMode = header.gameMode,
+            participants = deckParticipants(seats),
+            format = header.format,
+            hasReplay = header.hasReplay,
+        )
+    }
+
+    private data class DeckSeat(val pid: Long, val name: String, val isAi: Boolean, val isSelf: Boolean, val won: Boolean)
+
+    /** Each seat's recorded deck, enriched for the deck viewer, with colours recomputed from the cards. */
+    private fun deckParticipants(seats: List<DeckSeat>): List<GameDeckParticipant> {
+        val cardsByPid = cardsForParticipants(seats.map { it.pid })
+        return seats.map { seat ->
+            val cards = cardsByPid[seat.pid].orEmpty()
+            GameDeckParticipant(
+                playerName = seat.name,
+                isAi = seat.isAi,
+                isSelf = seat.isSelf,
+                won = seat.won,
+                colors = deckProfiler.profile(cards.map { it.cardName }).colors,
+                cards = enrichDeckCards(cards),
+            )
+        }
     }
 
     /**
      * The creature subtypes (Goblin, Angel, …) the user plays most, by total copies across every
      * recorded deck. Resolved through the card registry since subtypes aren't stored per card.
      */
-    fun creatureTypeBreakdown(userId: UUID, limit: Int): List<StatBucket> {
+    fun creatureTypeBreakdown(userId: UUID, limit: Int, filter: GameFilter = GameFilter.ALL_TIME): List<StatBucket> {
         val byType = HashMap<String, Long>()
-        for ((name, copies) in cardCopiesForUser(userId)) {
+        for ((name, copies) in cardCopiesForUser(userId, filter)) {
             val card = lookupCard(name) ?: continue
             if (!card.typeLine.isCreature) continue
             for (sub in card.typeLine.subtypes) byType.merge(sub.value, copies, Long::plus)
@@ -586,9 +789,9 @@ class StatsQueryService(
      * by total copies. Each card is bucketed once, by its dominant type, so the slices sum to the
      * deck size.
      */
-    fun cardTypeBreakdown(userId: UUID): List<StatBucket> {
+    fun cardTypeBreakdown(userId: UUID, filter: GameFilter = GameFilter.ALL_TIME): List<StatBucket> {
         val byType = HashMap<String, Long>()
-        for ((name, copies) in cardCopiesForUser(userId)) {
+        for ((name, copies) in cardCopiesForUser(userId, filter)) {
             val card = lookupCard(name) ?: continue
             byType.merge(primaryTypeLabel(card.typeLine.cardTypes), copies, Long::plus)
         }
@@ -601,9 +804,9 @@ class StatsQueryService(
      * Mana-value curve of the user's nonland cards, by total copies, bucketed 0..6 with a final
      * "7+" bin. Lands are excluded — a curve is about what you cast.
      */
-    fun manaCurve(userId: UUID): List<StatBucket> {
+    fun manaCurve(userId: UUID, filter: GameFilter = GameFilter.ALL_TIME): List<StatBucket> {
         val byMv = LongArray(8)
-        for ((name, copies) in cardCopiesForUser(userId)) {
+        for ((name, copies) in cardCopiesForUser(userId, filter)) {
             val card = lookupCard(name) ?: continue
             if (card.typeLine.isLand) continue
             byMv[card.manaCost.cmc.coerceIn(0, 7)] += copies
@@ -614,33 +817,37 @@ class StatsQueryService(
     // ---- Per-user deck-card helpers ----------------------------------------------------------
 
     /** Card name -> total copies across every recorded deck of [userId]. */
-    private fun cardCopiesForUser(userId: UUID): List<Pair<String, Long>> = jdbc.query(
-        """
-        SELECT c.card_name AS card_name, sum(c.copies) AS copies
-        FROM match_participant_cards c
-        JOIN match_participants p ON p.id = c.participant_id
-        WHERE p.user_id = ?
-        GROUP BY c.card_name
-        """.trimIndent(),
-        { rs, _ -> rs.getString("card_name") to rs.getLong("copies") },
-        userId,
-    )
+    private fun cardCopiesForUser(userId: UUID, filter: GameFilter): List<Pair<String, Long>> {
+        val f = filter.seatSql("p")
+        return jdbc.query(
+            """
+            SELECT c.card_name AS card_name, sum(c.copies) AS copies
+            FROM match_participant_cards c
+            JOIN match_participants p ON p.id = c.participant_id
+            WHERE p.user_id = ? AND ${f.clause}
+            GROUP BY c.card_name
+            """.trimIndent(),
+            { rs, _ -> rs.getString("card_name") to rs.getLong("copies") },
+            userId, *f.args.toTypedArray(),
+        )
+    }
 
     /** Per-game (participant) deck lists for [userId], keyed by participant id. */
-    private fun decksByParticipant(userId: UUID): Map<Long, List<DeckCardEntry>> {
+    private fun decksByParticipant(userId: UUID, filter: GameFilter): Map<Long, List<DeckCardEntry>> {
+        val f = filter.seatSql("p")
         val out = LinkedHashMap<Long, MutableList<DeckCardEntry>>()
         jdbc.query(
             """
-            SELECT c.participant_id AS pid, c.card_name AS card_name, c.copies AS copies
+            SELECT c.participant_id AS pid, c.card_name AS card_name, c.copies AS copies, c.printing AS printing
             FROM match_participant_cards c
             JOIN match_participants p ON p.id = c.participant_id
-            WHERE p.user_id = ?
+            WHERE p.user_id = ? AND ${f.clause}
             """.trimIndent(),
             { rs ->
                 out.getOrPut(rs.getLong("pid")) { mutableListOf() }
-                    .add(DeckCardEntry(rs.getString("card_name"), rs.getInt("copies")))
+                    .add(DeckCardEntry(rs.getString("card_name"), rs.getInt("copies"), rs.getString("printing")))
             },
-            userId,
+            userId, *f.args.toTypedArray(),
         )
         return out
     }
@@ -651,11 +858,11 @@ class StatsQueryService(
         val placeholders = pids.joinToString(",") { "?" }
         val out = LinkedHashMap<Long, MutableList<DeckCardEntry>>()
         jdbc.query(
-            "SELECT participant_id AS pid, card_name, copies FROM match_participant_cards " +
+            "SELECT participant_id AS pid, card_name, copies, printing FROM match_participant_cards " +
                 "WHERE participant_id IN ($placeholders)",
             { rs ->
                 out.getOrPut(rs.getLong("pid")) { mutableListOf() }
-                    .add(DeckCardEntry(rs.getString("card_name"), rs.getInt("copies")))
+                    .add(DeckCardEntry(rs.getString("card_name"), rs.getInt("copies"), rs.getString("printing")))
             },
             *pids.toTypedArray(),
         )
@@ -682,17 +889,31 @@ class StatsQueryService(
                     cmc = card?.cmc ?: 0,
                     cardTypes = card?.typeLine?.cardTypes?.map { it.name } ?: emptyList(),
                     colors = card?.colors?.map { it.name } ?: emptyList(),
-                    // Prefer the default printing's art (mirrors CardsController), falling back to the
-                    // canonical metadata image — so the deck viewer loads from the CDN directly.
+                    // The printing the deck played, else the default printing's art (mirrors
+                    // CardsController), else the canonical metadata image — so the deck viewer shows
+                    // the art the player actually had and loads it from the CDN directly.
                     imageUri = card?.let {
-                        printingRegistry.defaultPrinting(it.name)?.imageUri ?: it.metadata.imageUri
+                        printingImageUri(e.printing)
+                            ?: printingRegistry.defaultPrinting(it.name)?.imageUri
+                            ?: it.metadata.imageUri
                     },
                 )
             }
 
-    /** Enrich a name→copies map (a stored [SharedDeck]'s card list) for the saved-deck viewer. */
-    fun enrichDeck(cardCounts: Map<String, Int>): List<GameDeckCard> =
-        enrichDeckCards(cardCounts.map { (name, copies) -> DeckCardEntry(name, copies) })
+    /** Art for a `"SET-CN"` printing identifier, or null when it is absent, malformed or unknown. */
+    private fun printingImageUri(identifier: String?): String? {
+        if (identifier == null) return null
+        val dash = identifier.indexOf('-')
+        if (dash <= 0 || dash == identifier.lastIndex) return null
+        return printingRegistry.getPrinting(identifier.substring(0, dash), identifier.substring(dash + 1))?.imageUri
+    }
+
+    /**
+     * Enrich a name→copies map (a stored [SharedDeck]'s card list) for the saved-deck viewer.
+     * [printings] maps a card name to the `"SET-CN"` printing the deck pins it to.
+     */
+    fun enrichDeck(cardCounts: Map<String, Int>, printings: Map<String, String> = emptyMap()): List<GameDeckCard> =
+        enrichDeckCards(cardCounts.map { (name, copies) -> DeckCardEntry(name, copies, printings[name]) })
 
     /** The single dominant card type used to bucket a card in [cardTypeBreakdown]. */
     private fun primaryTypeLabel(types: Set<CardType>): String {
@@ -709,22 +930,25 @@ class StatsQueryService(
      * the player builds. Filtering is done after the group-by (the registry knows which names are
      * basics), so [limit] applies to the non-basic results.
      */
-    fun topCardsForUser(userId: UUID, limit: Int): List<CardStat> = jdbc.query(
+    fun topCardsForUser(userId: UUID, limit: Int, filter: GameFilter = GameFilter.ALL_TIME): List<CardStat> {
+        val f = filter.seatSql("p")
+        return jdbc.query(
         """
         SELECT c.card_name AS card_name, sum(c.copies) AS copies, count(*) AS decks
         FROM match_participant_cards c
         JOIN match_participants p ON p.id = c.participant_id
-        WHERE p.user_id = ?
+        WHERE p.user_id = ? AND ${f.clause}
         GROUP BY c.card_name
         ORDER BY copies DESC, decks DESC
         """.trimIndent(),
         { rs, _ -> CardStat(rs.getString("card_name"), rs.getLong("copies"), rs.getLong("decks")) },
-        userId,
+        userId, *f.args.toTypedArray(),
     ).filterNot { lookupCard(it.cardName)?.typeLine?.isBasicLand == true }
         .take(limit)
         // Resolve each card's art the same way as the deck viewer (default printing → canonical
         // metadata) so the most-played-cards section can show a hover preview without a Scryfall hit.
         .map { it.copy(imageUri = imageUriFor(it.cardName)) }
+    }
 
     /** Default-printing art URL for a card name, or null when it can't be resolved (mirrors [enrichDeckCards]). */
     private fun imageUriFor(name: String): String? =
@@ -740,7 +964,8 @@ class StatsQueryService(
         SELECT t.id AS id, COALESCE(t.ended_at, t.started_at, now()) AS ended_at, t.name AS name,
                t.format AS format, t.game_mode AS game_mode, tp.placement AS placement,
                t.player_count AS player_count, t.status AS status,
-               tp.wins AS wins, tp.losses AS losses, tp.draws AS draws
+               tp.wins AS wins, tp.losses AS losses, tp.draws AS draws,
+               tp.forfeit_wins AS forfeit_wins, tp.forfeit_losses AS forfeit_losses
         FROM tournament_participants tp
         JOIN tournaments t ON t.id = tp.tournament_id
         WHERE tp.user_id = ?
@@ -762,6 +987,8 @@ class StatsQueryService(
                 wins = rs.getInt("wins"),
                 losses = rs.getInt("losses"),
                 draws = rs.getInt("draws"),
+                forfeitWins = rs.getInt("forfeit_wins"),
+                forfeitLosses = rs.getInt("forfeit_losses"),
             )
         },
         userId, limit,
@@ -802,7 +1029,8 @@ class StatsQueryService(
         val standings = jdbc.query(
             """
             SELECT tp.placement AS placement, COALESCE(u.display_name, tp.player_name) AS name,
-                   tp.user_id AS uid, tp.is_ai AS is_ai, tp.wins AS wins, tp.losses AS losses, tp.draws AS draws
+                   tp.user_id AS uid, tp.is_ai AS is_ai, tp.wins AS wins, tp.losses AS losses, tp.draws AS draws,
+                   tp.forfeit_wins AS forfeit_wins, tp.forfeit_losses AS forfeit_losses
             FROM tournament_participants tp
             LEFT JOIN users u ON u.id = tp.user_id
             WHERE tp.tournament_id = ?
@@ -817,6 +1045,8 @@ class StatsQueryService(
                     wins = rs.getInt("wins"),
                     losses = rs.getInt("losses"),
                     draws = rs.getInt("draws"),
+                    forfeitWins = rs.getInt("forfeit_wins"),
+                    forfeitLosses = rs.getInt("forfeit_losses"),
                 )
             },
             id,
@@ -876,7 +1106,9 @@ class StatsQueryService(
      * first. A LEFT JOIN keeps accounts that have never played (they show 0 games). Drives the admin
      * Players list; per-account detail reuses the per-user methods above.
      */
-    fun allUsersWithStats(): List<AdminUserStat> = jdbc.query(
+    fun allUsersWithStats(filter: GameFilter = GameFilter.ALL_TIME): List<AdminUserStat> {
+        val f = filter.seatSql("p")
+        return jdbc.query(
         """
         SELECT u.id AS id, u.email AS email, u.display_name AS display_name, u.is_admin AS is_admin,
                u.avatar AS avatar, u.created_at AS created_at,
@@ -884,12 +1116,12 @@ class StatsQueryService(
                count(p.id) FILTER (WHERE p.won) AS wins,
                max(r.ended_at) AS last_played
         FROM users u
-        LEFT JOIN match_participants p ON p.user_id = u.id
+        LEFT JOIN match_participants p ON p.user_id = u.id AND ${f.clause}
         LEFT JOIN match_results r ON r.id = p.match_id
         GROUP BY u.id, u.email, u.display_name, u.is_admin, u.avatar, u.created_at
         ORDER BY games DESC, u.created_at ASC
         """.trimIndent(),
-    ) { rs, _ ->
+        { rs, _ ->
         AdminUserStat(
             id = rs.getObject("id", UUID::class.java),
             email = rs.getString("email"),
@@ -901,10 +1133,33 @@ class StatsQueryService(
             wins = rs.getLong("wins"),
             lastPlayed = rs.getTimestamp("last_played")?.toInstant()?.toString(),
         )
+        },
+        *f.args.toTypedArray(),
+        )
     }
 
-    fun overview(): GlobalOverview {
-        val totalGames = jdbc.queryForObject("SELECT count(*) FROM match_results", Long::class.java) ?: 0
+    fun overview(filter: GameFilter = GameFilter.ALL_TIME): GlobalOverview {
+        fun countGames(f: GameFilter, extra: String = "true"): Long {
+            val sql = f.matchSql("r")
+            return jdbc.queryForObject(
+                "SELECT count(*) FROM match_results r WHERE ${sql.clause} AND $extra",
+                Long::class.java,
+                *sql.args.toTypedArray(),
+            ) ?: 0
+        }
+        val totalGames = countGames(filter)
+        val period = filter.copy(opponents = OpponentFilter.ALL)
+        val gamesVsHumans = countGames(period.copy(opponents = OpponentFilter.HUMANS))
+        val gamesVsAi = countGames(period.copy(opponents = OpponentFilter.AI))
+        // A game nobody's result counts in — a no-show or an instant concession.
+        val notCounted = run {
+            val slice = filter.matchSql("r", countedOnly = false)
+            jdbc.queryForObject(
+                "SELECT count(*) FROM match_results r WHERE NOT ${countedMatchSql("r")} AND ${slice.clause}",
+                Long::class.java,
+                *slice.args.toTypedArray(),
+            ) ?: 0
+        }
         val totalAccounts = jdbc.queryForObject(
             "SELECT count(DISTINCT user_id) FROM match_participants WHERE user_id IS NOT NULL",
             Long::class.java,
@@ -916,16 +1171,16 @@ class StatsQueryService(
             """.trimIndent(),
             Long::class.java,
         ) ?: 0
-        val games24h = jdbc.queryForObject(
-            "SELECT count(*) FROM match_results WHERE ended_at >= now() - interval '24 hours'",
-            Long::class.java,
-        ) ?: 0
-        val games7d = jdbc.queryForObject(
-            "SELECT count(*) FROM match_results WHERE ended_at >= now() - interval '7 days'",
-            Long::class.java,
-        ) ?: 0
+        val recent = filter.copy(days = null)
+        val games24h = countGames(recent, "r.ended_at >= now() - interval '24 hours'")
+        val games7d = countGames(recent, "r.ended_at >= now() - interval '7 days'")
         val totalTournaments = jdbc.queryForObject("SELECT count(*) FROM tournaments", Long::class.java) ?: 0
-        return GlobalOverview(totalGames, totalPlayers, totalAccounts, totalTournaments, games24h, games7d)
+        return GlobalOverview(
+            totalGames, totalPlayers, totalAccounts, totalTournaments, games24h, games7d,
+            gamesVsHumans = gamesVsHumans,
+            gamesVsAi = gamesVsAi,
+            notCountedGames = notCounted,
+        )
     }
 
     /**
@@ -970,38 +1225,108 @@ class StatsQueryService(
         return DatabaseStats(databaseName, databaseSize, tables)
     }
 
-    /** Games per calendar day (UTC) over the last [days] days, oldest first. */
-    fun gamesPerDay(days: Int): List<DailyCount> = jdbc.query(
-        """
-        SELECT to_char(date_trunc('day', ended_at), 'YYYY-MM-DD') AS day, count(*) AS n
-        FROM match_results
-        WHERE ended_at >= now() - (? * interval '1 day')
-        GROUP BY date_trunc('day', ended_at)
-        ORDER BY date_trunc('day', ended_at)
-        """.trimIndent(),
-        { rs, _ -> DailyCount(rs.getString("day"), rs.getLong("n")) },
-        days,
-    )
+    /**
+     * Counted games over the last [days] days (null = all time), each bucket split into people-only
+     * games and games against the AI; [opponents] narrows the total the same way. The bucket size
+     * follows the span ([GamesOverTime.bucketFor]) so the chart stays readable from a week to all time.
+     */
+    fun gamesOverTime(days: Int?, opponents: OpponentFilter = OpponentFilter.ALL): GamesOverTime {
+        val f = GameFilter(opponents, days).matchSql("r")
+        val humans = GameFilter(OpponentFilter.HUMANS).matchSql("r").clause
+        val ai = GameFilter(OpponentFilter.AI).matchSql("r").clause
+        val daily = jdbc.query(
+            """
+            SELECT to_char(date_trunc('day', r.ended_at), 'YYYY-MM-DD') AS day, count(*) AS n,
+                   count(*) FILTER (WHERE $humans) AS vs_humans,
+                   count(*) FILTER (WHERE $ai) AS vs_ai
+            FROM match_results r
+            WHERE ${f.clause}
+            GROUP BY date_trunc('day', r.ended_at)
+            ORDER BY date_trunc('day', r.ended_at)
+            """.trimIndent(),
+            { rs, _ -> DailyCount(rs.getString("day"), rs.getLong("n"), rs.getLong("vs_humans"), rs.getLong("vs_ai")) },
+            *f.args.toTypedArray(),
+        )
+        return GamesOverTime.of(daily, days, LocalDate.now(ZoneOffset.UTC))
+    }
 
     /**
      * How the AI fares against human players over the last [days] days (null = all time), bucketed by
      * [bucket] — see [AiVsHumanReport]. Reads the range plus the equally long window before it, so the
      * report can show the change against the previous period. The build each game ran on comes from
      * its replay row; a game whose replay was never stored still counts everywhere but per-build.
+     *
+     * [filter] narrows it to a slice (see [AiVsHumanFilter]). The slice is cut after the read, not in
+     * the SQL: the report also returns every filter value with its count over the unfiltered range,
+     * and those two queries already read every AI-vs-human game in it.
+     *
+     * A game's sets are those of the lobby that produced it: the tournament row's `set_codes` when one
+     * was recorded, else the set names in the game's own `tournament_name` (written for every lobby
+     * game, so it also covers lobbies whose tournament row is missing). Per-deck `set_codes` are not
+     * used — they follow each card's canonical printing, so a reprint-heavy deck reads as old sets.
      */
-    fun aiVsHuman(days: Int?, bucket: AiBucket): AiVsHumanReport {
+    fun aiVsHuman(days: Int?, bucket: AiBucket, filter: AiVsHumanFilter = AiVsHumanFilter.NONE): AiVsHumanReport {
         val now = java.time.Instant.now()
-        val since = java.sql.Timestamp.from(days?.let { now.minusSeconds(2L * it * 86_400L) } ?: java.time.Instant.EPOCH)
+        val (games, humanSeats) = aiVsHumanGames(days?.let { now.minusSeconds(2L * it * 86_400L) })
+        return AiVsHumanAggregator.aggregate(
+            games, humanSeats, days, bucket, now, engineAiHistory.timeline, filter,
+            setName = { MtgSetCatalog.byCode(it)?.displayName },
+        ).copy(notCounted = aiVsHumanNotCounted(days?.let { now.minusSeconds(it * 86_400L) }))
+    }
+
+    /** AI-vs-human games since [since] that [aiVsHumanGames] leaves out: no person's result counts. */
+    private fun aiVsHumanNotCounted(since: java.time.Instant?): Long = jdbc.queryForObject(
+        """
+        SELECT count(*) FROM (
+            SELECT mr.id
+            FROM match_results mr
+            JOIN match_participants mp ON mp.match_id = mr.id
+            WHERE mr.ended_at >= ?
+            GROUP BY mr.id
+            HAVING bool_or(mp.is_ai) AND bool_or(NOT mp.is_ai)
+               AND NOT (bool_or(mp.is_ai AND mp.counts_in_stats) AND bool_or(NOT mp.is_ai AND mp.counts_in_stats))
+        ) excluded
+        """.trimIndent(),
+        Long::class.java,
+        java.sql.Timestamp.from(since ?: java.time.Instant.EPOCH),
+    ) ?: 0
+
+    /**
+     * One human's games against the AI over the last [days] days (null = all time), under [filter]'s
+     * mode/format/set slice — the drawer behind a row of the report's humans table. [playerKey] is an
+     * [AiHumanRecord.key]: `user:<uuid>` or `guest:<name>`.
+     */
+    fun aiVsHumanPlayerGames(playerKey: String, days: Int?, filter: AiVsHumanFilter = AiVsHumanFilter.NONE): AiHumanGames {
+        val now = java.time.Instant.now()
+        val (games, humanSeats) = aiVsHumanGames(days?.let { now.minusSeconds(it * 86_400L) })
+        return AiVsHumanAggregator.humanGames(games, humanSeats, playerKey, days, now, filter)
+    }
+
+    /**
+     * Every AI-vs-human game that ended at or after [since] (null = all of them), with its human seats.
+     * Only seats whose result counts ([StatsEligibility]) take part, so a game the person never played —
+     * a no-show, an instant concession — is left out rather than scored as an AI win, and a multiplayer
+     * game the person left early doesn't turn into the AI beating itself.
+     */
+    private fun aiVsHumanGames(since: java.time.Instant?): Pair<List<AiMatchGame>, List<AiMatchHumanSeat>> {
+        val sinceTs = java.sql.Timestamp.from(since ?: java.time.Instant.EPOCH)
         val games = jdbc.query(
             """
             SELECT mr.id, mr.ended_at, mr.game_mode, mr.format, gr.engine_version,
+                   mr.lobby_id, mr.tournament_name, t.set_codes AS lobby_set_codes,
+                   CASE WHEN gr.game_id IS NOT NULL THEN mr.game_id END AS replay_game_id,
+                   string_agg(COALESCE(mp.colors, '-'), ',' ORDER BY mp.id) FILTER (WHERE mp.is_ai) AS ai_colors,
                    bool_or(mp.won AND mp.is_ai) AS ai_won,
                    bool_or(mp.won AND NOT mp.is_ai) AS human_won
             FROM match_results mr
-            JOIN match_participants mp ON mp.match_id = mr.id
+            JOIN match_participants mp ON mp.match_id = mr.id AND mp.counts_in_stats
             LEFT JOIN game_replays gr ON gr.game_id = mr.game_id
+            LEFT JOIN LATERAL (
+                SELECT set_codes FROM tournaments WHERE lobby_id = mr.lobby_id ORDER BY id DESC LIMIT 1
+            ) t ON true
             WHERE mr.ended_at >= ?
-            GROUP BY mr.id, mr.ended_at, mr.game_mode, mr.format, gr.engine_version
+            GROUP BY mr.id, mr.ended_at, mr.game_mode, mr.format, gr.engine_version, gr.game_id, mr.game_id,
+                     mr.lobby_id, mr.tournament_name, t.set_codes
             HAVING bool_or(mp.is_ai) AND bool_or(NOT mp.is_ai)
             ORDER BY mr.ended_at
             """.trimIndent(),
@@ -1019,19 +1344,27 @@ class StatsQueryService(
                         humanWon && !aiWon -> AiMatchOutcome.HUMAN
                         else -> AiMatchOutcome.DRAW
                     },
+                    setCodes = if (rs.getString("lobby_id") == null) {
+                        emptyList()
+                    } else {
+                        lobbySetCodes(rs.getString("lobby_set_codes"), rs.getString("tournament_name"))
+                    },
+                    // '-' stands in for an AI seat with no recorded colours; real identities are WUBRG letters.
+                    aiColors = rs.getString("ai_colors")?.split(',')?.map { it.takeUnless { c -> c == "-" } }.orEmpty(),
+                    replayGameId = rs.getString("replay_game_id"),
                 )
             },
-            since,
+            sinceTs,
         )
         val humanSeats = jdbc.query(
             """
-            SELECT mp.match_id, mp.user_id, mp.player_name, u.display_name, mp.won
+            SELECT mp.match_id, mp.user_id, mp.player_name, u.display_name, mp.won, mp.colors
             FROM match_participants mp
             JOIN match_results mr ON mr.id = mp.match_id
             LEFT JOIN users u ON u.id = mp.user_id
-            WHERE mp.is_ai = false AND mr.ended_at >= ?
-              AND EXISTS (SELECT 1 FROM match_participants a WHERE a.match_id = mp.match_id AND a.is_ai)
-            ORDER BY mr.ended_at
+            WHERE mp.is_ai = false AND mp.counts_in_stats AND mr.ended_at >= ?
+              AND EXISTS (SELECT 1 FROM match_participants a WHERE a.match_id = mp.match_id AND a.is_ai AND a.counts_in_stats)
+            ORDER BY mr.ended_at, mp.id
             """.trimIndent(),
             { rs, _ ->
                 val userId = rs.getObject("user_id")?.toString()
@@ -1042,11 +1375,30 @@ class StatsQueryService(
                     displayName = rs.getString("display_name") ?: name,
                     isGuest = userId == null,
                     won = rs.getBoolean("won"),
+                    colors = rs.getString("colors"),
                 )
             },
-            since,
+            sinceTs,
         )
-        return AiVsHumanAggregator.aggregate(games, humanSeats, days, bucket, now, engineAiHistory.timeline)
+        return games to humanSeats
+    }
+
+    /** Set codes by display name, to read the names a lobby game's `tournament_name` carries. */
+    private val setCodeByName: Map<String, String> by lazy {
+        MtgSetCatalog.all.associate { it.displayName.lowercase() to it.code }
+    }
+
+    /**
+     * A lobby game's set codes: the tournament's recorded codes, else the set names in
+     * `tournament_name` (`"<Set> / <Set> <Format>"`) mapped back to codes. A name that matches no set
+     * (a cube) yields nothing rather than a guess.
+     */
+    private fun lobbySetCodes(recorded: String?, tournamentName: String?): List<String> {
+        val codes = recorded?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+        if (codes.isNotEmpty()) return codes.distinct()
+        val names = tournamentName?.substringBeforeLast(' ', missingDelimiterValue = "")?.takeIf { it.isNotBlank() }
+            ?: return emptyList()
+        return names.split(" / ").mapNotNull { setCodeByName[it.trim().lowercase()] }.distinct()
     }
 
     /**
@@ -1056,14 +1408,20 @@ class StatsQueryService(
      * `mergeModeBuckets` prettifier rather than a flat, opaque `TOURNAMENT`. `~` never occurs in the enum
      * names being concatenated.
      */
-    fun modeDistribution(): List<StatBucket> = jdbc.query(
-        """
-        SELECT COALESCE(game_mode, 'UNKNOWN') || '~' || COALESCE(format, '') AS label, count(*) AS n
-        FROM match_results
-        GROUP BY COALESCE(game_mode, 'UNKNOWN') || '~' || COALESCE(format, '')
-        ORDER BY n DESC
-        """.trimIndent(),
-    ) { rs, _ -> StatBucket(rs.getString("label"), rs.getLong("n")) }
+    fun modeDistribution(filter: GameFilter = GameFilter.ALL_TIME): List<StatBucket> {
+        val f = filter.matchSql("r")
+        return jdbc.query(
+            """
+            SELECT COALESCE(r.game_mode, 'UNKNOWN') || '~' || COALESCE(r.format, '') AS label, count(*) AS n
+            FROM match_results r
+            WHERE ${f.clause}
+            GROUP BY COALESCE(r.game_mode, 'UNKNOWN') || '~' || COALESCE(r.format, '')
+            ORDER BY n DESC
+            """.trimIndent(),
+            { rs, _ -> StatBucket(rs.getString("label"), rs.getLong("n")) },
+            *f.args.toTypedArray(),
+        )
+    }
 
     /**
      * Which card sets appear most across recorded tournaments, most-played first. Each set is counted
@@ -1083,15 +1441,21 @@ class StatsQueryService(
         """.trimIndent(),
     ) { rs, _ -> StatBucket(rs.getString("label"), rs.getLong("n")) }
 
-    fun colorDistribution(): List<StatBucket> = jdbc.query(
-        """
-        SELECT COALESCE(colors, '') AS label, count(*) AS n
-        FROM match_participants
-        WHERE is_ai = false
-        GROUP BY COALESCE(colors, '')
-        ORDER BY n DESC
-        """.trimIndent(),
-    ) { rs, _ -> StatBucket(rs.getString("label"), rs.getLong("n")) }
+    /** Colours the people played (AI seats left out), in counted games under [filter]. */
+    fun colorDistribution(filter: GameFilter = GameFilter.ALL_TIME): List<StatBucket> {
+        val f = filter.seatSql("p")
+        return jdbc.query(
+            """
+            SELECT COALESCE(p.colors, '') AS label, count(*) AS n
+            FROM match_participants p
+            WHERE p.is_ai = false AND ${f.clause}
+            GROUP BY COALESCE(p.colors, '')
+            ORDER BY n DESC
+            """.trimIndent(),
+            { rs, _ -> StatBucket(rs.getString("label"), rs.getLong("n")) },
+            *f.args.toTypedArray(),
+        )
+    }
 
     /** Distinct connecting IPs and their game counts (admin-only; for geolocation). */
     fun ipBreakdown(): List<IpCount> = jdbc.query(
@@ -1108,30 +1472,41 @@ class StatsQueryService(
      * Most-played cards across every recorded deck. Basic lands are excluded — every deck runs a pile
      * of them, so they'd otherwise crowd out the cards that actually characterize the metagame (same
      * reasoning as [topCardsForUser]). Filtering is done after the group-by, so [limit] applies to the
-     * non-basic results.
+     * non-basic results. Only the people's decks, in counted games under [filter]: the AI's decks are
+     * built for it, so they say nothing about what players pick.
      */
-    fun topCards(limit: Int): List<CardStat> = jdbc.query(
-        """
-        SELECT card_name, sum(copies) AS copies, count(*) AS decks
-        FROM match_participant_cards
-        GROUP BY card_name
-        ORDER BY copies DESC, decks DESC
-        """.trimIndent(),
-        { rs, _ -> CardStat(rs.getString("card_name"), rs.getLong("copies"), rs.getLong("decks")) },
-    ).filterNot { lookupCard(it.cardName)?.typeLine?.isBasicLand == true }.take(limit)
+    fun topCards(limit: Int, filter: GameFilter = GameFilter.ALL_TIME): List<CardStat> {
+        val f = filter.seatSql("p")
+        return jdbc.query(
+            """
+            SELECT c.card_name AS card_name, sum(c.copies) AS copies, count(*) AS decks
+            FROM match_participant_cards c
+            JOIN match_participants p ON p.id = c.participant_id
+            WHERE p.is_ai = false AND ${f.clause}
+            GROUP BY c.card_name
+            ORDER BY copies DESC, decks DESC
+            """.trimIndent(),
+            { rs, _ -> CardStat(rs.getString("card_name"), rs.getLong("copies"), rs.getLong("decks")) },
+            *f.args.toTypedArray(),
+        ).filterNot { lookupCard(it.cardName)?.typeLine?.isBasicLand == true }.take(limit)
+    }
 
     /**
      * Win rate per card: of the decks containing the card, how many won. Restricted to cards seen in
      * at least [minDecks] decks so a single lucky game can't top the chart. Basic lands are excluded
      * (see [topCards]) — they appear in nearly every deck and say nothing about a card's win impact.
+     * Like [topCards], only the people's decks in counted games under [filter].
      */
-    fun cardWinRates(minDecks: Int, limit: Int): List<CardWinRate> = jdbc.query(
+    fun cardWinRates(minDecks: Int, limit: Int, filter: GameFilter = GameFilter.ALL_TIME): List<CardWinRate> {
+        val f = filter.seatSql("p")
+        return jdbc.query(
         """
         SELECT c.card_name AS card_name,
                count(*) AS decks,
                count(*) FILTER (WHERE p.won) AS wins
         FROM match_participant_cards c
         JOIN match_participants p ON p.id = c.participant_id
+        WHERE p.is_ai = false AND ${f.clause}
         GROUP BY c.card_name
         HAVING count(*) >= ?
         ORDER BY (count(*) FILTER (WHERE p.won))::float / count(*) DESC, decks DESC
@@ -1141,8 +1516,9 @@ class StatsQueryService(
             val wins = rs.getLong("wins")
             CardWinRate(rs.getString("card_name"), decks, wins, if (decks > 0) wins.toDouble() / decks else 0.0)
         },
-        minDecks,
+        *f.args.toTypedArray(), minDecks,
     ).filterNot { lookupCard(it.cardName)?.typeLine?.isBasicLand == true }.take(limit)
+    }
 
     /** Recorded tournaments, newest first — including in-progress and abandoned ones. */
     fun recentTournaments(limit: Int): List<TournamentSummary> = jdbc.query(
@@ -1188,11 +1564,17 @@ class StatsQueryService(
             val format: String?,
             val lobbyId: String?,
             val hasReplay: Boolean,
+            val hasDecks: Boolean,
         )
         val rows = jdbc.query(
             """
             SELECT r.id AS mid, r.game_id AS game_id, r.ended_at AS ended_at, r.game_mode AS game_mode,
-                   r.format AS format, r.lobby_id AS lobby_id, (gr.id IS NOT NULL) AS has_replay
+                   r.format AS format, r.lobby_id AS lobby_id, (gr.id IS NOT NULL) AS has_replay,
+                   EXISTS (
+                       SELECT 1 FROM match_participants p
+                       JOIN match_participant_cards c ON c.participant_id = p.id
+                       WHERE p.match_id = r.id
+                   ) AS has_decks
             FROM match_results r
             LEFT JOIN game_replays gr ON gr.game_id = r.game_id
             ORDER BY r.ended_at DESC
@@ -1207,6 +1589,7 @@ class StatsQueryService(
                     format = rs.getString("format"),
                     lobbyId = rs.getString("lobby_id"),
                     hasReplay = rs.getBoolean("has_replay"),
+                    hasDecks = rs.getBoolean("has_decks"),
                 )
             },
             limit, offset,
@@ -1217,6 +1600,7 @@ class StatsQueryService(
         return rows.map { row ->
             val players = playersByMid[row.mid].orEmpty()
             AdminRecentGame(
+                matchId = row.mid,
                 gameId = row.gameId,
                 endedAt = row.endedAt,
                 gameMode = row.gameMode,
@@ -1224,6 +1608,7 @@ class StatsQueryService(
                 players = players,
                 winnerName = players.firstOrNull { it.won }?.name,
                 hasReplay = row.hasReplay,
+                hasDecks = row.hasDecks,
                 tournamentName = row.lobbyId?.let { tournamentNames[it] },
             )
         }
@@ -1243,12 +1628,16 @@ class StatsQueryService(
             val userId: UUID?,
             val isAi: Boolean,
             val won: Boolean,
+            val colors: String?,
             val ip: String?,
+            val noAction: Boolean,
+            val counted: Boolean,
         )
         val seats = jdbc.query(
             """
             SELECT p.match_id AS mid, COALESCE(u.display_name, p.player_name) AS name,
-                   p.user_id AS uid, p.is_ai AS is_ai, p.won AS won, p.client_ip AS client_ip
+                   p.user_id AS uid, p.is_ai AS is_ai, p.won AS won, p.colors AS colors, p.client_ip AS client_ip,
+                   p.took_action AS took_action, p.counts_in_stats AS counts_in_stats
             FROM match_participants p
             LEFT JOIN users u ON u.id = p.user_id
             WHERE p.match_id IN ($placeholders)
@@ -1261,7 +1650,10 @@ class StatsQueryService(
                     userId = rs.getObject("uid", UUID::class.java),
                     isAi = rs.getBoolean("is_ai"),
                     won = rs.getBoolean("won"),
+                    colors = rs.getString("colors"),
                     ip = rs.getString("client_ip")?.takeIf { it.isNotBlank() },
+                    noAction = rs.getObject("took_action") == false,
+                    counted = rs.getBoolean("counts_in_stats"),
                 )
             },
             *matchIds.toTypedArray(),
@@ -1275,6 +1667,9 @@ class StatsQueryService(
                     userId = seat.userId,
                     isAi = seat.isAi,
                     won = seat.won,
+                    colors = seat.colors,
+                    noAction = seat.noAction,
+                    counted = seat.counted,
                     location = seat.ip?.let { locations[it] },
                 ),
             )

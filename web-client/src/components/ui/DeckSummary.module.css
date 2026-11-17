@@ -15,6 +15,7 @@
 }
 
 .statusOk { color: #6cc04a; font-weight: 600; }
+.statusPoints { font-weight: 600; }
 .statusBad { color: #ff8888; font-weight: 600; }
 .statusEmpty { color: var(--text-muted); }
 

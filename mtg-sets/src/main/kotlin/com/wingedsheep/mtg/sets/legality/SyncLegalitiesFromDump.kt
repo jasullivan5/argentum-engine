@@ -13,8 +13,8 @@ import java.nio.file.Paths
 
 /**
  * Offline sync against a Scryfall bulk-data dump (the "All Cards" or "Default Cards" JSON).
- * Walks every printing in the dump, unions the per-format `legal` flags across same-named
- * printings, and writes the result to per-letter files in `mtg-sets/src/main/resources/`.
+ * Walks every printing in the dump, unions the per-format `legal` flags (and `restricted`, written
+ * as `<FORMAT>_RESTRICTED`) across same-named printings, and writes the result to per-letter files in `mtg-sets/src/main/resources/`.
  *
  * Run: `./gradlew :mtg-sets:syncLegalityFromDump --args="/path/to/all-cards-YYYYMMDDhhmmss.json"`.
  *
@@ -76,7 +76,13 @@ fun main(args: Array<String>) {
                 if (name.isBlank()) continue
                 val bucket = legalByName.getOrPut(name) { sortedSetOf() }
                 for ((formatKey, status) in card.legalities) {
-                    if (status == "legal") bucket += formatKey.uppercase()
+                    when (status) {
+                        "legal" -> bucket += formatKey.uppercase()
+                        // Vintage's restricted list: legal as a single copy. Kept apart from
+                        // "legal" because Vintage itself caps these at one, and the Highlander
+                        // formats read Vintage's pool as legal-or-restricted.
+                        "restricted" -> bucket += formatKey.uppercase() + LegalityData.RESTRICTED_SUFFIX
+                    }
                 }
             }
         }

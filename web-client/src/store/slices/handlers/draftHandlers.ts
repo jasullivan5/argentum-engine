@@ -36,6 +36,7 @@ export function createDraftHandlers(set: SetState, _get: GetState): Pick<Message
           commander: null,
           secondCommander: null,
           poolPlay: false,
+          maxCopiesPerCard: null,
         },
       })
     },
@@ -72,6 +73,7 @@ export function createDraftHandlers(set: SetState, _get: GetState): Pick<Message
             commander: state.deckBuildingState?.commander ?? null,
             secondCommander: state.deckBuildingState?.secondCommander ?? null,
             poolPlay: msg.poolPlay ?? false,
+            maxCopiesPerCard: msg.maxCopiesPerCard ?? null,
           },
         }
       })
@@ -183,6 +185,7 @@ export function createDraftHandlers(set: SetState, _get: GetState): Pick<Message
           commander: null,
           secondCommander: null,
           poolPlay: false,
+          maxCopiesPerCard: null,
         },
       }))
     },

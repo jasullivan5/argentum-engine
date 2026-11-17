@@ -3952,7 +3952,8 @@
                         {
                             "type": "CopyTargetSpell",
                             "target": "TriggeringEntity",
-                            "removeLegendary": true
+                            "removeLegendary": true,
+                            "mayChooseNewTargets": false
                         },
                         {
                             "type": "AddCounters",
@@ -6014,7 +6015,8 @@
                     }
                 },
                 {
-                    "type": "GraveyardCardsHaveMayhem",
+                    "type": "GraveyardCardsHaveCastKeyword",
+                    "keyword": "Mayhem",
                     "filter": "nonland"
                 }
             ]
@@ -6247,7 +6249,10 @@
                     "type": "Gated",
                     "gate": {
                         "type": "Gate.WhenCondition",
-                        "condition": "TriggeringEntityEnteredOrWasCastFromGraveyard"
+                        "condition": {
+                            "type": "TriggeringEntityEnteredOrWasCastFrom",
+                            "zone": "Graveyard"
+                        }
                     },
                     "then": {
                         "type": "LoseLife",
@@ -10074,10 +10079,7 @@
         "staticAbilities": [
             {
                 "type": "TransformPermanent",
-                "setCardTypes": [
-                    "CREATURE"
-                ],
-                "setSubtypes": [
+                "setCreatureSubtypes": [
                     "Citizen"
                 ]
             },
@@ -12229,7 +12231,8 @@
                     "effect": {
                         "type": "CopyTargetSpell",
                         "target": "TriggeringEntity",
-                        "removeLegendary": true
+                        "removeLegendary": true,
+                        "mayChooseNewTargets": false
                     },
                     "trigger": {
                         "event": {

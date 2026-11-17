@@ -12,8 +12,12 @@ import com.wingedsheep.engine.state.components.identity.*
 fun ComponentContainer.withCopyIdentity(identity: CardComponent, registry: CardRegistry): ComponentContainer {
     val upright = identity.withRestoredFlipSide(registry)
     val flipped = has<FlippedComponent>()
+    // An exchanged text box (layer 3) sits on top of whatever face and copiable values layer 1
+    // leaves; the identity it sits on is what the permanent reverts to.
+    val exchange = get<TextBoxExchangeComponent>()
     val active = (if (flipped) upright.flipSide ?: upright else upright)
         .copy(ownerId = upright.ownerId, isDoubleFaced = upright.isDoubleFaced)
+        .let { if (exchange == null) it else it.withRulesTextOf(exchange.textOf) }
     val statics = StaticAbilityHandler(registry)
     val previous = get<CardComponent>()
     val previousDefinition = previous?.let { registry.getCard(it.cardDefinitionId) }
@@ -29,6 +33,7 @@ fun ComponentContainer.withCopyIdentity(identity: CardComponent, registry: CardR
         .without<ToxicComponent>()
         .without<NumericKeywordValuesComponent>()
     if (flipped) result = result.with(FlippedComponent(upright))
+    if (exchange != null) result = result.with(exchange.copy(ownCard = identity))
     val definition = registry.getCard(active.cardDefinitionId)
     if (definition != null) {
         result = CardEntityFactory.applyDefinitionDecorations(result, definition)

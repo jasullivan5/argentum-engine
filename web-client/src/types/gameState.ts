@@ -489,6 +489,9 @@ export interface ClientCard {
   /** Chosen card type for "choose a card type" permanents (e.g., Arachne, Psionic Weaver) */
   readonly chosenCardType?: string | null
 
+  /** Number chosen as the permanent entered (Shapeshifter; Haktos the Unscarred's random 2, 3, or 4) */
+  readonly chosenNumber?: number | null
+
   /** Triggering entity ID for triggered abilities on the stack (for source arrows) */
   readonly triggeringEntityId?: EntityId | null
 
@@ -657,8 +660,13 @@ export interface ClientCard {
    * for Mulldrifter. Same job as `impending`: the action menu offers the evoke cast next to the
    * normal cast in both directions, graying out whichever the player can't pay for, so a card you
    * can only afford to evoke never casts itself the moment you drag it out.
+   * `additionalCostDescription` is the non-mana half ("Exile a green card from your hand",
+   * Endurance), with `cost` "" when that half is the whole evoke cost.
    */
-  readonly evoke?: string | null
+  readonly evoke?: {
+    readonly cost: string
+    readonly additionalCostDescription?: string | null
+  } | null
 
   /** Printed bestow price; enabled options come exclusively from server legal actions. */
   readonly bestow?: {

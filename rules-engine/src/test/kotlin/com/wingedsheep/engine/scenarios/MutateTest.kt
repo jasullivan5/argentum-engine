@@ -21,6 +21,7 @@ import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.dsl.Costs
+import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
@@ -28,6 +29,8 @@ import com.wingedsheep.sdk.model.Deck
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.scripting.values.EntityNumericProperty
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
@@ -81,8 +84,32 @@ class MutateTest : FunSpec({
         spell { effect = Effects.CreateToken(power = 3, toughness = 3, creatureTypes = setOf("Beast")) }
     }
 
+    val timesMutated = DynamicAmounts.propertyOf(EffectTarget.Self, EntityNumericProperty.TimesMutated)
+    val counter = card("Mutate Test Counter") {
+        manaCost = "{3}{G}"
+        typeLine = "Creature — Beast"
+        power = 2
+        toughness = 2
+        keywordAbility(KeywordAbility.mutate("{G}"))
+        triggeredAbility {
+            trigger = Triggers.self.mutates()
+            effect = Effects.GainLife(timesMutated)
+        }
+        activatedAbility {
+            cost = Costs.Tap
+            effect = Effects.GainLife(timesMutated)
+        }
+    }
+
+    val vanilla = card("Mutate Test Vanilla") {
+        manaCost = "{G}"
+        typeLine = "Creature — Beast"
+        power = 1
+        toughness = 1
+    }
+
     fun driver(): GameTestDriver = GameTestDriver().also {
-        it.registerCards(TestCards.all + listOf(mutator, tapper, human, removal, beastToken))
+        it.registerCards(TestCards.all + listOf(mutator, tapper, human, removal, beastToken, counter, vanilla))
         it.initMirrorMatch(deck = Deck.of("Forest" to 40))
         it.passPriorityUntil(Step.PRECOMBAT_MAIN)
     }
@@ -283,5 +310,67 @@ class MutateTest : FunSpec({
         event.mutatingCardId shouldBe beast
         event.onTop shouldBe true
         game.state.getEntity(host)!!.get<CardComponent>()!!.cardDefinitionId shouldNotBe mutator.name
+    }
+
+    test("the number of times a permanent has mutated counts every merge, over or under, including the one that triggered") {
+        val game = driver()
+        val player = game.activePlayer!!
+        val host = game.putCreatureOnBattlefield(player, vanilla.name)
+        game.removeSummoningSickness(host)
+        game.giveMana(player, Color.GREEN, 2)
+
+        game.mutate(game.putCardInHand(player, counter.name), host)
+        game.resolveAll(over = false)
+        // First merge: the mutate trigger already sees 1.
+        game.getLifeTotal(player) shouldBe 21
+
+        game.mutate(game.putCardInHand(player, counter.name), host)
+        game.resolveAll(over = true)
+        // Second merge: two copies of the trigger now, each reading 2.
+        game.getLifeTotal(player) shouldBe 25
+
+        // Outside a trigger the count is still read off the permanent.
+        val tap = game.legalActions(player).map { it.action }
+            .filterIsInstance<com.wingedsheep.engine.core.ActivateAbility>()
+            .first { it.sourceId == host }
+        game.submit(tap).error shouldBe null
+        game.resolveAll()
+        game.getLifeTotal(player) shouldBe 27
+    }
+
+    test("a creature that never mutated has mutated zero times") {
+        val game = driver()
+        val player = game.activePlayer!!
+        val plain = game.putCreatureOnBattlefield(player, counter.name)
+        game.removeSummoningSickness(plain)
+        val tap = game.legalActions(player).map { it.action }
+            .filterIsInstance<com.wingedsheep.engine.core.ActivateAbility>()
+            .first { it.sourceId == plain }
+        game.submit(tap).error shouldBe null
+        game.resolveAll()
+        game.getLifeTotal(player) shouldBe 20
+    }
+
+    test("a mutated source that leaves before its ability resolves is read as it last existed") {
+        val game = driver()
+        val player = game.activePlayer!!
+        val host = game.putCreatureOnBattlefield(player, vanilla.name)
+        game.removeSummoningSickness(host)
+        game.giveMana(player, Color.GREEN, 2)
+        game.mutate(game.putCardInHand(player, counter.name), host)
+        game.resolveAll(over = true)
+        game.mutate(game.putCardInHand(player, counter.name), host)
+        game.resolveAll(over = true)
+        game.getLifeTotal(player) shouldBe 25
+
+        val tap = game.legalActions(player).map { it.action }
+            .filterIsInstance<com.wingedsheep.engine.core.ActivateAbility>()
+            .first { it.sourceId == host }
+        game.submit(tap).error shouldBe null
+        // Destroy the merged permanent in response: the ability still counts its two mutations.
+        game.castSpell(player, game.putCardInHand(player, removal.name), listOf(host)).outcome shouldBe Outcome.Done
+        game.resolveAll()
+        game.state.getEntity(host)!!.has<MergedComponent>() shouldBe false
+        game.getLifeTotal(player) shouldBe 27
     }
 })

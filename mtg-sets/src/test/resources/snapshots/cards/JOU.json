@@ -1,3 +1,124 @@
+// Athreos, God of Passage
+{
+    "name": "Athreos, God of Passage",
+    "manaCost": "{1}{W}{B}",
+    "typeLine": "Legendary Enchantment Creature — God",
+    "oracleText": "Indestructible\nAs long as your devotion to white and black is less than seven, Athreos isn't a creature.\nWhenever another creature you own dies, return it to your hand unless target opponent pays 3 life.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 4
+    },
+    "keywords": [
+        "INDESTRUCTIBLE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Athreos, God of Passage:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature own:you",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "PayOrSuffer",
+                    "cost": {
+                        "type": "PayAtom",
+                        "atom": {
+                            "type": "AtomPayLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 3
+                            }
+                        }
+                    },
+                    "suffer": {
+                        "type": "MoveToZone",
+                        "target": "TriggeringEntity",
+                        "destination": "Hand",
+                        "fromZone": "Graveyard"
+                    },
+                    "player": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetOpponent",
+                    "id": "t0"
+                },
+                "descriptionOverride": "Whenever another creature you own dies, return it to your hand unless target opponent pays 3 life."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "RemoveCardType",
+                    "cardType": "CREATURE"
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "DevotionTo",
+                        "colors": [
+                            "WHITE",
+                            "BLACK"
+                        ]
+                    },
+                    "operator": "LT",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 7
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "146",
+        "rarity": "MYTHIC",
+        "artist": "Ryan Barger",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/2/52705c53-883e-4b6a-9c08-3fa35f6f17d5.jpg?1783939406",
+        "rulings": [
+            {
+                "date": "2014-04-26",
+                "text": "Athreos's last ability will trigger if a token creature you own dies. The target opponent has the option to pay 3 life, although the token can't return to your hand."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "It doesn't matter who controlled the creature when it died. Athreos's last ability will trigger if you owned that creature."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "The target opponent chooses whether to pay 3 life when Athreos's last ability resolves. You won't return the card to your hand if that player pays 3 life or if the card leaves the graveyard before the ability resolves."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "If there are no legal targets for Athreos's last ability (perhaps because each of your opponents has hexproof), it will be removed from the stack with no effect. No one may pay 3 life and you won't return the creature card to your hand."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "Your devotion to two colors is the number of mana symbols among mana costs of permanents you control that are the first color, the second, or both. If an effect counts your devotion to two colors, a hybrid symbol that is both of those colors is counted just once."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "If a God stops being a creature, it loses the type creature and the creature type God. It continues to be a legendary enchantment."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "The type-changing ability that can make a God not be a creature functions only on the battlefield. It's always a creature card in other zones, regardless of your devotion to its color. It's always a creature spell while it's on the stack."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLACK"
+    ]
+}
+
 // Banishing Light
 {
     "name": "Banishing Light",
@@ -66,6 +187,64 @@
     ]
 }
 
+// Dictate of Erebos
+{
+    "name": "Dictate of Erebos",
+    "manaCost": "{3}{B}{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "Flash\nWhenever a creature you control dies, each opponent sacrifices a creature of their choice.",
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Dictate of Erebos:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ForceSacrifice",
+                    "filter": "creature",
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "EachOpponent"
+                    }
+                },
+                "descriptionOverride": "Whenever a creature you control dies, each opponent sacrifices a creature of their choice."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "65",
+        "rarity": "RARE",
+        "artist": "Michael C. Hayes",
+        "flavorText": "\"I take no pleasure in your suffering, but it is necessary. Once you accept your fate you'll find eternity more tolerable.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/f/9f06db70-95f9-41eb-8e5f-8bc56fd34c09.jpg?1783939437",
+        "rulings": [
+            {
+                "date": "2014-04-26",
+                "text": "When the triggered ability resolves, first the player whose turn it is (if that player is an opponent) chooses which creature they will sacrifice, then each other opponent in turn order does the same, then all chosen creatures are sacrificed at the same time."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "None of the opponents are targeted. An opponent with hexproof would still sacrifice a creature."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "If multiple creatures you control die at the same time, Dictate of Erebos's triggered ability will trigger that many times."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Dictate of Kruphix
 {
     "name": "Dictate of Kruphix",
@@ -108,6 +287,69 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Doomwake Giant
+{
+    "name": "Doomwake Giant",
+    "manaCost": "{4}{B}",
+    "typeLine": "Enchantment Creature — Giant",
+    "oracleText": "Constellation — Whenever this creature or another enchantment you control enters, creatures your opponents control get -1/-1 until end of turn.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 6
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Doomwake Giant:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "enchantment ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature ctrl:opponent"
+                        }
+                    },
+                    "body": {
+                        "type": "ModifyStats",
+                        "powerModifier": {
+                            "type": "Fixed",
+                            "amount": -1
+                        },
+                        "toughnessModifier": {
+                            "type": "Fixed",
+                            "amount": -1
+                        },
+                        "target": "IterationEntity"
+                    }
+                },
+                "descriptionOverride": "Constellation — Whenever this creature or another enchantment you control enters, creatures your opponents control get -1/-1 until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "66",
+        "rarity": "RARE",
+        "artist": "Kev Walker",
+        "flavorText": "Crippling fear precedes it. A foul stench accompanies it. Death follows in its wake.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/2/b20eabfb-f086-45dd-97e2-b2ed5286bc3c.jpg?1783939437",
+        "rulings": [
+            {
+                "date": "2014-04-26",
+                "text": "A constellation ability triggers whenever an enchantment enters the battlefield under your control for any reason. Enchantments with other card types, such as enchantment creatures, will also cause constellation abilities to trigger."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -221,6 +463,53 @@
     ]
 }
 
+// Extinguish All Hope
+{
+    "name": "Extinguish All Hope",
+    "manaCost": "{4}{B}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy all nonenchantment creatures.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "BattlefieldMatching",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsCreature",
+                                "IsNonenchantment"
+                            ]
+                        }
+                    },
+                    "storeAs": "destroyAll_gathered"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "destroyAll_gathered",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    },
+                    "moveType": "Destroy"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "68",
+        "rarity": "RARE",
+        "artist": "Chase Stone",
+        "flavorText": "Phenax offers the hope of life, while Pharika grants the solace of death. Between them stands Erebos, who promises nothing but eternity.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/8/6895024f-a04b-46cf-b020-df4487d0c758.jpg?1783939436"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Flurry of Horns
 {
     "name": "Flurry of Horns",
@@ -255,6 +544,141 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Godsend
+{
+    "name": "Godsend",
+    "manaCost": "{1}{W}{W}",
+    "typeLine": "Legendary Artifact — Equipment",
+    "oracleText": "Equipped creature gets +3/+3.\nWhenever equipped creature blocks or becomes blocked by one or more creatures, you may exile one of those creatures.\nYour opponents can't cast spells with the same name as a card exiled with Godsend.\nEquip {3}",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Godsend:1",
+                "trigger": {
+                    "type": "BlocksOrBecomesBlockedByEvent",
+                    "oncePerCombat": true
+                },
+                "binding": "ATTACHED",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "FilterCollection",
+                            "from": "trigger.captured",
+                            "filter": {
+                                "cardPredicates": [
+                                    "IsCreature"
+                                ],
+                                "statePredicates": [
+                                    "IsOnBattlefield"
+                                ]
+                            },
+                            "storeMatching": "matching0"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "matching0",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "selected1",
+                            "prompt": "You may exile one of those creatures",
+                            "useTargetingUI": true
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "selected1",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Exile"
+                            },
+                            "linkToSource": true
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever equipped creature blocks or becomes blocked by one or more creatures, you may exile one of those creatures."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Godsend:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{3}"
+                    }
+                },
+                "effect": {
+                    "type": "AttachEquipment",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "creature you control"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        },
+                        "id": "creature you control"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "isEquipAbility": true
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 3,
+                "toughnessBonus": 3
+            },
+            {
+                "type": "PlayersCantCastSpells",
+                "spellFilter": {
+                    "cardPredicates": [
+                        "SharesNameWithLinkedExile"
+                    ]
+                }
+            }
+        ]
+    },
+    "equipCost": "{3}",
+    "metadata": {
+        "collectorNumber": "12",
+        "rarity": "MYTHIC",
+        "artist": "Daniel Ljunggren",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/d/2dcf3975-7f81-4bdd-810d-476f46444b7a.jpg?1783939460",
+        "rulings": [
+            {
+                "date": "2014-04-26",
+                "text": "Godsend's triggered ability will trigger only once no matter how many creatures the equipped creature blocks or becomes blocked by."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "Godsend's triggered ability doesn't target any creature. You could exile a creature with protection from white, for example. You choose which creature to exile when the ability resolves."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "If Godsend leaves the battlefield, and later another Godsend enters the battlefield, it is a new object (even if the two were represented by the same card). The new Godsend won't stop opponents from casting cards with the same name as cards exiled with the first one."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "If Godsend exiles a land card (perhaps because it was turned into a creature and then blocked or was blocked by the equipped creature), opponents can still play land cards with the same name as the exiled card. Godsend stops only the casting of spells."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }
 
@@ -398,6 +822,289 @@
     ]
 }
 
+// Iroas, God of Victory
+{
+    "name": "Iroas, God of Victory",
+    "manaCost": "{2}{R}{W}",
+    "typeLine": "Legendary Enchantment Creature — God",
+    "oracleText": "Indestructible\nAs long as your devotion to red and white is less than seven, Iroas isn't a creature.\nCreatures you control have menace. (They can't be blocked except by two or more creatures.)\nPrevent all damage that would be dealt to attacking creatures you control.",
+    "creatureStats": {
+        "power": 7,
+        "toughness": 4
+    },
+    "keywords": [
+        "INDESTRUCTIBLE"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "RemoveCardType",
+                    "cardType": "CREATURE"
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "DevotionTo",
+                        "colors": [
+                            "RED",
+                            "WHITE"
+                        ]
+                    },
+                    "operator": "LT",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 7
+                    }
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "MENACE",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                }
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "PreventDamage",
+                "appliesTo": {
+                    "type": "DamageEvent",
+                    "recipient": {
+                        "type": "RecipientObject",
+                        "filter": "creature attacking ctrl:you"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "150",
+        "rarity": "MYTHIC",
+        "artist": "Slawomir Maniak",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/a/cacf28cb-feea-4afb-b22e-1b8d50ee66c1.jpg?1783939404",
+        "rulings": [
+            {
+                "date": "2014-04-26",
+                "text": "Iroas's last ability prevents all damage dealt to attacking creatures you control, not just combat damage."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "Your devotion to two colors is the number of mana symbols among mana costs of permanents you control that are the first color, the second, or both. If an effect counts your devotion to two colors, a hybrid symbol that is both of those colors is counted just once."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "If a God stops being a creature, it loses the type creature and the creature type God. It continues to be a legendary enchantment."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "The type-changing ability that can make a God not be a creature functions only on the battlefield. It's always a creature card in other zones, regardless of your devotion to its color. It's always a creature spell while it's on the stack."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "If a God is attacking or blocking and it stops being a creature, it will be removed from combat. It won't rejoin combat if it resumes being a creature later during that combat."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "WHITE"
+    ]
+}
+
+// Keranos, God of Storms
+{
+    "name": "Keranos, God of Storms",
+    "manaCost": "{3}{U}{R}",
+    "typeLine": "Legendary Enchantment Creature — God",
+    "oracleText": "Indestructible\nAs long as your devotion to blue and red is less than seven, Keranos isn't a creature.\nReveal the first card you draw on each of your turns. Whenever you reveal a land card this way, draw a card. Whenever you reveal a nonland card this way, Keranos deals 3 damage to any target.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 5
+    },
+    "keywords": [
+        "INDESTRUCTIBLE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Keranos, God of Storms:1",
+                "trigger": {
+                    "type": "CardRevealedFromDrawEvent",
+                    "cardFilter": "land"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            },
+            {
+                "id": "Keranos, God of Storms:2",
+                "trigger": {
+                    "type": "CardRevealedFromDrawEvent",
+                    "cardFilter": "nonland"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 3
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "AnyTarget",
+                    "id": "t0"
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "RemoveCardType",
+                    "cardType": "CREATURE"
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "DevotionTo",
+                        "colors": [
+                            "BLUE",
+                            "RED"
+                        ]
+                    },
+                    "operator": "LT",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 7
+                    }
+                }
+            },
+            {
+                "type": "RevealFirstDrawEachTurn",
+                "yourTurnsOnly": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "151",
+        "rarity": "MYTHIC",
+        "artist": "Daarken",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/b/ab70c262-37a9-4dcd-80bb-d4422368eade.jpg?1783939404",
+        "rulings": [
+            {
+                "date": "2014-04-26",
+                "text": "If you reveal a land card this way, Keranos's triggered ability will cause you to draw another card."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "Your devotion to two colors is the number of mana symbols among mana costs of permanents you control that are the first color, the second, or both. If an effect counts your devotion to two colors, a hybrid symbol that is both of those colors is counted just once."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "If a God stops being a creature, it loses the type creature and the creature type God. It continues to be a legendary enchantment."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "The abilities of Gods function as long as they're on the battlefield, regardless of whether they're creatures."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "RED"
+    ]
+}
+
+// Kruphix, God of Horizons
+{
+    "name": "Kruphix, God of Horizons",
+    "manaCost": "{3}{G}{U}",
+    "typeLine": "Legendary Enchantment Creature — God",
+    "oracleText": "Indestructible\nAs long as your devotion to green and blue is less than seven, Kruphix isn't a creature.\nYou have no maximum hand size.\nIf you would lose unspent mana, that mana becomes colorless instead.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 7
+    },
+    "keywords": [
+        "INDESTRUCTIBLE"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "RemoveCardType",
+                    "cardType": "CREATURE"
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "DevotionTo",
+                        "colors": [
+                            "GREEN",
+                            "BLUE"
+                        ]
+                    },
+                    "operator": "LT",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 7
+                    }
+                }
+            },
+            "NoMaximumHandSize",
+            {
+                "type": "ConvertEmptyingMana",
+                "color": null
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "152",
+        "rarity": "MYTHIC",
+        "artist": "Daarken",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/7/27427233-da58-45af-ade8-e0727929efaa.jpg?1783939404",
+        "rulings": [
+            {
+                "date": "2014-04-26",
+                "text": "If unspent mana has any restrictions or riders associated with it (for example, if it was produced by Cavern of Souls), those restrictions or riders will remain associated with that mana when it becomes colorless."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "As long as Kruphix is on the battlefield, you'll keep unspent mana as steps and phases end (although it will become colorless). This means you can add mana and spend it during a future step, phase, or turn. Once Kruphix leaves the battlefield, you have until the end of the current step or phase to use the mana before it disappears."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "Your devotion to two colors is the number of mana symbols among mana costs of permanents you control that are the first color, the second, or both. If an effect counts your devotion to two colors, a hybrid symbol that is both of those colors is counted just once."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "If a God stops being a creature, it loses the type creature and the creature type God. It continues to be a legendary enchantment."
+            },
+            {
+                "date": "2020-01-24",
+                "text": "The abilities of Gods function as long as they're on the battlefield, regardless of whether they're creatures."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "BLUE"
+    ]
+}
+
 // Lightning Diadem
 {
     "name": "Lightning Diadem",
@@ -497,6 +1204,193 @@
     "colorIdentityOverride": []
 }
 
+// Master of the Feast
+{
+    "name": "Master of the Feast",
+    "manaCost": "{1}{B}{B}",
+    "typeLine": "Enchantment Creature — Demon",
+    "oracleText": "Flying\nAt the beginning of your upkeep, each opponent draws a card.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Master of the Feast:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "EachOpponent"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "75",
+        "rarity": "RARE",
+        "artist": "Chris Rahn",
+        "flavorText": "Any pleasure, when taken to excess, becomes torment. It's a formula that demons have perfected.",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/5/d528f7a3-0a7b-42e3-8e4f-f1eeab02e23a.jpg?1783939433"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Nyx Weaver
+{
+    "name": "Nyx Weaver",
+    "manaCost": "{1}{B}{G}",
+    "typeLine": "Enchantment Creature — Spider",
+    "oracleText": "Reach\nAt the beginning of your upkeep, mill two cards. (Put the top two cards of your library into your graveyard.)\n{1}{B}{G}, Exile this creature: Return target card from your graveyard to your hand.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "keywords": [
+        "REACH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Nyx Weaver:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 2
+                                },
+                                "isMill": true
+                            },
+                            "storeAs": "milled"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "milled",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard"
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Nyx Weaver:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}{B}{G}"
+                            }
+                        },
+                        "CostExileSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Hand"
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "own:you",
+                            "zone": "Graveyard"
+                        },
+                        "id": "t0"
+                    }
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "153",
+        "rarity": "UNCOMMON",
+        "artist": "Jack Wang",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/e/0e8553cc-8f61-4022-97c9-e31183b65059.jpg?1783939403"
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "GREEN"
+    ]
+}
+
+// Nyx-Fleece Ram
+{
+    "name": "Nyx-Fleece Ram",
+    "manaCost": "{1}{W}",
+    "typeLine": "Enchantment Creature — Sheep",
+    "oracleText": "At the beginning of your upkeep, you gain 1 life.",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 5
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Nyx-Fleece Ram:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "18",
+        "rarity": "UNCOMMON",
+        "artist": "Terese Nielsen",
+        "flavorText": "The gods are fascinated by innocence, perhaps because it's a quality they themselves lack.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/8/98d13a98-e715-49a8-a59e-a2adfcdec70b.jpg?1783939456"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Oreskos Swiftclaw
 {
     "name": "Oreskos Swiftclaw",
@@ -534,6 +1428,30 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Pharika's Chosen
+{
+    "name": "Pharika's Chosen",
+    "manaCost": "{B}",
+    "typeLine": "Creature — Snake",
+    "oracleText": "Deathtouch (Any amount of damage this deals to a creature is enough to destroy it.)",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "DEATHTOUCH"
+    ],
+    "metadata": {
+        "collectorNumber": "78",
+        "artist": "Jonas De Ro",
+        "flavorText": "The serpents' dens built into statues of Pharika serve not only to consecrate her temples, but as a hidden line of defense.",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/1/8119ce0c-d709-463c-9abc-f7025673ea72.jpg?1783939434"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -615,6 +1533,62 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// Satyr Hoplite
+{
+    "name": "Satyr Hoplite",
+    "manaCost": "{R}",
+    "typeLine": "Creature — Satyr Soldier",
+    "oracleText": "Heroic — Whenever you cast a spell that targets this creature, put a +1/+1 counter on this creature.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Satyr Hoplite:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "requires": [
+                        "SpellTargetsSource"
+                    ]
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                },
+                "descriptionOverride": "Heroic — Whenever you cast a spell that targets this creature, put a +1/+1 counter on this creature."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "110",
+        "artist": "Mark Zug",
+        "flavorText": "\"Xenagos has become what he once despised: a tyrant and an oppressor.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/8/b8754d66-facb-432e-a6c2-91430a6dec94.jpg?1783939420",
+        "rulings": [
+            {
+                "date": "2014-04-26",
+                "text": "Heroic abilities will resolve before the spell that caused them to trigger."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "Heroic abilities will trigger only once per spell, even if that spell targets the creature with the heroic ability multiple times."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "Heroic abilities won't trigger when a copy of a spell is created on the stack or when a spell's targets are changed to include a creature with a heroic ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 
@@ -765,6 +1739,171 @@
     "colorIdentityOverride": [
         "BLACK",
         "GREEN"
+    ]
+}
+
+// Tethmos High Priest
+{
+    "name": "Tethmos High Priest",
+    "manaCost": "{2}{W}",
+    "typeLine": "Creature — Cat Cleric",
+    "oracleText": "Heroic — Whenever you cast a spell that targets this creature, return target creature card with mana value 2 or less from your graveyard to the battlefield.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Tethmos High Priest:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "requires": [
+                        "SpellTargetsSource"
+                    ]
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Battlefield"
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature mv<=2 own:you",
+                        "zone": "Graveyard"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "Heroic — Whenever you cast a spell that targets this creature, return target creature card with mana value 2 or less from your graveyard to the battlefield."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "29",
+        "rarity": "UNCOMMON",
+        "artist": "Mark Zug",
+        "flavorText": "\"Death is tyranny. Like all tyranny, it must be opposed.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/9/d901b9d7-6af9-40ce-afb7-d3c9f9143c18.jpg?1783939452",
+        "rulings": [
+            {
+                "date": "2018-12-07",
+                "text": "If a card in a player's graveyard has {X} in its mana cost, X is considered to be 0."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "Heroic abilities will resolve before the spell that caused them to trigger."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "Heroic abilities will trigger only once per spell, even if that spell targets the creature with the heroic ability multiple times."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "Heroic abilities won't trigger when a copy of a spell is created on the stack or when a spell's targets are changed to include a creature with a heroic ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Tormented Thoughts
+{
+    "name": "Tormented Thoughts",
+    "manaCost": "{2}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "As an additional cost to cast this spell, sacrifice a creature.\nTarget player discards a number of cards equal to the sacrificed creature's power.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "FromZone",
+                        "zone": "Hand",
+                        "player": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        }
+                    },
+                    "storeAs": "hand"
+                },
+                {
+                    "type": "SelectFromCollection",
+                    "from": "hand",
+                    "selection": {
+                        "type": "ChooseExactly",
+                        "count": {
+                            "type": "EntityProperty",
+                            "entity": "SacrificedAsCost",
+                            "numericProperty": "Power"
+                        }
+                    },
+                    "chooser": "TargetPlayer",
+                    "storeSelected": "discarded",
+                    "prompt": "Choose cards to discard"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "discarded",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard",
+                        "player": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        }
+                    },
+                    "moveType": "Discard"
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetPlayer",
+                "id": "t0"
+            }
+        ],
+        "additionalCosts": [
+            {
+                "type": "AdditionalAtom",
+                "atom": {
+                    "type": "AtomSacrifice",
+                    "filter": "creature"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "86",
+        "rarity": "UNCOMMON",
+        "artist": "Allen Williams",
+        "flavorText": "\"Not all nightmares can be escaped by waking.\"\n—Ashiok, Nightmare Weaver",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/3/130655e0-af82-4d91-acc2-270eaa33e3d1.jpg?1783939428",
+        "rulings": [
+            {
+                "date": "2014-04-26",
+                "text": "The targeted player will discard a number of cards equal to the power of the sacrificed creature as it last existed on the battlefield."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "You must sacrifice exactly one creature to cast this spell; you cannot cast it without sacrificing a creature, and you cannot sacrifice additional creatures."
+            },
+            {
+                "date": "2014-04-26",
+                "text": "Players can only respond once this spell has been cast and all its costs have been paid. No one can try to destroy the creature you sacrificed to prevent you from casting this spell."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 

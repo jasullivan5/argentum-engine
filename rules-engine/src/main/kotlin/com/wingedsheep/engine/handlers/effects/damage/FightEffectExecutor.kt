@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.handlers.effects.damage
 
+import com.wingedsheep.engine.core.CreatureFoughtEvent
 import com.wingedsheep.engine.core.DamageDealtEvent
 import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.core.GameEvent
@@ -35,11 +36,7 @@ class FightEffectExecutor(private val zones: ZoneTransitionService) : EffectExec
         // neither fights or deals damage. "It fights" (Mind Meanderer) names the source, which may
         // have left — or left and come back as a new object — before its trigger resolves.
         val projected = state.projectedState
-        val battlefield = state.getBattlefield()
-        val canFight = listOf(effect.target1 to target1Id, effect.target2 to target2Id).all { (ref, id) ->
-            id in battlefield && projected.isCreature(id) && !context.isUnavailableBattlefieldSource(ref, state)
-        }
-        if (!canFight) {
+        if (!bothStillCreatures(state, context, effect.target1 to target1Id, effect.target2 to target2Id)) {
             return EffectResult.success(state)
                 .copy(updatedStoredNumbers = effect.excessDamageVariable?.let { mapOf(it to 0) } ?: emptyMap())
         }
@@ -48,52 +45,43 @@ class FightEffectExecutor(private val zones: ZoneTransitionService) : EffectExec
         val power1 = projected.getPower(target1Id) ?: 0
         val power2 = projected.getPower(target2Id) ?: 0
 
-        // A fight is one instruction — each creature deals damage equal to its power to the other
-        // (CR 701.14a) — so an optional redirection shield is asked about both halves before either
-        // is dealt (Blood of the Martyr).
-        val (readyState, pause) = OptionalDamageRedirect.beforeDealing(
-            state,
-            listOf(
-                OptionalDamageRedirect.Instance(target1Id, target2Id, power1),
-                OptionalDamageRedirect.Instance(target2Id, target1Id, power2)
-            ),
-            effect,
-            context
-        )
-        if (pause != null) return pause
+        // The fight happens (CR 701.14a), whatever damage it ends up dealing: each fighter fights —
+        // once, when a creature fights itself (CR 701.14c). Emitted up front so a fight whose damage
+        // pauses for a replacement choice still reports it.
+        val foughtEvents = listOf(target1Id to target2Id, target2Id to target1Id)
+            .distinctBy { it.first }
+            .mapNotNull { (fighter, opponent) ->
+                projected.getController(fighter)?.let { CreatureFoughtEvent(fighter, opponent, it) }
+            }
 
-        // Creature 1 deals damage equal to its power to creature 2
-        var currentState = readyState
-        val allEvents = mutableListOf<GameEvent>()
+        val dealt = DamageReplacementChain.deal(zones, state, listOf(
+            DamageReplacementChain.Instance(target1Id, target2Id, power1),
+            DamageReplacementChain.Instance(target2Id, target1Id, power2)
+        ), effect, context)
+        val result = dealt.copy(events = foughtEvents + dealt.events)
+        if (result.outcome is com.wingedsheep.engine.core.Outcome.Paused) return result
+        val excess = result.events.filterIsInstance<DamageDealtEvent>()
+            .filter { it.sourceId == target1Id && it.targetId == target2Id }.sumOf { it.excessAmount }
+        return result.copy(updatedStoredNumbers = effect.excessDamageVariable?.let { mapOf(it to excess) } ?: emptyMap())
+    }
 
-        // Excess damage (CR 120.4a) that target1 deals to target2 — the "creature an opponent
-        // controls" half of the fight. Captured from the actual DamageDealtEvent (deathtouch- and
-        // marked-damage-aware) so a following effect can read it as a pipeline number (The Last
-        // Agni Kai). Stays 0 when target1 has no power or deals only lethal/sub-lethal damage.
-        var excessToTarget2 = 0
-
-        if (power1 > 0) {
-            val result1 = dealDamageToTarget(zones, currentState, target2Id, power1, target1Id)
-            currentState = result1.newState
-            allEvents.addAll(result1.events)
-            excessToTarget2 = result1.events
-                .filterIsInstance<DamageDealtEvent>()
-                .filter { it.targetId == target2Id }
-                .sumOf { it.excessAmount }
+    companion object {
+        /**
+         * Whether both creatures that would deal damage to each other are still creatures on the
+         * battlefield — a fight (CR 701.14b) and a fight-shaped exchange ([MutualDamageEffectExecutor])
+         * deal no damage at all otherwise. A `Self` reference that left (or left and came back as a new
+         * object) before the ability resolves counts as gone.
+         */
+        internal fun bothStillCreatures(
+            state: GameState,
+            context: EffectContext,
+            vararg creatures: Pair<com.wingedsheep.sdk.scripting.targets.EffectTarget, com.wingedsheep.sdk.model.EntityId>
+        ): Boolean {
+            val projected = state.projectedState
+            val battlefield = state.getBattlefield()
+            return creatures.all { (ref, id) ->
+                id in battlefield && projected.isCreature(id) && !context.isUnavailableBattlefieldSource(ref, state)
+            }
         }
-
-        // Creature 2 deals damage equal to its power to creature 1
-        if (power2 > 0) {
-            val result2 = dealDamageToTarget(zones, currentState, target1Id, power2, target2Id)
-            currentState = result2.newState
-            allEvents.addAll(result2.events)
-        }
-
-        val storedNumbers = effect.excessDamageVariable
-            ?.let { mapOf(it to excessToTarget2) }
-            ?: emptyMap()
-
-        return EffectResult.success(currentState, allEvents)
-            .copy(updatedStoredNumbers = storedNumbers)
     }
 }

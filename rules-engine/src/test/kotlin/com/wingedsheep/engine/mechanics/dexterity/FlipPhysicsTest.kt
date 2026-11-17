@@ -15,7 +15,7 @@ import io.kotest.matchers.shouldNotBe
 
 /**
  * Engine coverage for the dexterity flip's physics ([FlipPhysics]): what counts as touching, and how
- * the player's release shapes where the card lands and whether it turns over. Chaos Orb's own text
+ * the player's flick shapes where the card lands and whether it turns over. Chaos Orb's own text
  * is the rule here — the Comprehensive Rules say nothing about dexterity.
  */
 class FlipPhysicsTest : FunSpec({
@@ -73,37 +73,51 @@ class FlipPhysicsTest : FunSpec({
         }
     }
 
-    context("the release") {
+    context("the flick") {
         val t = table()
+        val ideal = FlipPhysics.IDEAL_SPIN
+        fun flick(x: Double, y: Double, spin: Double = ideal, seed: Long = 1L) =
+            FlipPhysics.flickToward(t, x, y).let { (vx, vy) -> FlipPhysics.land(t, vx, vy, spin, GameRng.seeded(seed)).first }
 
-        test("a release in the clean zone is as steady as a hand gets; straying outside it is sloppier") {
-            FlipPhysics.releaseQuality(0.74) shouldBe 1.0
-            FlipPhysics.releaseQuality(FlipPhysics.CLEAN_FROM) shouldBe 1.0
-            FlipPhysics.releaseQuality(0.0) shouldBe 0.0
-            FlipPhysics.scatter(t, 350.0, 200.0, 0.95) shouldBeGreaterThan FlipPhysics.scatter(t, 350.0, 200.0, 0.74)
+        test("the flick's speed is how far it carries, its direction the line it flies") {
+            val (vx, vy) = FlipPhysics.flickToward(t, 350.0, 200.0)
+            FlipPhysics.carry(t, vx, vy).let { (x, y) ->
+                x shouldBe (350.0 plusOrMinus 1e-9)
+                y shouldBe (200.0 plusOrMinus 1e-9)
+            }
+            // Half as hard carries half as far along the same line.
+            FlipPhysics.carry(t, vx / 2, vy / 2).second shouldBe ((t.handY + 200.0) / 2 plusOrMinus 1e-9)
+        }
+
+        test("a spin in the clean band flies true; straying outside it is wilder") {
+            FlipPhysics.spinQuality(ideal) shouldBe 1.0
+            FlipPhysics.spinQuality(FlipPhysics.CLEAN_SPIN_FROM) shouldBe 1.0
+            FlipPhysics.spinQuality(0.0) shouldBeLessThan 0.1
+            FlipPhysics.spinQuality(FlipPhysics.MAX_SPIN) shouldBe 0.0
+            FlipPhysics.scatter(470.0, 8.0) shouldBeGreaterThan FlipPhysics.scatter(470.0, ideal)
         }
 
         test("throwing further scatters more") {
-            FlipPhysics.scatter(t, 350.0, 100.0, 0.74) shouldBeGreaterThan FlipPhysics.scatter(t, 350.0, 500.0, 0.74)
+            FlipPhysics.scatter(570.0, ideal) shouldBeGreaterThan FlipPhysics.scatter(170.0, ideal)
         }
 
-        test("the same throw from the same game state lands in the same place") {
+        test("the same flick from the same game state lands in the same place") {
             val rng = GameRng.seeded(42)
-            FlipPhysics.land(t, 350.0, 200.0, 0.74, rng).first shouldBe FlipPhysics.land(t, 350.0, 200.0, 0.74, rng).first
-            FlipPhysics.land(t, 350.0, 200.0, 0.74, rng).second shouldNotBe rng
+            FlipPhysics.land(t, 0.0, -1500.0, ideal, rng).first shouldBe FlipPhysics.land(t, 0.0, -1500.0, ideal, rng).first
+            FlipPhysics.land(t, 0.0, -1500.0, ideal, rng).second shouldNotBe rng
         }
 
-        test("a clean release always turns over; a limp one rarely does") {
+        test("a clean spin always turns over; too little spin almost never does") {
             val seeds = 0L until 400L
-            val cleanTurned = seeds.count { FlipPhysics.land(t, 350.0, 200.0, 0.74, GameRng.seeded(it)).first.turnedOver }
-            val limpTurned = seeds.count { FlipPhysics.land(t, 350.0, 200.0, 0.0, GameRng.seeded(it)).first.turnedOver }
-            cleanTurned shouldBe 400
-            limpTurned intShouldBeLessThan 40
+            seeds.count { flick(350.0, 200.0, seed = it).turnedOver } shouldBe 400
+            seeds.count { flick(350.0, 200.0, spin = FlipPhysics.CLEAN_SPIN_FROM, seed = it).turnedOver } shouldBe 400
+            seeds.count { flick(350.0, 200.0, spin = 1.0, seed = it).turnedOver } intShouldBeLessThan 5
+            FlipPhysics.TOO_LITTLE_SPIN shouldBeLessThan FlipPhysics.CLEAN_SPIN_FROM
         }
 
-        test("a clean release lands where it was aimed: the aim, not luck, decides what it hits") {
+        test("a clean flick lands where it was flicked: the hand, not luck, decides what it hits") {
             val misses = (0L until 400L).map {
-                val landing = FlipPhysics.land(t, 350.0, 200.0, 0.74, GameRng.seeded(it)).first
+                val landing = flick(350.0, 200.0, seed = it)
                 kotlin.math.hypot(landing.x - 350.0, landing.y - 200.0)
             }
             misses.average() shouldBeLessThan 15.0
@@ -111,53 +125,30 @@ class FlipPhysicsTest : FunSpec({
             misses.count { it > 30.0 } intShouldBeLessThan 16
         }
 
-        test("letting go early falls short towards the thrower; late sails long") {
-            // The hand is at y = 670, straight below the aim: short means a larger y.
-            fun meanY(strength: Double) = (0L until 200L).map {
-                FlipPhysics.land(t, 350.0, 200.0, strength, GameRng.seeded(it)).first.y
-            }.average()
-            meanY(0.60) shouldBeGreaterThan 200.0 + 90.0
-            meanY(0.90) shouldBeLessThan 200.0 - 90.0
-            FlipPhysics.drift(FlipPhysics.SWEET_SPOT) shouldBe 0.0
-            FlipPhysics.land(t, 350.0, 200.0, 0.60, GameRng.seeded(1)).first.drift shouldBeLessThan 0.0
+        test("spun too hard, it skids on along its line and comes down wild") {
+            FlipPhysics.skid(ideal) shouldBe 0.0
+            val landing = flick(350.0, 200.0, spin = 8.0)
+            landing.skid shouldBeGreaterThan 80.0
+            // The hand is straight below the aim, so skidding on carries it further up the table.
+            val meanY = (0L until 200L).map { flick(350.0, 200.0, spin = 8.0, seed = it).y }.average()
+            meanY shouldBeLessThan 200.0 - 60.0
         }
 
-        test("the carry runs along the line from the hand, whichever way the throw goes") {
-            // Aimed up and to the right: a late release carries further up and further right.
-            val (x, y) = FlipPhysics.carry(t, 650.0, 370.0, 0.90)
-            x shouldBeGreaterThan 650.0
-            y shouldBeLessThan 370.0
-            (x - 650.0) shouldBe ((370.0 - y) plusOrMinus 1e-9)
-        }
-
-        test("the hand's sway pulls it to the thrower's left or right of the line, never along it") {
-            // Hand straight below the aim: the thrower's right is +x.
-            val (rx, ry) = FlipPhysics.carry(t, 350.0, 200.0, FlipPhysics.SWEET_SPOT, sway = 1.0)
-            rx shouldBe (350.0 + FlipPhysics.SIDE_PER_SWAY plusOrMinus 1e-9)
-            ry shouldBe (200.0 plusOrMinus 1e-9)
-            FlipPhysics.carry(t, 350.0, 200.0, FlipPhysics.SWEET_SPOT, sway = -0.5).first shouldBe
-                (350.0 - FlipPhysics.SIDE_PER_SWAY / 2 plusOrMinus 1e-9)
-            // Out-of-range sway is clamped to the edge of the swing.
-            FlipPhysics.pull(7.0) shouldBe FlipPhysics.SIDE_PER_SWAY
-            val landing = FlipPhysics.land(t, 350.0, 200.0, FlipPhysics.SWEET_SPOT, GameRng.seeded(3), sway = -1.0).first
-            landing.pull shouldBe -FlipPhysics.SIDE_PER_SWAY
-            landing.x shouldBeLessThan 350.0 - 60.0
-        }
-
-        test("a clean release lands nearly square, so the aim ghost shows what it covers; a sloppy one skews") {
-            fun skew(strength: Double) = (0L until 200L).map {
-                val r = FlipPhysics.land(t, 350.0, 200.0, strength, GameRng.seeded(it)).first.rotation
+        test("a clean spin lands nearly square, a wild one skews") {
+            fun skew(spin: Double) = (0L until 200L).map {
+                val r = flick(350.0, 200.0, spin = spin, seed = it).rotation
                 kotlin.math.abs(((r + 180.0) % 360.0) - 180.0)
             }.average()
-            skew(0.74) shouldBeLessThan 12.0
-            skew(0.30) shouldBeGreaterThan skew(0.74) * 2
+            skew(ideal) shouldBeLessThan 12.0
+            skew(9.0) shouldBeGreaterThan skew(ideal) * 2
         }
 
-        test("aim is clamped near the table, so no throw can reach an absurd point") {
-            val landing = FlipPhysics.land(t, 1e9, -1e9, 0.74, GameRng.seeded(7)).first
-            landing.x shouldBeLessThan 700.0 + 600.0
-            landing.y shouldBeGreaterThan -600.0
-            landing.halfTurns intShouldBeGreaterThan 1
+        test("absurd numbers are clamped, so no flick can reach an absurd point") {
+            val landing = FlipPhysics.land(t, 1e12, -1e12, 1e9, GameRng.seeded(7)).first
+            kotlin.math.hypot(landing.x - t.handX, landing.y - t.handY) shouldBeLessThan
+                FlipPhysics.MAX_SPEED * FlipPhysics.FLIGHT_TIME + 600.0
+            landing.spin shouldBe FlipPhysics.MAX_SPIN
+            FlipPhysics.land(t, Double.NaN, 0.0, Double.NaN, GameRng.seeded(7)).first.speed shouldBe 0.0
         }
     }
 })

@@ -18,6 +18,15 @@
   --z-priority: 1500;
   --z-combat: 2000;
   --z-targeting: 2500;
+  /* In-game animations (card draws, floating life changes, reveals, coin flips; +1/+2 within the
+   * layer). Above every board widget and decision overlay, below the game's result. */
+  --z-animation: 2600;
+  /* The game's result (the player's Victory/Defeat card, the spectator's game-over banner). Above
+   * the animations, so the last hit's numbers never paint over who won. */
+  --z-game-result: 2700;
+  /* Connection / server-restart notices: they must read on the game-over screen too (a restart
+   * while the player clicks Rematch). */
+  --z-system-notice: 2800;
   --z-tooltip: 10000;
 
   /* =========================================================================

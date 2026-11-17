@@ -5,6 +5,7 @@ import com.wingedsheep.sdk.scripting.predicates.CardPredicate
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.scripting.text.TextReplacer
+import com.wingedsheep.sdk.core.Zone
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -80,16 +81,27 @@ data object TriggeringEntityWasHistoric : Condition {
 /**
  * Condition: "if you cast it" referring to the *triggering* entity (not the ability's source).
  * True when the entering permanent that triggered the ability was cast — i.e. it carries a
- * cast-origin marker (cast from hand or graveyard) — and false when it was put onto the
- * battlefield by another effect (token, reanimation, "put onto the battlefield"). This is the
- * sibling of [com.wingedsheep.sdk.scripting.conditions.WasCast] for "whenever a creature you
- * control enters, if you cast it" triggers, where the source is a separate permanent and the
- * cast subject is the entering creature (e.g. The Sibsig Ceremony).
+ * cast-origin marker — and false when it was put onto the battlefield by another effect (token,
+ * reanimation, "put onto the battlefield"). This is the sibling of
+ * [com.wingedsheep.sdk.scripting.conditions.WasCast] for "whenever a creature you control enters,
+ * if you cast it" triggers, where the source is a separate permanent and the cast subject is the
+ * entering creature (e.g. The Sibsig Ceremony).
+ *
+ * [zone] narrows it to a cast from one zone — `Zone.HAND` reads "if you cast it from your hand",
+ * the triggering-entity sibling of [com.wingedsheep.sdk.scripting.conditions.WasCastFromHand].
+ * Negated, that is Chainer, Nightmare Adept's "if you didn't cast it from your hand", which holds
+ * for a creature cast from another zone *and* for one that wasn't cast at all. Null (the default)
+ * accepts a cast from any zone. The engine records a cast origin for hand, graveyard, library and
+ * exile; any other zone never matches.
  */
 @SerialName("TriggeringEntityWasCast")
 @Serializable
-data object TriggeringEntityWasCast : Condition {
-    override val description: String = "if you cast it"
+data class TriggeringEntityWasCast(val zone: Zone? = null) : Condition {
+    override val description: String = when (zone) {
+        null -> "if you cast it"
+        Zone.HAND -> "if you cast it from your hand"
+        else -> "if you cast it from ${zone.displayName}"
+    }
 }
 
 /**
@@ -121,15 +133,28 @@ data class TriggeringSpellManaSpentAtLeast(val amount: Int) : Condition {
 }
 
 /**
- * Condition: "if it entered or was cast from a graveyard".
- * True when the triggering entity has either EnteredFromGraveyardComponent (reanimated
- * directly from graveyard → battlefield) or CastFromGraveyardComponent (spell was cast
- * from graveyard). Used by Twilight Diviner.
+ * Condition: "if it entered from [zone] or was cast from [zone]" about the triggering entity.
+ * True when the triggering permanent was put onto the battlefield directly from [zone] (a
+ * reanimation, a blink, a library search — the engine's entered-from marker) or resolved from a
+ * spell cast from [zone] (its cast-origin marker). [zone] is any of [PROVENANCE_ZONES].
+ *
+ * The single-entity twin of [AnyEnteredOrWasCastFrom], which reads the same markers over a
+ * batch-enters capture.
+ * - **Twilight Diviner**, **Archfiend's Vessel** — `Zone.GRAVEYARD`.
+ * - **Fblthp, the Lost** — `Zone.LIBRARY` ("if it entered from your library or was cast from your
+ *   library", with the "your" carried by a separate owned-by-you check).
  */
-@SerialName("TriggeringEntityEnteredOrWasCastFromGraveyard")
+@SerialName("TriggeringEntityEnteredOrWasCastFrom")
 @Serializable
-data object TriggeringEntityEnteredOrWasCastFromGraveyard : Condition {
-    override val description: String = "if it entered or was cast from a graveyard"
+data class TriggeringEntityEnteredOrWasCastFrom(val zone: Zone) : Condition {
+    init {
+        require(zone in PROVENANCE_ZONES) {
+            "TriggeringEntityEnteredOrWasCastFrom tracks ${PROVENANCE_ZONES.joinToString()} provenance, not $zone"
+        }
+    }
+
+    override val description: String =
+        "if it entered or was cast from ${provenanceZoneText(zone)}"
 }
 
 /**
@@ -305,7 +330,8 @@ data class TargetIsSource(
  * Reads post-damage state, so chain it AFTER a [com.wingedsheep.sdk.scripting.effects.DealDamageEffect]
  * with `DealDamage(N, t) then Effects.If(IfTargetTookExcessDamage(0), ...)`.
  *
- * What this actually checks is `marked > toughness` on the target at evaluation time,
+ * What this actually checks is `marked > lethal threshold` (toughness, or power under a
+ * lethal-damage-by-power rule) on the target at evaluation time,
  * regardless of which preceding step in the chain dealt the damage. CompositeEffect
  * resolves sub-effects sequentially without an interleaved SBA pass or mid-chain trigger
  * processing, so for the canonical "deal N to a target, then check" pipeline this is

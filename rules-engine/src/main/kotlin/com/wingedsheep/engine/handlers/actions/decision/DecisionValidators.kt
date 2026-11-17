@@ -71,7 +71,7 @@ object DecisionValidators {
                 if (response is com.wingedsheep.engine.core.PlayCardResponse) null else "Play the instructed card"
             is ChooseTargetsDecision -> validateTargets(decision, response, state)
             is SelectCardsDecision -> validateSelectCards(decision, response, state)
-            is YesNoDecision -> validateYesNo(response)
+            is YesNoDecision -> validateYesNo(decision, response)
             is ChooseModeDecision -> validateModes(decision, response)
             is ChooseColorDecision -> validateColor(decision, response)
             is ChooseNumberDecision -> validateNumber(decision, response)
@@ -234,16 +234,14 @@ object DecisionValidators {
                     return "Targets for requirement $reqIndex must be from a single graveyard"
                 }
             }
-            // "... with total mana value N or less" — the summed mana value of the chosen card or
-            // permanent targets may not exceed the resolved cap (Fire Lord Sozin's "total mana value X or
-            // less"; the cap was baked to a concrete int at decision-build time). CR 601.2c.
-            val manaCap = req.totalManaValueAtMost
-            if (manaCap != null && state != null) {
-                val totalManaValue = selectedIds.sumOf { id ->
-                    com.wingedsheep.engine.mechanics.ManaValues.of(state, id)
-                }
-                if (totalManaValue > manaCap) {
-                    return "Targets for requirement $reqIndex exceed total mana value $manaCap"
+            // "... with total mana value / power N or less" — the summed value of the chosen targets
+            // may not exceed the cap; cap and per-candidate values were baked at decision-build time
+            // (`withTotalCap`). CR 601.2c.
+            val totalCap = req.totalCap
+            if (totalCap != null) {
+                val total = selectedIds.sumOf { id -> req.targetValues?.get(id) ?: 0 }
+                if (total > totalCap) {
+                    return "Targets for requirement $reqIndex exceed total ${req.totalCapLabel} $totalCap"
                 }
             }
             // "... with different names" — no two chosen targets may share a name (Behold the
@@ -296,6 +294,13 @@ object DecisionValidators {
                 return "Invalid selection: $cardId is not a valid option"
             }
         }
+        // An ordinary selection names each card once; only an allocation (selectionLimits) may
+        // repeat one.
+        if (decision.selectionLimits == null &&
+            response.selectedCards.distinct().size != response.selectedCards.size
+        ) {
+            return "Invalid selection: a card may be selected only once"
+        }
         if (decision.selectionLimits != null) {
             for ((cardId, count) in response.selectedCards.groupingBy { it }.eachCount()) {
                 if (count > (decision.selectionLimits[cardId] ?: 0)) {
@@ -345,9 +350,12 @@ object DecisionValidators {
         return null
     }
 
-    private fun validateYesNo(response: DecisionResponse): String? {
+    private fun validateYesNo(decision: YesNoDecision, response: DecisionResponse): String? {
         if (response !is YesNoResponse) {
             return "Expected yes/no response"
+        }
+        if (response.choice && !decision.yesAvailable) {
+            return "\"${decision.yesText}\" isn't possible here"
         }
         return null
     }
@@ -550,12 +558,10 @@ object DecisionValidators {
         return null
     }
 
-    /** A throw's numbers only need to be numbers; the engine clamps aim, strength and sway itself. */
+    /** A flick's numbers only need to be numbers; the engine clamps speed and spin itself. */
     private fun validateFlipThrow(response: DecisionResponse): String? {
         if (response !is FlipThrowResponse) return "Expected flip throw response"
-        if (!response.aimX.isFinite() || !response.aimY.isFinite() || !response.strength.isFinite() ||
-            !response.sway.isFinite()
-        ) {
+        if (!response.velocityX.isFinite() || !response.velocityY.isFinite() || !response.spin.isFinite()) {
             return "Flip throw values must be finite numbers"
         }
         return null

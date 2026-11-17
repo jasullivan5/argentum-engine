@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.mechanics.stack
 
+import com.wingedsheep.engine.event.withoutDepartedCaptures
 import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.core.*
 import com.wingedsheep.engine.handlers.EffectContext
@@ -9,6 +10,7 @@ import com.wingedsheep.engine.handlers.TargetingSourceType
 import com.wingedsheep.engine.handlers.effects.library.ChooseCreatureTypePipelineExecutor
 import com.wingedsheep.engine.state.ComponentContainer
 import com.wingedsheep.engine.state.beginResolutionControl
+import com.wingedsheep.engine.state.nameVisibleToAll
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.stack.*
@@ -48,6 +50,7 @@ internal class AbilityResolver(
             targets = resolvedTargets2,
             targetRequirements = targetReqs
         ).forAbilityResolution(state, abilityId)
+            .withoutDepartedCaptures(state, abilityComponent.triggerContext)
 
         // CR 608.2a, then CR 608.2b — in that lettered order. 608.2a: "If a triggered ability has
         // an intervening 'if' clause, it checks whether the clause's condition is true. If it
@@ -74,7 +77,7 @@ internal class AbilityResolver(
 
         // CR 608.2b — validate targets (including protection check, CR 702.16)
         val sourceCard = state.getEntity(abilityComponent.sourceId)?.get<CardComponent>()
-        val sourceColors = sourceCard?.colors ?: emptySet()
+        val sourceColors = if (sourceCard == null) emptySet() else state.projectedState.colorSetOf(abilityComponent.sourceId)
         val sourceSubtypes = sourceCard?.typeLine?.subtypes?.map { it.value }?.toSet() ?: emptySet()
         if (targetsComponent != null && targetsComponent.targets.isNotEmpty()) {
             val validTargets = targetValidator.validateTargets(
@@ -111,11 +114,16 @@ internal class AbilityResolver(
         // Execute the effect
         return executeThenLeaveStack(
             state, abilityId, abilityComponent.effect, context,
+            // Masked as StackPlacement masks the matching AbilityTriggeredEvent: a face-down
+            // source's ward must not name the card underneath when it resolves either.
             abilityResolvedEvent = AbilityResolvedEvent(
                 abilityComponent.sourceId,
-                abilityComponent.description
+                nameVisibleToAll(state, abilityComponent.sourceId, abilityComponent.sourceName),
+                abilityComponent.controllerId,
+                abilityComponent.description,
+                abilityEntityId = abilityId
             ),
-            sagaChapterResolvedEvent = sagaChapterResolvedEvent(abilityComponent)
+            sagaChapterResolvedEvent = sagaChapterResolvedEvent(state, abilityComponent)
         )
     }
 
@@ -132,7 +140,7 @@ internal class AbilityResolver(
 
         // Validate targets (including protection check - Rule 702.16)
         val sourceCard = state.getEntity(abilityComponent.sourceId)?.get<CardComponent>()
-        val sourceColors = sourceCard?.colors ?: emptySet()
+        val sourceColors = if (sourceCard == null) emptySet() else state.projectedState.colorSetOf(abilityComponent.sourceId)
         val sourceSubtypes = sourceCard?.typeLine?.subtypes?.map { it.value }?.toSet() ?: emptySet()
         val activatedReqs = targetsComponent?.targetRequirements ?: emptyList()
         // Resolution-time legality (CR 608.2b): drop individually-illegal targets, not just the
@@ -178,7 +186,10 @@ internal class AbilityResolver(
             state, abilityId, abilityComponent.effect, context,
             abilityResolvedEvent = AbilityResolvedEvent(
                 abilityComponent.sourceId,
-                abilityComponent.sourceName
+                abilityComponent.sourceName,
+                abilityComponent.controllerId,
+                abilityComponent.descriptionOverride ?: "",
+                abilityEntityId = abilityId
             )
         )
     }
@@ -202,6 +213,7 @@ internal class AbilityResolver(
             modeTargetRequirementsOrdered = abilityComponent.modeTargetRequirementsOrdered,
             modeTargetRequirements = abilityComponent.modeTargetRequirements,
             sourceFaceChanges = abilityComponent.sourceFaceChanges,
+            sourceUntapCount = abilityComponent.sourceUntapCount,
             sourceBattlefieldTimestamp = abilityComponent.sourceBattlefieldTimestamp,
             objectReferences = abilityComponent.objectReferences,
             targets = activatedTargets,
@@ -320,16 +332,24 @@ internal class AbilityResolver(
 
     /**
      * A Saga chapter ability resolving emits SagaChapterResolvedEvent so "whenever the final
-     * chapter ability of a Saga you control resolves" triggers (Tom Bombadil) can detect it.
+     * chapter ability of a Saga you control resolves" triggers (Tom Bombadil) can detect it. The
+     * Saga is snapshotted now, while it is still on the battlefield, so "that Saga's mana value"
+     * (Narci, Fable Singer) survives the CR 714.4 sacrifice that follows the final chapter.
      */
-    private fun sagaChapterResolvedEvent(abilityComponent: TriggeredAbilityOnStackComponent): SagaChapterResolvedEvent? =
+    private fun sagaChapterResolvedEvent(
+        state: GameState,
+        abilityComponent: TriggeredAbilityOnStackComponent
+    ): SagaChapterResolvedEvent? =
         abilityComponent.sagaChapterInfo?.let { info ->
             SagaChapterResolvedEvent(
                 sagaId = abilityComponent.sourceId,
                 controllerId = abilityComponent.controllerId,
                 chapterNumber = info.chapterNumber,
                 finalChapterNumber = info.finalChapterNumber,
-                isFinalChapter = info.isFinalChapter
+                isFinalChapter = info.isFinalChapter,
+                sagaSnapshot = abilityComponent.sourceId
+                    .takeIf { it in state.getBattlefield() }
+                    ?.let { com.wingedsheep.engine.state.components.stack.captureLastKnown(state, it) }
             )
         }
 }

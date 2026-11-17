@@ -3,7 +3,7 @@
 An opt-in Kotlin/Wasm build of Assay's existing whole-card compiler. No game engine, catalogue,
 web server, inference, or corpus is loaded. The normal JVM build is unchanged.
 
-From this directory, with JDK 21, `just`, Node and optionally Binaryen `wasm-opt` on PATH:
+From this directory, with JDK 25, `just`, Node and optionally Binaryen `wasm-opt` on PATH:
 
 ```sh
 just build

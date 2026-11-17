@@ -91,10 +91,10 @@ class TriggerOrderingTest : FunSpec({
         players.forEach { replaceState(state.withManualTriggerOrdering(it, true)) }
     }
 
-    fun GameTestDriver.cast(name: String) {
+    fun GameTestDriver.cast(name: String): ExecutionResult {
         giveColorlessMana(player1, 1)
         castSpell(player1, putCardInHand(player1, name)).error shouldBe null
-        bothPass().error shouldBe null
+        return bothPass().also { it.error shouldBe null }
     }
 
     /** The stack's triggered abilities by source name, top (first to resolve) first. */
@@ -114,6 +114,41 @@ class TriggerOrderingTest : FunSpec({
         d.pendingDecision shouldBe null
         // Visionary's own trigger was detected first, so its draw resolves before the scry.
         d.stackTopFirst() shouldContainExactly listOf(visionary.name, gatherer.name)
+    }
+
+    test("automatic ordering says so when the order could have mattered") {
+        val d = driver()
+        d.putCreatureOnBattlefield(d.player1, gatherer.name)
+        val events = d.cast(visionary.name).events
+        events.filterIsInstance<TriggersOrderedAutomaticallyEvent>() shouldContainExactly
+            listOf(TriggersOrderedAutomaticallyEvent(d.player1, 2))
+    }
+
+    test("interchangeable copies, a single trigger, or a player ordering their own: nothing to say") {
+        val copies = driver()
+        repeat(2) { copies.putCreatureOnBattlefield(copies.player1, warden.name) }
+        copies.cast(bear.name).events.none { it is TriggersOrderedAutomaticallyEvent } shouldBe true
+
+        val single = driver()
+        single.putCreatureOnBattlefield(single.player1, warden.name)
+        single.cast(bear.name).events.none { it is TriggersOrderedAutomaticallyEvent } shouldBe true
+
+        val manual = driver()
+        manual.putCreatureOnBattlefield(manual.player1, gatherer.name)
+        manual.manual(listOf(manual.player1))
+        manual.cast(visionary.name).events.none { it is TriggersOrderedAutomaticallyEvent } shouldBe true
+    }
+
+    test("while one player orders their own triggers, the other still hears theirs were ordered for them") {
+        val d = driver()
+        d.putCreatureOnBattlefield(d.player1, gatherer.name)
+        d.putCreatureOnBattlefield(d.player2, warden.name)
+        d.putCreatureOnBattlefield(d.player2, sentinel.name)
+        d.manual(listOf(d.player2))
+        val events = d.cast(visionary.name).events
+        d.pendingDecision.shouldBeInstanceOf<OrderTriggersDecision>().playerId shouldBe d.player2
+        events.filterIsInstance<TriggersOrderedAutomaticallyEvent>() shouldContainExactly
+            listOf(TriggersOrderedAutomaticallyEvent(d.player1, 2))
     }
 
     test("with automatic ordering, an ability checking this turn's history resolves after the others") {

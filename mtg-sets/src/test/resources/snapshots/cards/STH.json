@@ -188,6 +188,188 @@
     ]
 }
 
+// Conviction
+{
+    "name": "Conviction",
+    "manaCost": "{1}{W}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant creature\nEnchanted creature gets +1/+3.\n{W}: Return this Aura to its owner's hand.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Conviction:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{W}"
+                    }
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": "Self",
+                    "destination": "Hand"
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 3
+            }
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "creature"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "5",
+        "artist": "Paolo Parente",
+        "flavorText": "It was not the minotaur's shoulders but his soul that bore the heaviest weight.",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/9/190332b3-6a1c-4c25-af61-d8923fc9a0c3.jpg",
+        "rulings": [
+            {
+                "date": "2018-12-07",
+                "text": "Players don't have priority to cast spells and activate abilities between combat damage being assigned and being dealt. This means that if you want to return Conviction to its owner's hand before combat damage is dealt, you must do so before combat damage is assigned (and the creature will no longer get +1/+3)."
+            },
+            {
+                "date": "2018-12-07",
+                "text": "Because damage remains marked on a creature until it's removed as the turn ends, nonlethal damage dealt to the enchanted creature may become lethal if you return Conviction to its owner's hand during that turn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Fling
+{
+    "name": "Fling",
+    "manaCost": "{1}{R}",
+    "typeLine": "Instant",
+    "oracleText": "As an additional cost to cast this spell, sacrifice a creature.\nFling deals damage equal to the sacrificed creature's power to any target.",
+    "script": {
+        "spellEffect": {
+            "type": "DealDamage",
+            "amount": {
+                "type": "EntityProperty",
+                "entity": "SacrificedAsCost",
+                "numericProperty": "Power"
+            },
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "AnyTarget",
+                "id": "t0"
+            }
+        ],
+        "additionalCosts": [
+            {
+                "type": "AdditionalAtom",
+                "atom": {
+                    "type": "AtomSacrifice",
+                    "filter": "creature"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "82",
+        "artist": "Paolo Parente",
+        "flavorText": "It's raining rats and moggs.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/b/6b144452-2e91-4e46-abe9-ed76b39f8314.jpg?1783946556",
+        "rulings": [
+            {
+                "date": "2024-04-12",
+                "text": "Use the sacrificed creature's power as it last existed on the battlefield to determine how much damage Fling deals."
+            },
+            {
+                "date": "2019-10-04",
+                "text": "You must sacrifice exactly one creature to cast this spell; you can't cast it without sacrificing a creature, and you can't sacrifice additional creatures."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Grave Pact
+{
+    "name": "Grave Pact",
+    "manaCost": "{1}{B}{B}{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever a creature you control dies, each other player sacrifices a creature of their choice.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Grave Pact:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ForceSacrifice",
+                    "filter": "creature",
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "EachOtherPlayer"
+                    }
+                },
+                "descriptionOverride": "Whenever a creature you control dies, each other player sacrifices a creature of their choice."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "60",
+        "rarity": "RARE",
+        "artist": "Scott Kirschner",
+        "flavorText": "\"The bonds of loyalty can tie one to the grave.\"\n—Crovax",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/4/940536be-fce1-4a90-9126-195815a43e0f.jpg?1783946563",
+        "rulings": [
+            {
+                "date": "2023-09-01",
+                "text": "When the triggered ability resolves, first the player whose turn it is (if it isn't your turn) chooses which creature they will sacrifice, then each other player in turn order does the same, then all chosen creatures are sacrificed at the same time."
+            },
+            {
+                "date": "2023-09-01",
+                "text": "None of the players are targeted. A player with hexproof would still sacrifice a creature."
+            },
+            {
+                "date": "2023-09-01",
+                "text": "If multiple creatures you control die at the same time, Grave Pact's ability will trigger that many times."
+            },
+            {
+                "date": "2023-09-01",
+                "text": "If you control more than one Grave Pact and a creature you control dies, each of the triggered abilities will trigger. Each other player will sacrifice a creature each time one of those abilities resolves."
+            },
+            {
+                "date": "2023-09-01",
+                "text": "If two players each control a Grave Pact and a creature controlled by one of those players dies, a chain reaction happens. First the ability of that player's Grave Pact will trigger, causing each other player to sacrifice a creature. That sacrifice causes the ability of the other player's Grave Pact to trigger, and so on."
+            },
+            {
+                "date": "2023-09-01",
+                "text": "In a Two-Headed Giant game, when a creature you control dies, Grave Pact's triggered ability will cause each other player, including your teammate, to sacrifice a creature. Grave Pact's ability won't trigger when a creature your teammate controls dies."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Hermit Druid
 {
     "name": "Hermit Druid",
@@ -314,6 +496,250 @@
     "colorIdentityOverride": [
         "WHITE"
     ]
+}
+
+// Intruder Alarm
+{
+    "name": "Intruder Alarm",
+    "manaCost": "{2}{U}",
+    "typeLine": "Enchantment",
+    "oracleText": "Creatures don't untap during their controllers' untap steps.\nWhenever a creature enters, untap all creatures.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Intruder Alarm:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature"
+                        }
+                    },
+                    "body": {
+                        "type": "TapUntap",
+                        "target": "IterationEntity",
+                        "tap": false
+                    }
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "UntapLimitPerStep",
+                "filter": "creature",
+                "max": 0
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "34",
+        "rarity": "RARE",
+        "artist": "Donato Giancola",
+        "flavorText": "Mirri was startled by Volrath's apparition—it had no scent.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/e/7e55f653-0952-4713-8d43-ca50acff9e3b.jpg?1783946569",
+        "rulings": [
+            {
+                "date": "2023-09-01",
+                "text": "If multiple creatures enter the battlefield at one time, this ability triggers once for each of those creatures."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Lab Rats
+{
+    "name": "Lab Rats",
+    "manaCost": "{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Buyback {4} (You may pay an additional {4} as you cast this spell. If you do, put this card into your hand as it resolves.)\nCreate a 1/1 black Rat creature token.",
+    "keywordAbilities": [
+        {
+            "type": "Kicker",
+            "manaCost": "{4}",
+            "displayPrefix": "Buyback",
+            "branchesEffect": false,
+            "declaredSlot": "BOUGHT_BACK"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "CreateToken",
+            "power": 1,
+            "toughness": 1,
+            "colors": [
+                "BLACK"
+            ],
+            "creatureTypes": [
+                "Rat"
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "61",
+        "artist": "DiTerlizzi",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/1/3132c128-e0bd-4524-9526-914b3c7181fc.jpg?1783946562"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Megrim
+{
+    "name": "Megrim",
+    "manaCost": "{2}{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever an opponent discards a card, this enchantment deals 2 damage to that player.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Megrim:1",
+                "trigger": {
+                    "type": "DiscardEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "62",
+        "rarity": "UNCOMMON",
+        "artist": "Donato Giancola",
+        "flavorText": "\"You can run from your pain,\" explained Gerrard to Crovax, \"but take it from experience: you will tire before it does.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/e/4eacd05b-078a-468c-b137-a802346d348a.jpg?1783946561"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Mogg Flunkies
+{
+    "name": "Mogg Flunkies",
+    "manaCost": "{1}{R}",
+    "typeLine": "Creature — Goblin",
+    "oracleText": "This creature can't attack or block alone.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "CantAttackUnlessCoAttacker",
+                "coAttackerFilter": {
+                    "cardPredicates": [
+                        "IsCreature"
+                    ]
+                }
+            },
+            {
+                "type": "CantBlockUnlessCoBlocker",
+                "coBlockerFilter": {
+                    "cardPredicates": [
+                        "IsCreature"
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "92",
+        "artist": "Brom",
+        "flavorText": "They'll attack whatever's in front of them—as long as you tell them where that is.",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/b/1b1b384e-a7d5-4b5f-87d5-95ac1a6c6320.jpg?1783946554",
+        "rulings": [
+            {
+                "date": "2018-03-16",
+                "text": "If you control more than one Mogg Flunkies, they can attack or block together, even if no other creatures attack or block."
+            },
+            {
+                "date": "2018-03-16",
+                "text": "Although Mogg Flunkies can't attack alone, other attacking creatures don't have to attack the same player, planeswalker, or battle. For example, Mogg Flunkies could attack an opponent and another creature could attack a planeswalker that opponent controls. Similarly, other blocking creatures don't have to block the same creature that Mogg Flunkies blocks."
+            },
+            {
+                "date": "2018-03-16",
+                "text": "Once Mogg Flunkies has attacked or blocked, it will remain in combat even if you no longer control another attacking or blocking creature."
+            },
+            {
+                "date": "2018-03-16",
+                "text": "If an effect says that Mogg Flunkies attacks or blocks if able and you control another creature able to attack or block, you must attack or block with Mogg Flunkies and that creature."
+            },
+            {
+                "date": "2018-03-16",
+                "text": "In a Two-Headed Giant game, Mogg Flunkies can attack or block with a creature controlled by your teammate, even if no other creatures you control are attacking or blocking."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Mox Diamond
+{
+    "name": "Mox Diamond",
+    "manaCost": "{0}",
+    "typeLine": "Artifact",
+    "oracleText": "If this artifact would enter, you may discard a land card instead. If you do, put this artifact onto the battlefield. If you don't, put it into its owner's graveyard.\n{T}: Add one mana of any color.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Mox Diamond:1",
+                "cost": "CostTap",
+                "effect": "AddManaOfChoice",
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersOnlyIfPaid",
+                "cost": {
+                    "type": "PayAtom",
+                    "atom": {
+                        "type": "AtomDiscard",
+                        "filter": "land"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "138",
+        "rarity": "RARE",
+        "artist": "Dan Frazier",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/8/28028830-83ed-45e2-b495-3b9ad9d3e988.jpg?1783946538",
+        "rulings": [
+            {
+                "date": "2008-05-01",
+                "text": "If you don't discard a land card, Mox Diamond never enters. It won't trigger abilities that look for something entering, and you won't get the opportunity to tap it for mana."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
 }
 
 // Mulch
@@ -791,6 +1217,73 @@
         "artist": "Matthew D. Wilson",
         "flavorText": "The assassin sees only throats and hears only heartbeats.",
         "imageUri": "https://cards.scryfall.io/normal/front/c/c/cc0f043c-efb3-4392-ae25-b3ec180b0cb2.jpg"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Tortured Existence
+{
+    "name": "Tortured Existence",
+    "manaCost": "{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "{B}, Discard a creature card: Return target creature card from your graveyard to your hand.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Tortured Existence:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{B}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomDiscard",
+                                "filter": "creature"
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Hand"
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature own:you",
+                            "zone": "Graveyard"
+                        },
+                        "id": "t0"
+                    }
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "74",
+        "artist": "Keith Parkinson",
+        "flavorText": "\"There are terrors lurking in the unseen corners of us all.\"\n—Crovax",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/7/1754b92b-d6f9-4503-af01-dee03f72a048.jpg?1783946558",
+        "rulings": [
+            {
+                "date": "2004-10-04",
+                "text": "You can't return the same card you are discarding. This is because you pick the target before paying the costs."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "BLACK"

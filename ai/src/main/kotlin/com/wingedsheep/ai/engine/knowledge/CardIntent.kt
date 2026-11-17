@@ -28,7 +28,8 @@ data class CardIntent(
      * Null is therefore two different claims, and [HoldPolicy] has to tell them apart: "toughness
      * is no defence" and "we could not read this card". The one case where null means neither is a
      * fight, whose reach is the *other* creature's power and so cannot be a property of the card —
-     * it carries [IntentTag.FIGHT] to say so.
+     * it carries [IntentTag.FIGHT] to say so. A dynamic amount (X burn, Death Wind's -X/-X) also
+     * leaves reach null: its size is only known on the stack, so no static reading can bound it.
      */
     val removalReach: Int?,
     /** Cards drawn on a single resolution, or null when the card draws none. */
@@ -75,6 +76,13 @@ data class CardIntent(
      */
     val pumpToughness: Int = 0,
     /**
+     * The largest fixed base toughness an expiring base P/T change of this card sets ("has base
+     * power and toughness 4/5 until end of turn", Perfected Theory; Phantasmal Form's 3/3), or null.
+     * The [pumpToughness] of a trick that *replaces* toughness instead of adding to it: [HoldPolicy]
+     * asks whether it lifts a creature out of a burn spell's range against the creature's own base.
+     */
+    val setToughness: Int? = null,
+    /**
      * Whether this card **always** enters the battlefield tapped — the Shivan Oasis clause, not the
      * shock-land one.
      *
@@ -119,28 +127,25 @@ data class CardIntent(
     /**
      * Whether every permanent this card targets is one **we control** — and there is at least one.
      *
-     * This exists because [IntentTag.REMOVAL] cannot answer the question. `hitsAnotherPermanent`
-     * decides "does this take *someone else's* permanent off the battlefield" from the
-     * [com.wingedsheep.sdk.scripting.effects.EffectTarget] alone, and a bound or context target
-     * carries no filter — so it falls through to `else -> true` and every "exile a creature **you
-     * control**" reads as spot removal. Restoration Angel is tagged `REMOVAL, EXILE_REMOVAL` for
-     * blinking our own creature.
-     *
-     * That fail-open is harmless where the tag is only a prior, and wrong where a consumer needs to
-     * know which side of the table an effect points at. [AmbushWindow] is the second kind: "this ETB
-     * clears a blocker before we attack" and "this ETB blinks our own creature" are opposite
-     * answers, and the tag gives the same one for both.
-     *
-     * Fixing `hitsAnotherPermanent` to resolve bound targets against their requirement is the real
-     * repair, and it is deliberately *not* done here: `REMOVAL` feeds `staticPriorValue`'s ladder
-     * and [RemovalPatience]'s bar, so re-tagging every "target creature you control" card is an
-     * evaluation change that needs its own flag and its own arena run. This field is additive, read
-     * by exactly one consumer, and changes nothing for anyone else.
+     * A bound or context target does not itself carry its filter, so the effect's intent tag
+     * cannot say whose board it touches. [AmbushWindow] needs that distinction: a bounce aimed
+     * at an opposing blocker pays off before attacking, while an own-side bounce or blink can
+     * wait for the opponent to act. Immediate blinks read as [IntentTag.PROTECTION]; the
+     * [protectionOnlyFromBlink] field distinguishes them from combat shields.
      *
      * `false` when the card targets no permanent at all, which keeps a vanilla body — the case the
      * ambush policy most wants — from being mistaken for one that aims at us.
      */
     val targetsOnlyOurPermanents: Boolean = false,
+    /** Protection comes only from an immediate blink, not a shield improving the next combat. */
+    val protectionOnlyFromBlink: Boolean = false,
+    /**
+     * [IntentTag.COMBAT_ENHANCEMENT] comes only from untapping our own creatures ("untap all
+     * creatures you control"). That pays off *after* our creatures tap — on their attack, or once
+     * ours have attacked — so [AmbushWindow] must not read it as a reason to land a flash body
+     * before combat (Village Bell-Ringer).
+     */
+    val combatEnhancementOnlyFromUntap: Boolean = false,
     /**
      * Whether the card carries an **untargeted group pump that expires** — "creatures you control
      * get +2/+1 until end of turn" (Rabbit Response), which `Patterns.Group.modifyStatsForAll`
@@ -159,10 +164,9 @@ data class CardIntent(
      * `Patterns.Library.lookAtTopAndKeep` lowers to a gather from the top of the library and a move
      * to hand.
      *
-     * Neither half is a [IntentTag.DRAW] (no card is drawn) nor a [IntentTag.TUTOR] (the gather is
-     * not a search), so such a card reads with no tags at all. Kept as its own field, like
-     * [expiringGroupPump], so no tag — and nothing that prices one — moves; the one consumer is
-     * [HoldPolicy] behind [com.wingedsheep.ai.engine.AiProfile.drawWithIdleMana].
+     * The ability reads [IntentTag.DRAW] too (`CardIntentAnalyzer.digTags`); this card-level field
+     * stays for the one consumer that needs the wish half as well — [HoldPolicy] behind
+     * [com.wingedsheep.ai.engine.AiProfile.drawWithIdleMana].
      *
      * Also true for a **wish** — a card brought from outside the game into hand ([wishFilters]):
      * the same card-for-a-card trade, from the other hidden zone its owner can draw on.
@@ -211,6 +215,27 @@ data class CardIntent(
      * [com.wingedsheep.ai.engine.AiProfile.taxCountersReadTheirMana].
      */
     val counterTax: Int? = null,
+    /**
+     * What this card's non-mana activated abilities and Saga chapters do — the payoffs a permanent
+     * still holds while it sits on the battlefield (a Spellbomb's draw, a Bauble's land search, a
+     * Saga's chapters still to come). Unlike an ETB, which
+     * has paid out by then, these are value the board still carries even when they can be used only
+     * once; `CardIntentAnalyzer.priorLadder` prices them.
+     */
+    val cashableTags: Set<IntentTag> = emptySet(),
+    /**
+     * What the abilities behind [repeatable] do: a non-mana battlefield activation or a trigger that
+     * can fire again, neither of which spends its own source — not even through "you may sacrifice
+     * this. If you do, …". "Repeatable removal" asks this, not [tags]: Throwing Knife's equip recurs,
+     * its sacrifice-to-deal-2 does not.
+     */
+    val repeatableTags: Set<IntentTag> = emptySet(),
+    /**
+     * What the battlefield abilities that use up their own source do — a sacrifice-self cost, or
+     * "you may sacrifice this. If you do, …" on resolution. Removal found only here is one shot
+     * waiting on the board, which `CardIntentAnalyzer.priorLadder` prices below an O-Ring.
+     */
+    val spentTags: Set<IntentTag> = emptySet(),
 ) {
     /** [arrivalTags], falling back to [tags] where the analyzer did not split them. */
     val tagsOnArrival: Set<IntentTag> get() = arrivalTags ?: tags
@@ -242,6 +267,15 @@ data class CardIntent(
  * with no claim about whether doing so is good right now. Consumers combine tags with board state.
  */
 enum class IntentTag {
+    /** A restriction on the source creature attacking or blocking; a drawback, not a payoff. */
+    COMBAT_RESTRICTION,
+
+    /**
+     * Lets a creature block more attackers — more of them in one combat, or ones it otherwise
+     * couldn't ("can block Dragons as though it had reach").
+     */
+    EXTRA_BLOCKING,
+
     /** Destroys, bounces or otherwise removes a single permanent. */
     REMOVAL,
 
@@ -265,20 +299,76 @@ enum class IntentTag {
      *
      * The scope test is what keeps it honest — see `CardIntentAnalyzer.neutralizeTags`. "This
      * creature can't block" printed on a creature is a drawback, not an answer.
+     * The one-shot form reads the same: another creature losing all its abilities, or having its
+     * base power and toughness set to 1/1 or less without dying (Warkite Marauder's "loses all
+     * abilities and has base power and toughness 0/1 until end of turn") — still on the
+     * battlefield, no longer a threat or a blocker worth the name. Removing an opponent's creature
+     * from combat (Spires of Orazca, False Orders) reads the same way: that attacker or blocker is
+     * answered for the fight that matters, though it stays on the battlefield.
      */
     NEUTRALIZE,
 
     /** Draws cards. */
     DRAW,
 
-    /** Searches a library. */
+    /**
+     * Exiles cards off a library top that its controller may play this turn only — "exile the top
+     * three cards of your library. Until end of turn, you may play those cards" (Act on Impulse),
+     * "{R}, sacrifice two artifacts: exile the top card of your library. You may play that card this
+     * turn" (Scion of Opulence). Card advantage only when spent before cleanup, so it is not [DRAW]:
+     * a DRAW reading earns the end-step and idle-mana windows and counts the cards as held, and
+     * these would evaporate cast into an end step. Its window is a main phase of ours with mana
+     * left over to play what it exiles (`HoldPolicy.idleImpulseWindow`); cast or activated, never an
+     * opponent's turn.
+     *
+     * An impulse that lasts past this turn ("until the end of your next turn"), or a this-turn one
+     * made at the start of our own turn, is [DRAW] instead (`CardIntentAnalyzer.isLastingImpulse`).
+     */
+    IMPULSE,
+
+    /** Searches a library for a card, or fetches one from outside the game (a wish). */
     TUTOR,
+
+    /**
+     * Looks at the top of its controller's library and arranges it — scry, or surveil (scry whose
+     * discards go to the graveyard). No card changes hands, so it is neither [DRAW] nor [TUTOR],
+     * but it is the same card flow for timing: a card seen at the opponent's end step is the card
+     * seen now, so [HoldPolicy] cashes a selection-only activation there, with mana that would
+     * otherwise empty, like a draw activation.
+     */
+    CARD_SELECTION,
 
     /** Produces mana, or puts extra lands onto the battlefield. */
     RAMP,
 
+    /**
+     * Makes its controller's own spells or activated abilities cheaper — "Equipment spells you cast
+     * cost {1} less" (Bladegraft Aspirant), "activated abilities you activate cost {1} less"
+     * (Training Grounds, Silver-Fur Master).
+     *
+     * Tagged apart from [RAMP] because a discount is not a mana source: it pays for nothing on its
+     * own, can't be tapped for a colour, and only matters for the spells and abilities it names —
+     * folding it into [RAMP] would count it as a mana source wherever the AI asks for one (the
+     * mana-source prior rung, a deck's ramp role). Only a discount on the controller's own side reads
+     * this way; a symmetric one (Helm of Awakening) helps the opponent as much and earns no tag.
+     */
+    COST_REDUCER,
+
+    /** Multiplies damage from our sources, without also multiplying opposing sources. */
+    DAMAGE_AMPLIFIER,
+
+    /** Deals damage to an explicitly named player (may be delayed or damage to ourselves), or makes
+     * an opponent lose life. This describes the recipient, not immediate lethal reach or creature removal. */
+    DAMAGE_TO_PLAYERS,
+
     /** A continuous P/T bonus to a group of creatures — a lord or an anthem. */
     ANTHEM,
+
+    /** Grants a chosen creature type, enabling tribal payoffs without making a body or a stat bonus. */
+    TRIBAL_ENABLER,
+
+    /** Mills a player who can be an opponent, advancing a library-depletion win condition. */
+    MILL,
 
     /** A P/T bonus to one creature: an Aura/Equipment, or a one-shot pump. */
     PUMP,
@@ -298,13 +388,50 @@ enum class IntentTag {
     /** Counters a spell. */
     COUNTERSPELL,
 
+    /**
+     * Changes the target of a spell or ability on the stack — "change the target of target spell
+     * with a single target" (Bolt Bend, Misdirection), "change a target of target spell or ability
+     * to this creature" (Spellskite, Hydroelectric Specimen). Like [COUNTERSPELL] it answers only
+     * something already on the stack — an instant one needs a spell to target before it can be
+     * cast at all. It is not [PROTECTION]: that tag releases a flash body's ambush hold before
+     * combat, and a redirect on arrival is worth nothing without a spell to catch. Where the
+     * spell goes is the decision's question, read off what the redirected object does to the slot
+     * (`SpellRedirectChoice`).
+     */
+    SPELL_REDIRECT,
+
+    /**
+     * Copies a spell or ability — "copy target instant or sorcery spell; you may choose new targets
+     * for the copy" (Fork, Double Major, Twincast), "copy target activated or triggered ability"
+     * (Lithoform Engine, Echo, Perceptive Prodigy), "when you next cast an instant or sorcery spell
+     * this turn, copy that spell" (Double Vision's kin). The copy is ours whoever controls the
+     * original, and worth what that object does, so the card is a second helping of the deck's best
+     * spell — it rewards instants and sorceries the way prowess does (`SynergyAxes`). Like
+     * [SPELL_REDIRECT] the targeted forms answer only what is already on the stack; which spell to
+     * copy is the polarity reader's two-sided slot, and where the copy's new targets go is read off
+     * the copied effect (`TargetSelection.decisionPolarities`).
+     */
+    SPELL_COPY,
+
+    /**
+     * Takes cards out of a graveyard that isn't only ours — "exile target card from a graveyard"
+     * (Scavenging Ooze, Carrion Locust, Mourner's Shield's imprint), "exile target player's
+     * graveyard" (Tormod's Crypt, Bojuka Bog), "put target card from a graveyard on the bottom of
+     * its owner's library" (Junktroller). It answers recursion, flashback and delirium before they
+     * happen, but no permanent on the board: never [REMOVAL], and worth little in Limited on its own.
+     * A granted "if a creature would enter and it wasn't cast, exile it instead" (Mistcaller,
+     * Hallowed Moonlight) is the same answer given as the reanimation happens — and it catches
+     * flickers and creature tokens too.
+     */
+    GRAVEYARD_HATE,
+
     /** Gains life. */
     LIFEGAIN,
 
     /** Makes a player discard. */
     DISCARD,
 
-    /** Returns cards from a graveyard. */
+    /** Returns cards from a graveyard, or onto our battlefield from the pile a permanent exiled. */
     RECURSION,
 
     /** Creates tokens. */
@@ -319,8 +446,189 @@ enum class IntentTag {
     /** Grants evasion (flying, menace, unblockable, …). */
     EVASION_GRANT,
 
+    /**
+     * Makes a creature better in a fight without adding to its power and toughness — one-shot or
+     * static, and whichever creature the polarity reader says it lands on: a granted first strike,
+     * double strike, deathtouch, lifelink, vigilance or haste, a
+     * "must be blocked" that drags a blocker in, a base power and toughness it takes from
+     * something bigger (Exuberant Wolfbear), or a cut to an opposing creature's power alone
+     * (Ominous Sphinx's "-2/-0 until end of turn") that blunts it in the fight without killing it, or
+     * a keyword stripped from one (Bonds of Mortality's hexproof and indestructible) that opens it to
+     * the fight or the removal it shrugged off. Not a [PUMP]: nothing here is a +N/+N a simulation
+     * or a precombat plan may add to the creature's stats.
+     */
+    COMBAT_ENHANCEMENT,
+
+    /**
+     * Moves Equipment onto a creature without paying its equip cost — "attach target Equipment you
+     * control to target creature you control" (Halvar, Weapons Vendor), "attach any number of
+     * Equipment you control to it" (Beatrix, Loyal General), "attach all Equipment on the
+     * battlefield to it" (Vulshok Battlemaster). Worth the Equipment it moves, so it wants
+     * Equipment in the deck and creatures to wear it; which creature gets it is the polarity reader's
+     * creature slot, a gift.
+     */
+    EQUIPMENT_RELOCATION,
+
+    /**
+     * Turns a permanent into a copy of another permanent or card — "this becomes a copy of target
+     * creature" (Lazav, the Multifarious), "equipped creature becomes a copy of up to one other
+     * target creature you control" (Blade of Shared Souls), "target artifact or creature becomes a
+     * copy of another target artifact or creature" (True Polymorph), "each other creature you
+     * control becomes a copy of it until end of turn" (Naga Fleshcrafter). Worth the best thing it
+     * can copy, which is a board question: the polarity reader keeps the copy source on our side
+     * when its filter does and leaves the rest to the simulation, which sees the copied
+     * characteristics and abilities on the receiving permanent.
+     */
+    PERMANENT_COPY,
+
     /** An activated ability whose cost is sacrificing a permanent — a sacrifice outlet. */
     SACRIFICE_OUTLET,
+
+    /**
+     * Stops an opponent casting spells (or a kind of spell) for a stretch of turn — Silence's "your
+     * opponents can't cast spells this turn", Sphinx's Decree's "can't cast instant or sorcery spells
+     * during that player's next turn", Xantid Swarm's attack trigger.
+     *
+     * Its payoff is spells that are never cast, which no board simulation sees: the ban leaves every
+     * permanent where it was. So the tag is what tells the AI the card is disruption rather than a
+     * blank, and what [HoldPolicy] reads to cast an instant-speed ban where it covers the opponent's
+     * whole turn. A ban that binds its own controller too (Calamity's Wake, Conduit of Worlds) is the
+     * card's price, not its point, and earns no tag — see `CardIntentAnalyzer.bansAnOpponent`.
+     */
+    CAST_BAN,
+
+    /**
+     * Makes an opponent's spells cost more — Thalia's "noncreature spells your opponents cast cost
+     * {1} more", God-Pharaoh's Statue's "spells your opponents cast cost {2} more". Softer than a
+     * [CAST_BAN]: nothing is stopped, every matching spell is a turn slower, so the tag carries no
+     * timing ([HoldPolicy] reads only the ban). Like the ban, its payoff is spells that come late or
+     * never, which no board simulation sees. A tax on spells aimed at our permanents is the
+     * ward-like [PROTECTION] instead; a symmetric tax (Sphere of Resistance) earns no tag.
+     */
+    SPELL_TAX,
+
+    /**
+     * Makes its controller's own spells cost more — Geist-Fueled Scarecrow's "creature spells you
+     * cast cost {1} more", the Invasion Leeches' "white spells you cast cost {W} more", Derelor's
+     * "black spells you cast cost {B} more". A drawback on the card, like [COMBAT_RESTRICTION]: the
+     * price of an oversized body, never a payoff. Tagged so the static reads as understood instead
+     * of "abilities not recognised", and kept apart from [SPELL_TAX] (which taxes the opponent and
+     * counts as disruption) and [COST_REDUCER] (a discount) — either would price the tax as a plus.
+     * It earns no prior-ladder rung and the draft heuristic scores it below zero.
+     */
+    OWN_SPELL_TAX,
+
+    /**
+     * Makes an opponent's creatures attack this turn if able — Imaginary Threats' "creatures target
+     * opponent controls attack this turn if able", Kardur's "each creature your
+     * opponents control attacks … if able".
+     *
+     * Like a cast ban it moves no permanent, so the board simulation sees a card spent for nothing:
+     * the payoff is an attack the opponent didn't choose, and with an untap lock beside it their
+     * attackers stay tapped. The tag is what tells the AI the card is disruption, and what [HoldPolicy] reads to cast
+     * an instant-speed one on the opponent's turn, before attackers are declared
+     * ([ForcedAttackWindow]).
+     */
+    FORCED_ATTACK,
+
+    /**
+     * Stops permanents entering (or dying) from triggering abilities — Torpor Orb's and Tocatli
+     * Honor Guard's "creatures entering the battlefield don't cause abilities to trigger", Hushbringer's
+     * enters-or-dies lock, Elesh Norn, Mother of Machines' opponents-only half.
+     *
+     * A lock moves nothing and its payoff is triggers that never happen, so no board simulation sees
+     * it; without the tag the static read as "abilities not recognised" and the card as a blank. The
+     * symmetric lock is a hoser — it shuts off its controller's own enter triggers too — so the draft
+     * heuristic prices it low. It is not opponent-facing: a static has no target to aim, and the symmetric lock hits its own side too.
+     */
+    TRIGGER_LOCK,
+
+    /**
+     * Stops counters going on players or permanents — Solemnity's "Players can't get counters.
+     * Counters can't be put on artifacts, creatures, enchantments, or lands", a battlefield-wide
+     * "can't have +1/+1 counters put on them" (Blightbeetle's opponents-only form).
+     *
+     * Like [TRIGGER_LOCK], a lock moves nothing — its payoff is counters that never arrive (poison,
+     * -1/-1, +1/+1, undying and persist returns) — so no board simulation sees it. The symmetric
+     * form also starves its controller's own counters, so the draft heuristic prices it as a hoser.
+     */
+    COUNTER_LOCK,
+
+    /**
+     * Stops opponents gaining life, or turns their life gain into life loss — Archfiend of
+     * Despair's "your opponents can't gain life", Tainted Remedy's "if an opponent would gain life,
+     * that player loses that much life instead" ([LifeGainLocks]).
+     *
+     * Like [COUNTER_LOCK], a lock moves nothing — its payoff is life the opponent never gains — so
+     * no board simulation sees it. Only an opponents-only lock reads: one over its controller (Lich)
+     * is a price, and a symmetric one (Sulfuric Vortex) binds us as hard. A sideboard hoser against
+     * a lifegain deck in Limited.
+     */
+    LIFEGAIN_LOCK,
+
+    /**
+     * Takes the tokens an opponent would create — Crafty Cutpurse's "each token that would be
+     * created under an opponent's control this turn is created under your control instead".
+     *
+     * Tagged apart from [TOKEN_MAKER] because it makes nothing on its own: its payoff is the
+     * opponent's token-making, which may never come, so counting it as a token source would feed
+     * the token-synergy and card-or-token reads with tokens that don't exist. Without the tag the
+     * ability read as unrecognised and the card as its bare body. It has no target to aim, so it
+     * is not opponent-facing either.
+     */
+    TOKEN_THEFT,
+
+    /**
+     * Shields its controller's hand against effect discards — Library of Leng's "if an effect causes
+     * you to discard a card, … you may put it on top of your library instead", Nephalia Academy's
+     * opponent-caused, revealed form ([DiscardShields]). The card it saves comes back as the next
+     * draw, which no board simulation sees. Without the tag the replacement read as "abilities not
+     * recognised". A defensive rider worth little in Limited, where discard is rare.
+     */
+    DISCARD_SHIELD,
+
+    /**
+     * Ends the game in its controller's favour outright — an opponent loses (Phage the Untouchable's
+     * "that player loses the game", Vraska, Scheming Gorgon's −10 handing every creature of ours
+     * that trigger), or its controller wins.
+     *
+     * Its payoff is the game, which no board simulation sees until the damage lands: the grant
+     * itself moves nothing but a keyword, so the −10 read as a planeswalker spent for deathtouch.
+     * The tag is what says what the card is for; [com.wingedsheep.ai.engine.evaluation.FinisherStrike]
+     * is what prices a board whose attackers carry the trigger. A loss its own controller suffers
+     * (Phage cast from anywhere but the hand) is the card's price and earns no tag.
+     */
+    GAME_WIN,
+
+    /**
+     * Its controller takes an extra turn — Time Walk, Timestream Navigator's "take an extra turn
+     * after this one". Its payoff is a whole turn: an untap, a draw and another attack, none of which
+     * the board simulation sees when the effect resolves, so without the tag the ability read as
+     * "no intent". An extra turn handed to an opponent is never a play and earns no tag.
+     */
+    EXTRA_TURN,
+
+    /**
+     * Casts a spell without paying its mana cost — Wildfire Eternal's and Omnispell Adept's "cast an
+     * instant or sorcery spell from your hand without paying its mana cost", a cascade-like "cast it
+     * without paying its mana cost" off the top of a library or out of exile. Its payoff is the mana
+     * the spell didn't cost (and, from outside the hand, the card itself), which the board
+     * simulation only sees once the spell resolves, so without the tag the ability read as
+     * "no intent". A cast that still pays the spell's mana cost earns no tag.
+     *
+     * Putting a nonland permanent card from hand onto the battlefield (Kinscaer Sentry, Goblin
+     * Lackey) is the same payoff without the cast, and reads the same.
+     */
+    FREE_SPELL,
+
+    /**
+     * Shows its controller hidden information, any time — Keeper of the Lens's and Lens of
+     * Clarity's "you may look at face-down creatures you don't control", Lens of Clarity's and
+     * Found Footage's "look at the top card of your library". It moves nothing and its payoff is
+     * a better-informed block or draw, which no board simulation sees; without the tag the static
+     * read as "abilities not recognised". Worth next to nothing in a Limited pick.
+     */
+    HIDDEN_INFO,
 }
 
 /** When a card's payoff happens — the axis the hold policy reasons about. */

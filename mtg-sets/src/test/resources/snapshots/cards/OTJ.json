@@ -3711,9 +3711,13 @@
                                 "condition": {
                                     "type": "Compare",
                                     "left": {
-                                        "type": "AggregateBattlefield",
-                                        "player": "EachOpponent",
-                                        "filter": "land"
+                                        "type": "GreatestAmongPlayers",
+                                        "players": "EachOpponent",
+                                        "inner": {
+                                            "type": "AggregateBattlefield",
+                                            "player": "You",
+                                            "filter": "land"
+                                        }
                                     },
                                     "operator": "GT",
                                     "right": {
@@ -3773,9 +3777,13 @@
                 "interveningIf": {
                     "type": "Compare",
                     "left": {
-                        "type": "AggregateBattlefield",
-                        "player": "EachOpponent",
-                        "filter": "land"
+                        "type": "GreatestAmongPlayers",
+                        "players": "EachOpponent",
+                        "inner": {
+                            "type": "AggregateBattlefield",
+                            "player": "You",
+                            "filter": "land"
+                        }
                     },
                     "operator": "GT",
                     "right": {
@@ -4888,8 +4896,8 @@
                 }
             },
             {
-                "type": "ModifyPlotCost",
-                "target": "YouPlotFromHand",
+                "type": "ModifySpecialActionCost",
+                "action": "PLOT",
                 "modification": {
                     "type": "ReduceGeneric",
                     "amount": 2
@@ -4950,7 +4958,8 @@
                 "binding": "ANY",
                 "effect": {
                     "type": "CopyTargetSpell",
-                    "target": "TriggeringEntity"
+                    "target": "TriggeringEntity",
+                    "mayChooseNewTargets": false
                 },
                 "descriptionOverride": "Whenever you cast an outlaw spell, copy that spell."
             }
@@ -10599,7 +10608,10 @@
                     ]
                 },
                 "binding": "ANY",
-                "effect": "MarkSpellPlotOnResolve",
+                "effect": {
+                    "type": "MarkSpellExileOnResolve",
+                    "then": "BECOMES_PLOTTED"
+                },
                 "descriptionOverride": "Whenever you cast a multicolored instant or sorcery spell from your hand, exile that spell instead of putting it into your graveyard as it resolves. It becomes plotted."
             }
         ]
@@ -15402,6 +15414,9 @@
                             "type": "TargetObject",
                             "filter": {
                                 "baseFilter": {
+                                    "statePredicates": [
+                                        "HasSingleTarget"
+                                    ],
                                     "anyOf": [
                                         {},
                                         {
@@ -18827,75 +18842,6 @@
     },
     "colorIdentityOverride": [
         "BLUE"
-    ]
-}
-
-// Terror of the Peaks
-{
-    "name": "Terror of the Peaks",
-    "manaCost": "{3}{R}{R}",
-    "typeLine": "Creature — Dragon",
-    "oracleText": "Flying\nSpells your opponents cast that target this creature cost an additional 3 life to cast.\nWhenever another creature you control enters, this creature deals damage equal to that creature's power to any target.",
-    "creatureStats": {
-        "power": 5,
-        "toughness": 4
-    },
-    "keywords": [
-        "FLYING"
-    ],
-    "script": {
-        "triggeredAbilities": [
-            {
-                "id": "Terror of the Peaks:1",
-                "trigger": {
-                    "type": "ZoneChangeEvent",
-                    "filter": "creature ctrl:you",
-                    "to": "Battlefield"
-                },
-                "binding": "OTHER",
-                "effect": {
-                    "type": "DealDamage",
-                    "amount": {
-                        "type": "EntityProperty",
-                        "entity": "TriggeringEntity",
-                        "numericProperty": "Power"
-                    },
-                    "target": {
-                        "type": "BoundVariable",
-                        "name": "t0"
-                    }
-                },
-                "targetRequirement": {
-                    "type": "AnyTarget",
-                    "id": "t0"
-                }
-            }
-        ],
-        "staticAbilities": [
-            {
-                "type": "ModifySpellCost",
-                "target": {
-                    "type": "OpponentsCastTargeting",
-                    "targetFilter": {
-                        "baseFilter": "permanent",
-                        "scope": "Self"
-                    }
-                },
-                "modification": {
-                    "type": "IncreaseLife",
-                    "amount": 3
-                }
-            }
-        ]
-    },
-    "metadata": {
-        "collectorNumber": "149",
-        "rarity": "MYTHIC",
-        "artist": "Joshua Raphael",
-        "imageUri": "https://cards.scryfall.io/normal/front/9/0/904ff94a-4db4-44a6-8593-89c32905b3fc.jpg?1712355862"
-    },
-    "colorIdentityOverride": [
-        "RED"
     ]
 }
 

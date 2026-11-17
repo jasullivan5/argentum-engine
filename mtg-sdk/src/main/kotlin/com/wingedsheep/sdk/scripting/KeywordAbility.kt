@@ -10,6 +10,14 @@ import com.wingedsheep.sdk.scripting.costs.CostAtom
 import com.wingedsheep.sdk.scripting.costs.PayCost
 import com.wingedsheep.sdk.scripting.effects.WardCost
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
+import com.wingedsheep.sdk.core.CounterType
+import com.wingedsheep.sdk.dsl.Effects
+import com.wingedsheep.sdk.scripting.effects.CompositeEffect
+import com.wingedsheep.sdk.scripting.effects.Effect
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.scripting.targets.TargetObject
+import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import com.wingedsheep.sdk.dsl.firebending
@@ -118,6 +126,12 @@ sealed interface KeywordAbility {
             // Monocolored exists for hexproof (CR 105.2a); protection from monocolored has no
             // engine reading, so it fails here rather than printing text nothing enforces.
             require(scope != ProtectionScope.Monocolored) { "Protection from monocolored is not supported" }
+            // A chosen card type is read off the permanent that grants it — a static grant, not a
+            // printed keyword (GrantProtectionFromToGroup / GrantProtectionToController).
+            require(scope !is ProtectionScope.ChosenCardType) { "Protection from the chosen card type is a granted static" }
+            require(scope !is ProtectionScope.ChosenCardName) { "Protection from the chosen card name is a granted static" }
+            // "Each mana value other than the chosen number" (Haktos) hangs off a choice too.
+            require(scope !is ProtectionScope.ManaValueOtherThan) { "Protection from each mana value other than N is a granted static" }
         }
 
         override val keyword: Keyword? = when (scope) {
@@ -132,8 +146,10 @@ sealed interface KeywordAbility {
             is ProtectionScope.Multicolored -> "Protection from multicolored"
             is ProtectionScope.Monocolored -> "Protection from monocolored"
             is ProtectionScope.CardType -> "Protection from ${scope.cardType.lowercase()}"
-            is ProtectionScope.Subtype -> "Protection from ${scope.subtype}s"
-            is ProtectionScope.Supertype -> "Protection from ${scope.supertype.lowercase()}"
+            is ProtectionScope.ChosenCardType -> "Protection from the chosen card type"
+            is ProtectionScope.ChosenCardName -> "Protection from the chosen card name"
+            is ProtectionScope.Subtype -> "Protection from ${scope.subtype}${scope.cardType?.let { " ${it.lowercase()}s" } ?: "s"}"
+            is ProtectionScope.Supertype -> "Protection from ${scope.supertype.lowercase()}${scope.cardType?.let { " ${it.lowercase()}s" } ?: ""}"
             is ProtectionScope.Everything -> "Protection from everything"
             is ProtectionScope.EachOpponent -> "Protection from each opponent"
             is ProtectionScope.Spells -> "Protection from spells"
@@ -141,6 +157,8 @@ sealed interface KeywordAbility {
             is ProtectionScope.RingBearers -> "Protection from Ring-bearers"
             is ProtectionScope.ActivatedAbilities -> "Protection from activated abilities"
             is ProtectionScope.TriggeredAbilities -> "Protection from triggered abilities"
+            is ProtectionScope.ManaValueParity -> "Protection from each ${scope.parity.displayName} mana value"
+            is ProtectionScope.ManaValueOtherThan -> "Protection from each mana value other than ${scope.value}"
         }
     }
 
@@ -162,6 +180,12 @@ sealed interface KeywordAbility {
     @SerialName("Hexproof")
     @Serializable
     data class Hexproof(val scope: ProtectionScope) : KeywordAbility {
+        init {
+            require(scope !is ProtectionScope.ChosenCardType) { "Hexproof from the chosen card type is not supported" }
+            require(scope !is ProtectionScope.ChosenCardName) { "Hexproof from the chosen card name is not supported" }
+            require(scope !is ProtectionScope.ManaValueOtherThan) { "Hexproof from each mana value other than N is not supported" }
+        }
+
         override val description: String = when (scope) {
             is ProtectionScope.Color -> "Hexproof from ${scope.color.displayName.lowercase()}"
             is ProtectionScope.Colors -> "Hexproof from " +
@@ -170,8 +194,10 @@ sealed interface KeywordAbility {
             is ProtectionScope.Multicolored -> "Hexproof from multicolored"
             is ProtectionScope.Monocolored -> "Hexproof from monocolored"
             is ProtectionScope.CardType -> "Hexproof from ${scope.cardType.lowercase()}"
-            is ProtectionScope.Subtype -> "Hexproof from ${scope.subtype}s"
-            is ProtectionScope.Supertype -> "Hexproof from ${scope.supertype.lowercase()}"
+            is ProtectionScope.ChosenCardType -> "Hexproof from the chosen card type"
+            is ProtectionScope.ChosenCardName -> "Hexproof from the chosen card name"
+            is ProtectionScope.Subtype -> "Hexproof from ${scope.subtype}${scope.cardType?.let { " ${it.lowercase()}s" } ?: "s"}"
+            is ProtectionScope.Supertype -> "Hexproof from ${scope.supertype.lowercase()}${scope.cardType?.let { " ${it.lowercase()}s" } ?: ""}"
             is ProtectionScope.Everything -> "Hexproof from everything"
             is ProtectionScope.EachOpponent -> "Hexproof from each opponent"
             is ProtectionScope.Spells -> "Hexproof from spells"
@@ -179,6 +205,8 @@ sealed interface KeywordAbility {
             is ProtectionScope.RingBearers -> "Hexproof from Ring-bearers"
             is ProtectionScope.ActivatedAbilities -> "Hexproof from activated abilities"
             is ProtectionScope.TriggeredAbilities -> "Hexproof from triggered abilities"
+            is ProtectionScope.ManaValueParity -> "Hexproof from each ${scope.parity.displayName} mana value"
+            is ProtectionScope.ManaValueOtherThan -> "Hexproof from each mana value other than ${scope.value}"
         }
     }
 
@@ -391,7 +419,7 @@ sealed interface KeywordAbility {
 
     /**
      * **Optional additional cost paid at cast time.** Generalises Kicker, Multikicker,
-     * Offspring, Squad, Bargain, and the pre-kicker "pay {N} more to cast as though it had flash"
+     * Offspring, Squad, Bargain, Buyback, and the pre-kicker "pay {N} more to cast as though it had flash"
      * pattern (Ghitu Fire et al.). The card script gates effect variations on the durable
      * fact recorded in [declaredSlot] — read via [WasKicked] / `Conditions.WasBargained`,
      * or `wasKicked` in trigger filters — when [branchesEffect] is `true`.
@@ -408,6 +436,8 @@ sealed interface KeywordAbility {
      * - **Bargain** ([declaredSlot] = [ChoiceSlot.BARGAINED]) — same shape as
      *   kicker-with-a-sacrifice-cost, but a *different* fact (CR 702.166b), so bargaining
      *   never reads as kicking and vice versa.
+     * - **Buyback** ([declaredSlot] = [ChoiceSlot.BOUGHT_BACK]) — the payment changes where the
+     *   resolving spell goes (its owner's hand, CR 702.27a), not what it does.
      * - **FlashKicker** ([grantsFlashTiming] = `true`) — paying the cost lets the spell
      *   be cast as though it had flash. Effect is unchanged unless the card also opts
      *   into [branchesEffect] (rare — Ghitu Fire does not).
@@ -463,9 +493,19 @@ sealed interface KeywordAbility {
          * onto the resolving permanent, and the payoff conditions and cast-trigger filters key
          * off it — so two mechanics on the same rail never read each other's declaration.
          */
-        val declaredSlot: ChoiceSlot = ChoiceSlot.KICKED
+        val declaredSlot: ChoiceSlot = ChoiceSlot.KICKED,
+        /**
+         * The floor on the spell's X when this cost is paid — "Kicker {X}. X can't be 0" (Thieving
+         * Skydiver) is `1`. It mirrors [Flashback.minimumXValue]: the X choice offered with the
+         * kicked cast starts there, and a kicked cast announcing less is rejected. It constrains
+         * only casts that pay this cost; an unkicked cast has no X to choose.
+         */
+        val minimumXValue: Int = 0
     ) : KeywordAbility {
         init {
+            require(minimumXValue == 0 || manaCost?.hasX == true) {
+                "A minimum X needs an {X} in the optional cost's mana half; got ${manaCost ?: "no mana cost"}"
+            }
             require(manaCost != null || additionalCost != null) {
                 "OptionalAdditionalCost requires either a manaCost or an additionalCost"
             }
@@ -474,6 +514,14 @@ sealed interface KeywordAbility {
                     "(pay life, pay player counters, discard, exile); got ${additionalCost?.description}"
             }
         }
+
+        /**
+         * Is this a kicker ability (kicker or multikicker, CR 702.33) — as opposed to another
+         * mechanic on this rail (Offspring, Bargain, Squad, Replicate, a flash-timing unlock)?
+         * Read by "a card with a kicker ability" (`CardPredicate.HasKicker`).
+         */
+        val isKicker: Boolean
+            get() = declaredSlot == ChoiceSlot.KICKED && keyword == null && !grantsFlashTiming
 
         /**
          * The mana half of this cost paid [times] times over — each payment repeats the symbols
@@ -565,7 +613,7 @@ sealed interface KeywordAbility {
     data class Morph(
         val morphCost: PayCost,
         /** Effect to execute as a replacement effect when turned face up (e.g., put 5 +1/+1 counters on it) */
-        val faceUpEffect: com.wingedsheep.sdk.scripting.effects.Effect? = null
+        val faceUpEffect: Effect? = null
     ) : KeywordAbility {
         /** Convenience constructor for mana-based morph costs. */
         constructor(cost: ManaCost) : this(PayCost.Atom(CostAtom.Mana(cost)))
@@ -601,7 +649,7 @@ sealed interface KeywordAbility {
          * exact sibling of [Morph.faceUpEffect] — it does *not* use the stack and can't be
          * responded to, which is what separates it from a `Triggers.self.turnedFaceUp()` ability.
          */
-        val faceUpEffect: com.wingedsheep.sdk.scripting.effects.Effect? = null,
+        val faceUpEffect: Effect? = null,
         /**
          * "This cost is reduced by {1} for each …" (Fugitive Codebreaker). A *self*-scoped generic
          * reduction on this card's own disguise cost, distinct from
@@ -658,6 +706,27 @@ sealed interface KeywordAbility {
         override val description: String =
             if (additionalCost == null) "Flashback $cost"
             else "Flashback—$cost, ${additionalCost.description}"
+    }
+
+    // =========================================================================
+    // Beam me up
+    // =========================================================================
+
+    /**
+     * Beam me up [cost] (Star Trek): "You may cast this card from your graveyard for [cost] if you
+     * also return a creature you control to its owner's hand. Then exile this spell." Only instants
+     * and sorceries can be cast this way. The return is a cost, and the spell is exiled whenever it
+     * leaves the stack.
+     *
+     * A keyword of its own rather than a [Flashback] with a bundled return cost: "can't be beamed
+     * up" (Marooned) must tell a beam-me-up return apart from every other return cost.
+     * [WebSlinging] returns a tapped creature, from hand, with no exile rider.
+     */
+    @SerialName("BeamMeUp")
+    @Serializable
+    data class BeamMeUp(val cost: ManaCost) : KeywordAbility {
+        override val keyword: Keyword = Keyword.BEAM_ME_UP
+        override val description: String = "Beam me up $cost"
     }
 
     // =========================================================================
@@ -863,7 +932,29 @@ sealed interface KeywordAbility {
     @SerialName("Dash")
     @Serializable
     data class Dash(val cost: ManaCost) : KeywordAbility {
+        override val keyword: Keyword = Keyword.DASH
         override val description: String = "Dash $cost"
+    }
+
+    // =========================================================================
+    // Surge
+    // =========================================================================
+
+    /**
+     * Surge with a mana cost (CR 702.117, Oath of the Gatewatch).
+     * "Surge [cost]" — you may pay [cost] rather than this spell's mana cost as you cast it if you
+     * or one of your teammates has cast another spell this turn (CR 702.117a). It follows the
+     * ordinary alternative-cost rules (601.2b, 601.2f–h): normal timing, one alternative cost per
+     * cast, and `{X}` in the surge cost is announced as usual (Fall of the Titans).
+     *
+     * The linked "if its surge cost was paid" riders read `Conditions.SurgeCostWasPaid`, stamped
+     * by the engine on the spell and the permanent it becomes. Unlike [Dash] it leaves no marker
+     * behind on its own — the rider is the card's own ability.
+     */
+    @SerialName("Surge")
+    @Serializable
+    data class Surge(val cost: ManaCost) : KeywordAbility {
+        override val description: String = "Surge $cost"
     }
 
     // =========================================================================
@@ -955,12 +1046,12 @@ sealed interface KeywordAbility {
      *
      * This class only carries the printed *setup* half — [cost] and [timeCounters]. The
      * countdown-and-cast half is component-driven, not definition-driven: the engine's
-     * synthesized [com.wingedsheep.sdk.scripting.Suspend.countdownAbility] is granted to
+     * synthesized [com.wingedsheep.sdk.scripting.Suspend.exileAbilities] are granted to
      * *any* exiled card carrying the runtime `SuspendedComponent` marker, so the same
      * machinery serves both a printed suspend (stamped by the engine's
      * `SuspendCardFromHandHandler` special action) and a suspend granted at runtime to an
      * otherwise-ordinary card (e.g. Taigam, Master Opportunist, via
-     * [com.wingedsheep.sdk.dsl.Effects.Suspend]).
+     * [Effects.Suspend]).
      */
     @SerialName("Suspend")
     @Serializable
@@ -1160,19 +1251,28 @@ sealed interface KeywordAbility {
     // =========================================================================
 
     /**
-     * Evoke with a mana cost.
+     * Evoke (CR 702.74).
      * "Evoke {R/W}{R/W}" - You may cast this spell for its evoke cost.
      * If you do, it's sacrificed when it enters the battlefield.
      *
      * Evoke is an alternative cost. When cast for evoke, the creature enters
      * the battlefield normally (ETB triggers fire), then a separate "sacrifice self"
      * delayed trigger goes on the stack. Players can respond between ETB and sacrifice.
+     *
+     * [additionalCost] is the non-mana part of the evoke cost, paid alongside [cost] like the
+     * bundled costs of [Warp], [Blitz] and [Bestow]. "Evoke—Exile a green card from your hand"
+     * (Endurance) is `Evoke(ManaCost.ZERO, Costs.additional.ExileCards(1, green, HAND))`: the
+     * whole evoke cost is the exile, so a {0} mana half is never shown.
      */
     @SerialName("Evoke")
     @Serializable
-    data class Evoke(val cost: ManaCost) : KeywordAbility {
+    data class Evoke(val cost: ManaCost, val additionalCost: AdditionalCost? = null) : KeywordAbility {
         override val keyword: Keyword = Keyword.EVOKE
-        override val description: String = "Evoke $cost"
+        override val description: String = when {
+            additionalCost == null -> "Evoke $cost"
+            cost.cmc == 0 && !cost.hasX -> "Evoke—${additionalCost.description}"
+            else -> "Evoke—$cost, ${additionalCost.description}"
+        }
     }
 
     // =========================================================================
@@ -1286,12 +1386,16 @@ sealed interface KeywordAbility {
      * cousin. This keyword is the display marker; the behaviour is the hand-zone
      * [ActivatedAbility] `ninjutsuAbility(cost)` builds, which the `ninjutsu("{cost}")` DSL helper
      * on [com.wingedsheep.sdk.dsl.CardBuilder] adds alongside it.
+     *
+     * [commander] marks commander ninjutsu (CR 702.49d), the variant that also functions from the
+     * command zone — a ninjutsu ability all the same, so it keeps [Keyword.NINJUTSU];
+     * `commanderNinjutsu("{cost}")` adds it with a hand and a command-zone ability.
      */
     @SerialName("Ninjutsu")
     @Serializable
-    data class Ninjutsu(val cost: ManaCost) : KeywordAbility {
+    data class Ninjutsu(val cost: ManaCost, val commander: Boolean = false) : KeywordAbility {
         override val keyword: Keyword = Keyword.NINJUTSU
-        override val description: String = "Ninjutsu $cost"
+        override val description: String = (if (commander) "Commander ninjutsu " else "Ninjutsu ") + cost
     }
 
     // =========================================================================
@@ -1443,6 +1547,65 @@ sealed interface KeywordAbility {
     }
 
     // =========================================================================
+    // Awaken
+    // =========================================================================
+
+    /**
+     * Awaken [count]—[cost] (CR 702.113, Battle for Zendikar). Two abilities on an instant or
+     * sorcery (CR 702.113a): "You may pay [cost] rather than pay this spell's mana cost as you cast
+     * this spell" and the spell ability "If this spell's awaken cost was paid, put [count] +1/+1
+     * counters on target land you control. That land becomes a 0/0 Elemental creature with haste.
+     * It's still a land."
+     *
+     * An alternative cost like [Cleave] and [Overload], but one that *adds* text rather than
+     * changing it, so the card author writes only the printed spell: the engine appends
+     * [landTarget] after the spell's own target requirements — chosen only when the awaken cost is
+     * paid (CR 702.113b) — and runs [spellAbility] after the spell's own effect. Neither is
+     * serialized; both derive from [count]. The awaken cost never changes mana value (CR 118.9c),
+     * and a copy of an awakened spell is awakened too (CR 707.10).
+     */
+    @SerialName("Awaken")
+    @Serializable
+    data class Awaken(val count: Int, val cost: ManaCost) : KeywordAbility {
+        override val keyword: Keyword = Keyword.AWAKEN
+        override val description: String = "Awaken $count\u2014$cost"
+
+        /** The awaken spell ability's own target: "target land you control" (CR 702.113a). */
+        val landTarget: TargetRequirement
+            get() = TargetObject(
+                filter = TargetFilter(GameObjectFilter.Land.youControl()),
+                id = LAND_TARGET_ID,
+            )
+
+        /**
+         * "Put [count] +1/+1 counters on target land you control. That land becomes a 0/0
+         * Elemental creature with haste. It's still a land." — permanently (the effect has no
+         * duration). Reads [landTarget] by its id, so it composes after any spell effect.
+         */
+        val spellAbility: Effect
+            get() {
+                val land = EffectTarget.BoundVariable(LAND_TARGET_ID)
+                return CompositeEffect(listOf(
+                    Effects.AddCounters(CounterType.PLUS_ONE_PLUS_ONE, count, land),
+                    Effects.BecomeCreature(
+                        target = land,
+                        power = 0,
+                        toughness = 0,
+                        keywords = setOf(Keyword.HASTE),
+                        creatureTypes = setOf("Elemental"),
+                        duration = Duration.Permanent,
+                    ),
+                ), descriptionOverride = "Put $count +1/+1 counter${if (count == 1) "" else "s"} on target land you " +
+                    "control. That land becomes a 0/0 Elemental creature with haste. It's still a land.")
+            }
+
+        companion object {
+            /** The [landTarget]'s requirement id — distinct from the `t<n>` ids spell targets get. */
+            const val LAND_TARGET_ID: String = "awaken"
+        }
+    }
+
+    // =========================================================================
     // Devour
     // =========================================================================
 
@@ -1530,12 +1693,12 @@ sealed interface KeywordAbility {
         /**
          * Create Protection from a creature subtype.
          */
-        fun protectionFromSubtype(subtype: String): KeywordAbility =
-            Protection(ProtectionScope.Subtype(subtype))
+        fun protectionFromSubtype(subtype: String, cardType: String? = null): KeywordAbility =
+            Protection(ProtectionScope.Subtype(subtype, cardType))
 
         /** Protection from a supertype — "from legendary creatures" (Tsabo Tavoc). */
-        fun protectionFromSupertype(supertype: String): KeywordAbility =
-            Protection(ProtectionScope.Supertype(supertype))
+        fun protectionFromSupertype(supertype: String, cardType: String? = null): KeywordAbility =
+            Protection(ProtectionScope.Supertype(supertype, cardType))
 
         /** "Bands with other legendary creatures" (CR 702.22b) — the Legends land cycle. */
         fun bandsWithOther(supertype: com.wingedsheep.sdk.core.Supertype): BandsWithOther =
@@ -1639,9 +1802,10 @@ sealed interface KeywordAbility {
         fun flashback(cost: String, condition: Condition): KeywordAbility =
             Flashback(ManaCost.parse(cost), condition = condition)
 
-        /**
-         * Create Harmonize with mana cost from string (e.g., "Harmonize {5}{R}{R}").
-         */
+        /** Create Beam me up with its mana portion; the engine also requires a creature return. */
+        fun beamMeUp(cost: String): KeywordAbility = BeamMeUp(ManaCost.parse(cost))
+
+        /** Create Harmonize with mana cost from string (e.g., "Harmonize {5}{R}{R}"). */
         fun harmonize(cost: String): KeywordAbility = Harmonize(ManaCost.parse(cost))
 
         /**
@@ -1677,6 +1841,13 @@ sealed interface KeywordAbility {
          */
         fun kicker(cost: String): KeywordAbility = OptionalAdditionalCost(manaCost = ManaCost.parse(cost))
 
+        /**
+         * Kicker with an {X} that has a floor — "Kicker {X}. X can't be 0" is
+         * `kicker("{X}", minimumXValue = 1)` (Thieving Skydiver).
+         */
+        fun kicker(cost: String, minimumXValue: Int): KeywordAbility =
+            OptionalAdditionalCost(manaCost = ManaCost.parse(cost), minimumXValue = minimumXValue)
+
         fun kicker(cost: ManaCost): KeywordAbility = OptionalAdditionalCost(manaCost = cost)
 
         /**
@@ -1696,6 +1867,30 @@ sealed interface KeywordAbility {
             additionalCost = additionalCost,
             displayPrefix = "Additional cost",
             declaredSlot = ChoiceSlot.ADDITIONAL_COST_PAID
+        )
+
+        /**
+         * Create Buyback (CR 702.27) — "Buyback {3}": an optional additional cost that, when paid,
+         * puts the resolving instant or sorcery into its owner's hand instead of their graveyard.
+         * Rides the optional-additional-cost rail under [ChoiceSlot.BOUGHT_BACK], so a bought-back
+         * spell never reads as kicked.
+         */
+        fun buyback(cost: String): KeywordAbility = OptionalAdditionalCost(
+            manaCost = ManaCost.parse(cost),
+            displayPrefix = "Buyback",
+            branchesEffect = false,
+            declaredSlot = ChoiceSlot.BOUGHT_BACK
+        )
+
+        /**
+         * Create Buyback with a non-mana cost — "Buyback—Sacrifice a land" (Constant Mists),
+         * "Buyback—Discard two cards" (Forbid).
+         */
+        fun buyback(additionalCost: AdditionalCost): KeywordAbility = OptionalAdditionalCost(
+            additionalCost = additionalCost,
+            displayPrefix = "Buyback",
+            branchesEffect = false,
+            declaredSlot = ChoiceSlot.BOUGHT_BACK
         )
 
         /**
@@ -1785,6 +1980,12 @@ sealed interface KeywordAbility {
         fun dash(cost: String): KeywordAbility = Dash(ManaCost.parse(cost))
 
         /**
+         * Create Surge with a mana cost from a string (CR 702.117). E.g. `surge("{1}{R}")` for
+         * "Surge {1}{R}".
+         */
+        fun surge(cost: String): KeywordAbility = Surge(ManaCost.parse(cost))
+
+        /**
          * Create Blitz from a mana cost string and an optional bundled non-mana cost (CR 702.152).
          * E.g. `blitz("{2}{R}")`, or `blitz("{2}{B}{B}", Costs.additional.PayLife(2))` for
          * "Blitz—{2}{B}{B}, Pay 2 life."
@@ -1805,8 +2006,9 @@ sealed interface KeywordAbility {
         fun prototype(cost: String, power: Int, toughness: Int): KeywordAbility =
             Prototype(ManaCost.parse(cost), power, toughness)
 
-        /** Create Evoke with mana cost from string. */
-        fun evoke(cost: String): KeywordAbility = Evoke(ManaCost.parse(cost))
+        /** Create Evoke with mana cost from string, plus an optional non-mana part. */
+        fun evoke(cost: String, additionalCost: AdditionalCost? = null): KeywordAbility =
+            Evoke(ManaCost.parse(cost), additionalCost)
 
         /**
          * Create Emerge with mana cost from string (CR 702.119). Prefer the `emerge(cost)` DSL
@@ -1861,6 +2063,13 @@ sealed interface KeywordAbility {
          * the card's `spell { }` block via `overloadEffect`.
          */
         fun overload(cost: String): KeywordAbility = Overload(ManaCost.parse(cost))
+
+        /**
+         * Create Awaken N—[cost] (CR 702.113). E.g. `awaken(3, "{5}{B}{B}")` for
+         * "Awaken 3—{5}{B}{B}". The card's `spell { }` block holds only the printed spell; the
+         * engine adds the land target and the awaken effect when the awaken cost is paid.
+         */
+        fun awaken(count: Int, cost: String): KeywordAbility = Awaken(count, ManaCost.parse(cost))
 
         /**
          * Create Conspire keyword ability.
@@ -1930,11 +2139,19 @@ sealed interface KeywordAbility {
          * projection keeps one `CREW_<n>` per distinct N and the crew readers take the cheapest.
          */
         fun grantedCrew(n: Int): String = "${Keyword.CREW.name}_$n"
+
+        /**
+         * The projected keyword a *granted* "renown [n]" floats — `RENOWN_<n>` — for
+         * `GrantKeyword(KeywordAbility.grantedRenown(1), attackers)` ("Attacking creatures you
+         * control have … renown 1", Aragorn, Hornburg Hero). The engine derives one renown trigger
+         * per grant instance, beside any printed renown's (CR 702.112c); see [Renown].
+         */
+        fun grantedRenown(n: Int): String = Renown.grantedKeyword(n)
         fun saddle(n: Int): KeywordAbility = Numeric(Keyword.SADDLE, n)
         fun modular(n: Int): KeywordAbility = Numeric(Keyword.MODULAR, n)
         fun fading(n: Int): KeywordAbility = Numeric(Keyword.FADING, n)
         /**
-         * Vanishing N (CR 702.62) — engine-live. Declaring this is the whole implementation;
+         * Vanishing N (CR 702.63) — engine-live. Declaring this is the whole implementation;
          * [Vanishing] supplies the enters-with-N-time-counters replacement and both triggers.
          * Do not also hand-write those three parts, or they will stack with the engine's.
          */

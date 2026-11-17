@@ -1059,6 +1059,66 @@
     ]
 }
 
+// Frost Lynx
+{
+    "name": "Frost Lynx",
+    "manaCost": "{2}{U}",
+    "typeLine": "Creature — Elemental Cat",
+    "oracleText": "When this creature enters, tap target creature an opponent controls. That creature doesn't untap during its controller's next untap step.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Frost Lynx:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "TapUntap",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        {
+                            "type": "GrantKeyword",
+                            "keyword": "DOESNT_UNTAP",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            },
+                            "duration": "UntilAfterAffectedControllersNextUntap"
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature ctrl:opponent"
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "55",
+        "artist": "Izzy",
+        "flavorText": "It readily attacks much larger prey, knowing retaliation is impossible.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/1/619268d2-f7a8-48cd-b17b-197e82474b13.jpg"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Geist of the Moors
 {
     "name": "Geist of the Moors",
@@ -1229,6 +1289,90 @@
     ]
 }
 
+// Heliod's Pilgrim
+{
+    "name": "Heliod's Pilgrim",
+    "manaCost": "{2}{W}",
+    "typeLine": "Creature — Human Cleric",
+    "oracleText": "When this creature enters, you may search your library for an Aura card, reveal it, put it into your hand, then shuffle.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Heliod's Pilgrim:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "FromZone",
+                                    "zone": "Library",
+                                    "filter": "Aura"
+                                },
+                                "storeAs": "searchable",
+                                "search": true
+                            },
+                            {
+                                "type": "SelectFromCollection",
+                                "from": "searchable",
+                                "selection": {
+                                    "type": "ChooseUpTo",
+                                    "count": {
+                                        "type": "Fixed",
+                                        "amount": 1
+                                    }
+                                },
+                                "storeSelected": "found",
+                                "prompt": "Search your library for an Aura card to put into your hand",
+                                "selectedLabel": "Put into your hand"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "found",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Hand"
+                                },
+                                "revealed": true
+                            },
+                            "ShuffleLibrary",
+                            "EmitLibrarySearchedEvent"
+                        ]
+                    },
+                    "descriptionOverride": "When this creature enters, you may search your library for an Aura card, reveal it, put it into your hand, then shuffle."
+                },
+                "descriptionOverride": "When this creature enters, you may search your library for an Aura card, reveal it, put it into your hand, then shuffle."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "14",
+        "artist": "Izzy",
+        "flavorText": "The blessings of Heliod are apparent for all to see.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/e/7ea54b97-9182-4d46-9d70-3cc7f9b18ada.jpg?1783939202",
+        "rulings": [
+            {
+                "date": "2014-07-18",
+                "text": "Enchantment creatures with bestow from the Theros block aren't Aura cards in your library. You can't find one with Heliod's Pilgrim."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Hunter's Ambush
 {
     "name": "Hunter's Ambush",
@@ -1262,6 +1406,62 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// In Garruk's Wake
+{
+    "name": "In Garruk's Wake",
+    "manaCost": "{7}{B}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy all creatures you don't control and all planeswalkers you don't control.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "BattlefieldMatching",
+                        "filter": {
+                            "cardPredicates": [
+                                {
+                                    "type": "Or",
+                                    "predicates": [
+                                        "IsCreature",
+                                        "IsPlaneswalker"
+                                    ]
+                                }
+                            ],
+                            "controllerPredicate": {
+                                "type": "ControllerNot",
+                                "predicate": "ControlledByYou"
+                            }
+                        }
+                    },
+                    "storeAs": "destroyAll_gathered"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "destroyAll_gathered",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    },
+                    "moveType": "Destroy"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "100",
+        "rarity": "RARE",
+        "artist": "Chase Stone",
+        "flavorText": "Beyond pain, beyond obsession and wild despair, there lies a place of twisted power only the most tormented souls can reach.",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/6/f6f2c2f6-d07f-42af-9944-70d3dac8348c.jpg?1783939183"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -1864,6 +2064,61 @@
     ]
 }
 
+// Netcaster Spider
+{
+    "name": "Netcaster Spider",
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature — Spider",
+    "oracleText": "Reach (This creature can block creatures with flying.)\nWhenever this creature blocks a creature with flying, this creature gets +2/+0 until end of turn.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "keywords": [
+        "REACH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Netcaster Spider:1",
+                "trigger": {
+                    "type": "BlockEvent",
+                    "attackerFilter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "HasKeyword",
+                                "keyword": "FLYING"
+                            }
+                        ]
+                    }
+                },
+                "effect": {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": 0
+                    },
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "186",
+        "artist": "Yohann Schepacz",
+        "flavorText": "It is an expert at culling individuals who stray too far from the herd.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/8/a8702c15-5f32-453e-8d58-cadfcdaeb3dc.jpg?1783939165"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Nightfire Giant
 {
     "name": "Nightfire Giant",
@@ -2199,6 +2454,81 @@
     "colorIdentityOverride": [
         "BLUE"
     ]
+}
+
+// Rogue's Gloves
+{
+    "name": "Rogue's Gloves",
+    "manaCost": "{2}",
+    "typeLine": "Artifact — Equipment",
+    "oracleText": "Whenever equipped creature deals combat damage to a player, you may draw a card.\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Rogue's Gloves:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "binding": "ATTACHED",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "DrawCards",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    }
+                },
+                "descriptionOverride": "Whenever equipped creature deals combat damage to a player, you may draw a card."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Rogue's Gloves:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}"
+                    }
+                },
+                "effect": {
+                    "type": "AttachEquipment",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "creature you control"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        },
+                        "id": "creature you control"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "isEquipAbility": true
+            }
+        ]
+    },
+    "equipCost": "{2}",
+    "metadata": {
+        "collectorNumber": "227",
+        "rarity": "UNCOMMON",
+        "artist": "Cyril Van Der Haegen",
+        "flavorText": "Professional pilferers prefer proper preparation.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/2/22a35bd7-8f0f-421a-948d-810513e6b0a0.jpg?1783939156"
+    },
+    "colorIdentityOverride": []
 }
 
 // Sacred Armory
@@ -2965,6 +3295,99 @@
     "colorIdentityOverride": [
         "WHITE"
     ]
+}
+
+// The Chain Veil
+{
+    "name": "The Chain Veil",
+    "manaCost": "{4}",
+    "typeLine": "Legendary Artifact",
+    "oracleText": "At the beginning of your end step, if you didn't activate a loyalty ability of a planeswalker this turn, you lose 2 life.\n{4}, {T}: For each planeswalker you control, you may activate one of its loyalty abilities once this turn as though none of its loyalty abilities have been activated this turn.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "The Chain Veil:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "target": "Controller"
+                },
+                "interveningIf": {
+                    "type": "Not",
+                    "condition": {
+                        "type": "Compare",
+                        "left": {
+                            "type": "TurnTracking",
+                            "player": "You",
+                            "tracker": "LOYALTY_ABILITIES_ACTIVATED"
+                        },
+                        "operator": "GTE",
+                        "right": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    }
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "The Chain Veil:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{4}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "GrantLoyaltyActivationPermission",
+                    "planeswalkerFilter": {
+                        "cardPredicates": [
+                            "IsPlaneswalker"
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    },
+                    "additionalActivations": 1
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "215",
+        "rarity": "MYTHIC",
+        "artist": "Volkan Baǵa",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/4/0415cc0e-979e-42cc-a56d-88d13153a7de.jpg?1783939159",
+        "rulings": [
+            {
+                "date": "2014-07-18",
+                "text": "For the first ability, it doesn't matter whether the planeswalker is still on the battlefield as your end step begins. If you activated one of its loyalty abilities that turn, The Chain Veil's triggered ability won't trigger."
+            },
+            {
+                "date": "2014-07-18",
+                "text": "Because the last ability modifies the rules of the game, it affects not only planeswalkers you control when it resolves, but also planeswalkers that come under your control later in the turn."
+            },
+            {
+                "date": "2014-07-18",
+                "text": "Each additional time The Chain Veil's last ability resolves will allow you to activate a loyalty ability of each planeswalker you control an additional time."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
 }
 
 // Triplicate Spirits

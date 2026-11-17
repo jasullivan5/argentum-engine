@@ -375,6 +375,88 @@
     ]
 }
 
+// Loaming Shaman
+{
+    "name": "Loaming Shaman",
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature — Centaur Shaman",
+    "oracleText": "When this creature enters, target player shuffles any number of target cards from their graveyard into their library.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Loaming Shaman:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.TargetsOf",
+                                "group": "t1"
+                            },
+                            "body": {
+                                "type": "MoveToZone",
+                                "target": "IterationEntity",
+                                "destination": "Library"
+                            }
+                        },
+                        {
+                            "type": "ShuffleLibrary",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0"
+                },
+                "additionalTargetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "unlimited": true,
+                        "filter": {
+                            "baseFilter": "own:target-player",
+                            "zone": "Graveyard"
+                        },
+                        "id": "t1"
+                    }
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "87",
+        "rarity": "RARE",
+        "artist": "Carl Critchlow",
+        "flavorText": "His work determines who is remembered and who feeds the worms.",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/3/e34b3f97-1c00-4ad2-a28d-6f064f499761.jpg?1783943411",
+        "rulings": [
+            {
+                "date": "2019-07-12",
+                "text": "If Loaming Shaman's triggered ability targets a player but doesn't target any cards in that player's graveyard, that player just shuffles their library."
+            },
+            {
+                "date": "2019-07-12",
+                "text": "If the target cards become illegal targets, the target player shuffles their library. If the target player becomes an illegal target, Loaming Shaman's ability has no effect."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Macabre Waltz
 {
     "name": "Macabre Waltz",
@@ -455,6 +537,89 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// Protean Hulk
+{
+    "name": "Protean Hulk",
+    "manaCost": "{5}{G}{G}",
+    "typeLine": "Creature — Beast",
+    "oracleText": "When this creature dies, search your library for any number of creature cards with total mana value 6 or less, put them onto the battlefield, then shuffle.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Protean Hulk:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Library",
+                                "filter": "creature"
+                            },
+                            "storeAs": "gathered0",
+                            "search": true
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "gathered0",
+                            "selection": "ChooseAnyNumber",
+                            "storeSelected": "selected1",
+                            "prompt": "Search your library for any number of creature cards with total mana value 6 or less",
+                            "selectedLabel": "Put onto the battlefield",
+                            "restrictions": [
+                                {
+                                    "type": "TotalManaValueAtMost",
+                                    "max": 6
+                                }
+                            ]
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "selected1",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Battlefield"
+                            }
+                        },
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "90",
+        "rarity": "RARE",
+        "artist": "Matt Cavotta",
+        "flavorText": "\"Meat *and* eggs. We eat!\"\n—Borborygmos",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/d/3d978332-95bf-4f86-9e67-06f10983c267.jpg?1783943412",
+        "rulings": [
+            {
+                "date": "2018-03-16",
+                "text": "If a card in your library has {X} in its mana cost, X is considered to be 0."
+            },
+            {
+                "date": "2018-03-16",
+                "text": "You can find any number of creature cards, so long as their total mana value is 6 or less. For example, you could find eight creature cards with mana value 0 and three with mana value 2, but you couldn't find two with mana value 4."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -545,6 +710,59 @@
                 "text": "If this land enters the battlefield and you control no other lands, its ability will force you to return it to your hand."
             }
         ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
+// Rakdos Signet
+{
+    "name": "Rakdos Signet",
+    "manaCost": "{2}",
+    "typeLine": "Artifact",
+    "oracleText": "{1}, {T}: Add {B}{R}.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Rakdos Signet:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "AddMana",
+                            "color": "BLACK"
+                        },
+                        {
+                            "type": "AddMana",
+                            "color": "RED"
+                        }
+                    ]
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "165",
+        "artist": "Greg Hildebrandt",
+        "flavorText": "Made of bone and boiled in blood, a Rakdos signet is not considered finished until it has been used as a murder weapon.",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/7/17a3f95c-5a05-46ea-8dc6-b77b59324035.jpg?1783943381"
     },
     "colorIdentityOverride": [
         "BLACK",
@@ -758,6 +976,55 @@
     ]
 }
 
+// Tidespout Tyrant
+{
+    "name": "Tidespout Tyrant",
+    "manaCost": "{5}{U}{U}{U}",
+    "typeLine": "Creature — Djinn",
+    "oracleText": "Flying\nWhenever you cast a spell, return target permanent to its owner's hand.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Tidespout Tyrant:1",
+                "trigger": "SpellCastEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Hand"
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "permanent"
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "34",
+        "rarity": "RARE",
+        "artist": "Dany Orizio",
+        "flavorText": "He unmakes the world in his own image.",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/4/44865244-2b9f-4734-a4da-49613b23ee4d.jpg?1783943434"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Trygon Predator
 {
     "name": "Trygon Predator",
@@ -815,6 +1082,78 @@
     },
     "colorIdentityOverride": [
         "GREEN",
+        "BLUE"
+    ]
+}
+
+// Utopia Sprawl
+{
+    "name": "Utopia Sprawl",
+    "manaCost": "{G}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant Forest\nAs this Aura enters, choose a color.\nWhenever enchanted Forest is tapped for mana, its controller adds an additional one mana of the chosen color.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "AdditionalManaOnTap",
+                "amount": {
+                    "type": "Fixed",
+                    "amount": 1
+                }
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithChoice",
+                "choiceType": "COLOR"
+            }
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "land Forest"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "99",
+        "artist": "Ron Spears",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/0/5047e271-fbf1-402c-9eb9-0806e5988f76.jpg?1792506540"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Vision Skeins
+{
+    "name": "Vision Skeins",
+    "manaCost": "{1}{U}",
+    "typeLine": "Instant",
+    "oracleText": "Each player draws two cards.",
+    "script": {
+        "spellEffect": {
+            "type": "ForEach",
+            "space": {
+                "type": "IterationSpace.Players",
+                "players": "ActivePlayerFirst"
+            },
+            "body": {
+                "type": "DrawCards",
+                "count": {
+                    "type": "Fixed",
+                    "amount": 2
+                }
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "36",
+        "artist": "Aleksi Briclot",
+        "flavorText": "\"I could see in the other mage's eyes that he'd thought of it too. Then it became a race to exploit the knowledge first.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/e/8e632566-1f58-4439-983a-a25c06b7196c.jpg?1783943433"
+    },
+    "colorIdentityOverride": [
         "BLUE"
     ]
 }

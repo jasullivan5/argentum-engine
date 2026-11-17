@@ -92,7 +92,12 @@ abstract class ScenarioTestBase : FunSpec() {
         // "at random" effects vary across repeated builds — scenario tests that run a setup N times
         // to observe both branches of a flip (Goblin Psychopath, Grip of Chaos) depend on this. A
         // bare GameState() would reuse seed 0 every build and freeze the outcome.
-        private var state = GameState(rng = GameRng.seeded(System.nanoTime()))
+        //
+        // A module can pin the default instead through the [SCENARIO_RNG_SEED_PROPERTY] system
+        // property: `:ai` does, because `GameState.rng` also seeds the AI's rollouts and hidden-
+        // information determinizations, and an AI decision test must reach the same verdict on
+        // every run. [withRngSeed] still overrides either default per scenario.
+        private var state = GameState(rng = GameRng.seeded(pinnedScenarioRngSeed() ?: System.nanoTime()))
 
         private var player1Id: EntityId? = null
         private var player2Id: EntityId? = null
@@ -545,6 +550,7 @@ abstract class ScenarioTestBase : FunSpec() {
                 hasNonManaActivatedAbility = cardDef.hasNonManaActivatedAbility,
                 hasActivatedAbility = cardDef.hasActivatedAbility,
                 hasCycling = cardDef.hasCycling,
+                hasKicker = cardDef.hasKicker,
                 originalSetCode = cardDef.setCode,
                 hasAdventure = cardDef.isAdventure,
                 isDoubleFaced = cardDef.isDoubleFaced,
@@ -570,6 +576,17 @@ abstract class ScenarioTestBase : FunSpec() {
      * Create a new scenario builder.
      */
     protected fun scenario(): ScenarioBuilder = ScenarioBuilder()
+
+    companion object {
+        /**
+         * System property that pins every [ScenarioBuilder]'s default RNG seed (a `Long`). Unset,
+         * each build draws a fresh seed from the clock. A test module sets it on its `Test` tasks.
+         */
+        const val SCENARIO_RNG_SEED_PROPERTY = "argentum.scenario.rngSeed"
+
+        private fun pinnedScenarioRngSeed(): Long? =
+            System.getProperty(SCENARIO_RNG_SEED_PROPERTY)?.takeIf { it.isNotBlank() }?.toLong()
+    }
 
     /**
      * Represents a test game that can be queried and advanced.
@@ -871,6 +888,23 @@ abstract class ScenarioTestBase : FunSpec() {
                 xValue = xValue,
                 useAlternativeCost = true,
                 alternativeCostType = AlternativeCostType.CLEAVE
+            ))
+        }
+
+        /**
+         * Cast a spell for its awaken cost (CR 702.113). [targets] are the spell's own permanent
+         * targets in order, followed by the land to awaken (CR 702.113b).
+         */
+        fun castSpellWithAwaken(playerNumber: Int, spellName: String, targets: List<EntityId>): ExecutionResult {
+            val playerId = if (playerNumber == 1) player1Id else player2Id
+            val cardId = state.getHand(playerId).find { entityId ->
+                state.getEntity(entityId)?.get<CardComponent>()?.name == spellName
+            } ?: error("Card '$spellName' not found in player $playerNumber's hand")
+            return execute(CastSpell(
+                playerId, cardId,
+                targets = targets.map { ChosenTarget.Permanent(it) },
+                useAlternativeCost = true,
+                alternativeCostType = AlternativeCostType.AWAKEN
             ))
         }
 

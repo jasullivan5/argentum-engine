@@ -11414,7 +11414,9 @@
     "PREMODERN",
     "VINTAGE"
   ],
-  "Ancestral Recall": [],
+  "Ancestral Recall": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Ancestral Reminiscence": [
     "BRAWL",
     "COMMANDER",

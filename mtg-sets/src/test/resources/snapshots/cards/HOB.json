@@ -1176,7 +1176,10 @@
             "script": {
                 "spellEffect": {
                     "type": "PlayAdditionalLands",
-                    "count": 1
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
                 }
             }
         }
@@ -4217,6 +4220,7 @@
                             "storeMovedAs": "moved2"
                         },
                         "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent",
                         {
                             "type": "Behold",
                             "filter": "Elf",
@@ -7047,7 +7051,7 @@
                                     "cardPredicates": [
                                         "IsLegendary",
                                         {
-                                            "type": "SharesNameWithPermanentYouControl",
+                                            "type": "SharesNameWithYourCard",
                                             "filter": {
                                                 "cardPredicates": [
                                                     "IsPermanent",
@@ -10226,6 +10230,7 @@
                             "linkToSource": true
                         },
                         "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent",
                         {
                             "type": "GainLife",
                             "amount": {
@@ -14014,7 +14019,8 @@
                                 "zone": "Library",
                                 "filter": "basicland"
                             },
-                            "storeAs": "gathered0"
+                            "storeAs": "gathered0",
+                            "search": true
                         },
                         {
                             "type": "SelectFromCollection",
@@ -14064,9 +14070,11 @@
                             },
                             "revealed": true
                         },
-                        "ShuffleLibrary"
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
                     ]
-                }
+                },
+                "descriptionOverride": "{2}, {T}, Sacrifice this creature: Search your library for up to two basic land cards, reveal them, put one onto the battlefield tapped and the other into your hand, then shuffle."
             }
         ]
     },

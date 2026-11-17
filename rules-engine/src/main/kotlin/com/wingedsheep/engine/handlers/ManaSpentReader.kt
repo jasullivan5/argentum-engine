@@ -81,12 +81,13 @@ object ManaSpentReader {
             return it.manaSpentWhite + it.manaSpentBlue + it.manaSpentBlack +
                 it.manaSpentRed + it.manaSpentGreen + it.manaSpentColorless
         }
-        container.get<CastRecordComponent>()?.let {
-            return it.whiteSpent + it.blueSpent + it.blackSpent +
-                it.redSpent + it.greenSpent + it.colorlessSpent
-        }
-        return 0
+        return container.get<CastRecordComponent>()?.let(::totalSpent) ?: 0
     }
+
+    /** [totalSpent] read off a frozen [snapshot] (a cast trigger's own payment record). */
+    fun totalSpent(snapshot: CastRecordComponent): Int =
+        snapshot.whiteSpent + snapshot.blueSpent + snapshot.blackSpent +
+            snapshot.redSpent + snapshot.greenSpent + snapshot.colorlessSpent
 
     /**
      * The number of distinct *colors* of mana spent to cast [entityId] (0–5). Colorless is not
@@ -118,6 +119,14 @@ object ManaSpentReader {
         return container.get<SpellOnStackComponent>()?.manaSpentSnow
             ?: container.get<CastRecordComponent>()?.snowSpent ?: 0
     }
+
+    /**
+     * The colors of the snow mana spent to cast [entityId] while it is a spell on the stack (empty
+     * once it has left it, or if no colored snow mana was spent). Backs
+     * `SpellCastPredicate.PaidWithSnowManaOfItsColors`, a cast-trigger read.
+     */
+    fun snowColorsSpent(state: GameState, entityId: EntityId): Set<Color> =
+        state.getEntity(entityId)?.get<SpellOnStackComponent>()?.manaSpentSnowColors ?: emptySet()
 
     /**
      * How many mana units produced by a source of [cardType] were spent to cast [entityId] — same

@@ -96,6 +96,32 @@ export interface ComputePhasesOptions {
   autoTapEnabled?: boolean
 }
 
+/** Additional costs the player pays by picking objects (sacrifice, discard, tap, exile …). */
+const SELECTION_COST_TYPES: readonly string[] = [
+  'SacrificePermanent',
+  'SacrificeSelf',
+  'SacrificeForCostReduction',
+  'SacrificeVariable',
+  'TapPermanents',
+  'TapForCostReduction',
+  'BouncePermanent',
+  'DiscardCard',
+  'ExileFromGraveyard',
+  'ExileFromHand',
+  'CollectEvidence',
+  'ExileForTotal',
+  'ExileFromZone',
+  'RevealCard',
+  'Behold',
+  'ChooseEntity',
+  'Blight',
+  'PutCounters',
+  'Conspire',
+  'Casualty',
+  'Craft',
+  'TapForTotalPower',
+]
+
 export function computePhases(actionInfo: LegalActionInfo, options?: ComputePhasesOptions): PipelinePhase[] {
   const phases: PipelinePhase[] = []
 
@@ -123,9 +149,15 @@ export function computePhases(actionInfo: LegalActionInfo, options?: ComputePhas
     actionInfo.modalEnumeration.chooseCount > 1
   ) {
     const modalPhases: PipelinePhase[] = [{ type: 'modalModes' }]
+    //    Entwine paid by sacrifice (Betrayal of Flesh's "Entwine—Sacrifice three lands") and any
+    //    other selection cost on the cast variant take the same exception: the engine rejects the
+    //    action unless it carries the paid permanents.
     const modalCostType = actionInfo.additionalCostInfo?.costType
-    if (modalCostType === 'Blight' || modalCostType === 'TapForTotalPower') {
+    if (modalCostType && SELECTION_COST_TYPES.includes(modalCostType)) {
       modalPhases.push({ type: 'costPayment' })
+      actionInfo.additionalCostInfo?.alsoRequired?.forEach((_, i) => {
+        modalPhases.push({ type: 'costPayment', costIndex: i + 1 })
+      })
     }
     //    An {X} in the cost still has to be announced, and the early return above would drop the
     //    prompt entirely — Profane Command ({X}{B}{B}, "choose two") then cast at X = 0 with every
@@ -274,31 +306,8 @@ export function computePhases(actionInfo: LegalActionInfo, options?: ComputePhas
   // 5. Cost payment (sacrifice/discard/tap/bounce/exile) — emerge already pushed its own above.
   if (actionInfo.additionalCostInfo?.costType && !isEmergeCast && !costAfterTargeting) {
     const costType = actionInfo.additionalCostInfo.costType
-    const costTypesNeedingSelection = [
-      'SacrificePermanent',
-      'SacrificeSelf',
-      'SacrificeForCostReduction',
-      'SacrificeVariable',
-      'TapPermanents',
-      'TapForCostReduction',
-      'BouncePermanent',
-      'DiscardCard',
-      'ExileFromGraveyard',
-      'ExileFromHand',
-      'CollectEvidence',
-      'ExileForTotal',
-      'ExileFromZone',
-      'RevealCard',
-      'Behold',
-      'ChooseEntity',
-      'Blight',
-      'Conspire',
-      'Casualty',
-      'Craft',
-      'TapForTotalPower',
-    ]
 
-    if (costTypesNeedingSelection.includes(costType)) {
+    if (SELECTION_COST_TYPES.includes(costType)) {
       // SacrificeSelf with exact count is auto-selected (no UI needed)
       const isAutoSelectable =
         costType === 'SacrificeSelf' &&
@@ -351,6 +360,34 @@ export function computePhases(actionInfo: LegalActionInfo, options?: ComputePhas
 // mergeResult — applies a phase result to the accumulated action
 // ---------------------------------------------------------------------------
 
+/**
+ * The count a `countIsX` cost picker owes — the X the xSelection phase put on the cast — or null
+ * when the cost's count isn't X or no X was announced.
+ */
+function announcedCostX(costInfo: { readonly countIsX?: boolean }, action: GameAction): number | null {
+  return costInfo.countIsX && action.type === 'CastSpell' && typeof action.xValue === 'number'
+    ? action.xValue
+    : null
+}
+
+/** "Sacrifice X creatures" → "Sacrifice 2 creatures" / "Sacrifice 1 creature". */
+function describeCostX(description: string, x: number): string {
+  return x === 1 ? description.replace(/\bX (\w+?)s\b/, '1 $1') : description.replace(/\bX\b/, String(x))
+}
+
+/**
+ * "Sacrifice X creatures" / "discard X cards" announced at X = 0 owes nothing, so its picker would
+ * only ask the player to confirm an empty selection: drop it from the phases left after the X pick.
+ */
+export function dropXCountPickerAtZero(
+  phases: PipelinePhase[],
+  actionInfo: LegalActionInfo,
+  xValue: number,
+): PipelinePhase[] {
+  if (xValue !== 0 || !actionInfo.additionalCostInfo?.countIsX) return phases
+  return phases.filter((p) => !(p.type === 'costPayment' && (p.costIndex ?? 0) === 0))
+}
+
 export function mergeResult(
   action: GameAction,
   actionInfo: LegalActionInfo,
@@ -368,20 +405,17 @@ export function mergeResult(
 
     case 'counterDistribution': {
       if (action.type === 'ActivateAbility') {
-        // Activated abilities only use this for `RemoveXPlusOnePlusOneCounters`,
-        // which is single-type. Sum the typed entries per creature back into the
-        // legacy `counterRemovals: Map<EntityId, Int>` shape the engine still
-        // consumes for that path.
-        const counterRemovals: Record<string, number> = {}
-        for (const r of result.distributedCounterRemovals) {
-          counterRemovals[r.entityId] = (counterRemovals[r.entityId] ?? 0) + r.count
-        }
+        // Typed entries, so the engine knows which counter type came off each permanent —
+        // "Remove three counters from among creatures you control" (Lieutenant Commander Data)
+        // takes any mix. Only a "remove X counters" cost announces X by the total removed.
         return {
           ...action,
-          xValue: result.xValue,
+          ...(actionInfo.hasXCost && !actionInfo.additionalCostInfo?.distributedCounterRemovalTotal
+            ? { xValue: result.xValue }
+            : {}),
           costPayment: {
             ...action.costPayment,
-            counterRemovals,
+            distributedCounterRemovals: [...result.distributedCounterRemovals],
           },
         }
       }
@@ -566,7 +600,9 @@ export function mergeResult(
                       ? { beheldCards: selectedTargets }
                       : costType === 'Blight' || costType === 'BlightVariable'
                         ? { blightTargets: selectedTargets }
-                        : { sacrificedPermanents: selectedTargets }
+                        : costType === 'PutCounters'
+                          ? { counterPlacementTargets: selectedTargets }
+                          : { sacrificedPermanents: selectedTargets }
         // Spread the existing additionalCostPayment so prior phases' fields
         // (e.g. `blightAmount` from a preceding BlightVariable phase) survive.
         const additionalCostPayment = {
@@ -967,13 +1003,16 @@ export function enterPhase(
           flags.isTapPermanentSelection = true
           flags.targetDescription = costInfo.description
           break
-        case 'SacrificeVariable':
+        case 'SacrificeVariable': {
           validTargets = [...(costInfo.validSacrificeTargets ?? [])]
-          minTargets = costInfo.sacrificeCount ?? 0
-          maxTargets = validTargets.length
+          // "Sacrifice X creatures": exactly the X the xSelection phase put on the action.
+          const xCount = announcedCostX(costInfo, action)
+          minTargets = xCount ?? costInfo.sacrificeCount ?? 0
+          maxTargets = xCount ?? validTargets.length
           flags.isSacrificeSelection = true
-          flags.targetDescription = costInfo.description
+          flags.targetDescription = xCount == null ? costInfo.description : describeCostX(costInfo.description, xCount)
           break
+        }
         case 'TapPermanents': {
           validTargets = [...(costInfo.validTapTargets ?? [])]
           // Station-style multi-select shortcut (CR 702.184a): each chosen creature becomes its
@@ -1061,13 +1100,19 @@ export function enterPhase(
           flags.isBounceSelection = true
           flags.targetDescription = costInfo.description
           break
-        case 'DiscardCard':
+        case 'DiscardCard': {
           validTargets = [...(costInfo.validDiscardTargets ?? [])]
-          minTargets = costInfo.discardCount ?? 1
-          maxTargets = costInfo.discardCount ?? 1
+          // "Discard X cards": exactly the X the xSelection phase put on the action.
+          const xCount = announcedCostX(costInfo, action)
+          minTargets = xCount ?? costInfo.discardCount ?? 1
+          // A variable discard sends its own upper bound; a fixed one doesn't.
+          maxTargets = xCount ?? costInfo.discardMaxCount ?? costInfo.discardCount ?? 1
           flags.isSacrificeSelection = true
           flags.isDiscardSelection = true
+          // An exact X reads "Select card to discard (0/2)"; only a range names the cost.
+          if (xCount == null && costInfo.discardMaxCount != null) flags.targetDescription = costInfo.description
           break
+        }
         case 'ExileFromGraveyard':
           validTargets = [...(costInfo.validExileTargets ?? [])]
           minTargets = costInfo.exileMinCount ?? 1
@@ -1159,6 +1204,13 @@ export function enterPhase(
               ? `Choose a creature to receive ${(action as { additionalCostPayment?: { blightAmount?: number } }).additionalCostPayment?.blightAmount ?? 0} -1/-1 counter(s)`
               : costInfo.description
           break
+        case 'PutCounters':
+          // "Put a -1/-1 counter on a creature you control" (Lethal Sting): pick it on the battlefield.
+          validTargets = [...(costInfo.validCounterPlacementTargets ?? [])]
+          minTargets = 1
+          maxTargets = 1
+          flags.targetDescription = costInfo.description
+          break
         case 'Craft':
           // Craft materials span both battlefield and graveyard (CR 702.167a-b). Route to the
           // dedicated cross-zone overlay rather than the single-zone targeting flow.
@@ -1247,15 +1299,26 @@ export function enterPhase(
       // XValue server-side), the static `count` field is just a placeholder (often
       // its default of 1). After the user picks X via the cast-time xSelection
       // phase, the chosen X *replaces* the placeholder as the max — not min(static, X).
-      const resolveMaxByX = (staticMax: number, constrained: boolean | undefined): number => {
-        if (!constrained) return staticMax
-        if (chosenX == null) return staticMax
-        return chosenX
+      // A division whose total the server priced per X (Shatterskull Smashing: "X damage divided
+      // … among up to two targets") can only reach as many targets as that total covers at the
+      // server's per-target floor — X = 1 can't be split between two creatures.
+      const divisionTotal =
+        actionInfo.totalDamageByX && chosenX != null ? actionInfo.totalDamageByX[chosenX] : undefined
+      const divisionCap =
+        divisionTotal != null ? Math.floor(divisionTotal / (actionInfo.minDamagePerTarget ?? 1)) : Infinity
+      const resolveMaxByX = (staticMax: number, constrained: boolean | undefined, divided = true): number => {
+        const max = !constrained || chosenX == null ? staticMax : chosenX
+        return divided ? Math.min(max, divisionCap) : max
       }
       // "X target creatures" (as opposed to "up to X") is exact: the server flags it, and the
       // chosen X becomes the minimum as well as the maximum.
       const resolveMinByX = (staticMin: number, max: number, exact: boolean | undefined): number =>
         exact && chosenX != null ? chosenX : Math.min(staticMin, max)
+      // "Select up to X target creatures" reads "up to 2" once X is announced.
+      const withChosenX = (description: string, constrained: boolean | undefined): string =>
+        constrained && chosenX != null
+          ? description.replace(/\bX\b/, String(chosenX))
+          : description
       // Name the spell the targets are for — "for Catlike Curiosity (Disturb)". The banner is all
       // the player sees once the menu closes, and the server's description is the one place that
       // names the face actually being cast (a disturb or modal-DFC back, CR 712.8c) and how.
@@ -1265,7 +1328,11 @@ export function enterPhase(
 
       if (actionInfo.targetRequirements && actionInfo.targetRequirements.length > 0) {
         const firstReq = actionInfo.targetRequirements[0]!
-        const maxTargets = resolveMaxByX(firstReq.maxTargets, firstReq.xConstrainsCount)
+        const maxTargets = resolveMaxByX(
+          firstReq.maxTargets,
+          firstReq.xConstrainsCount,
+          (actionInfo.distributionTargetGroup ?? 0) === 0,
+        )
         store.startTargeting({
           action,
           validTargets: applyXFilters(firstReq.validTargets, firstReq.xConstrainsManaValue, firstReq.xConstrainsPower, firstReq.xConstrainsManaValueExactly),
@@ -1279,7 +1346,7 @@ export function enterPhase(
           allSelectedTargets: [],
           targetRequirements: actionInfo.targetRequirements,
           ...(firstReq.targetZone ? { targetZone: firstReq.targetZone } : {}),
-          targetDescription: firstReq.description,
+          targetDescription: withChosenX(firstReq.description, firstReq.xConstrainsCount),
           totalRequirements: actionInfo.targetRequirements.length,
           ...(actionInfo.requiresDamageDistribution ? { requiresDamageDistribution: true } : {}),
           ...spellSource,
@@ -1296,7 +1363,9 @@ export function enterPhase(
           maxTargets,
           // "Select target creature (0/1)" rather than a bare "Select targets" — the server
           // already derives the requirement's wording, the single-target path just dropped it.
-          ...(actionInfo.targetDescription ? { targetDescription: actionInfo.targetDescription } : {}),
+          ...(actionInfo.targetDescription
+            ? { targetDescription: withChosenX(actionInfo.targetDescription, actionInfo.xConstrainsTargetCount) }
+            : {}),
           ...(actionInfo.requiresDamageDistribution ? { requiresDamageDistribution: true } : {}),
           ...spellSource,
         })

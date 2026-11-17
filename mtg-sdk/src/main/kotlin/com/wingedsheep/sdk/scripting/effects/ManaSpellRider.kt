@@ -1,5 +1,6 @@
 package com.wingedsheep.sdk.scripting.effects
 
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.scripting.Duration
 import com.wingedsheep.sdk.scripting.GameObjectFilter
@@ -65,28 +66,38 @@ sealed interface ManaSpellRider {
     }
 
     /**
-     * "When that mana is spent to cast a [spellFilter] spell, copy that spell and you may choose
-     * new targets for the copy." (Pyromancer's Goggles, with
-     * `spellFilter = GameObjectFilter.InstantOrSorcery.withColor(Color.RED)`.)
+     * "When you spend this mana to cast a [spellFilter] spell, [effect]." — the delayed triggered
+     * ability a mana ability sets up for the spell its mana pays for. Pyromancer's Goggles
+     * (`spellFilter = GameObjectFilter.InstantOrSorcery.withColor(Color.RED)`,
+     * `effect = CopyTargetSpellEffect(EffectTarget.TriggeringEntity)`): "When that mana is spent to
+     * cast a red instant or sorcery spell, copy that spell …". Scaled Nurturer
+     * (`GameObjectFilter.Creature.withSubtype("Dragon")`, `Effects.GainLife(2)`): "… you gain 2 life".
      *
      * On consumption the cast pipeline matches the spell against [spellFilter] using its cast
-     * characteristics. On a match, a triggered ability is placed on the stack **above** the spell
-     * that, on resolution, copies it (CR 707.10) — so the copy resolves before the original, which
-     * is the printed behavior. The copy's controller may choose new targets.
+     * characteristics, at payment time. On a match, a triggered ability running [effect] is put on
+     * the stack **above** the spell, so it resolves first. [EffectTarget.TriggeringEntity] names the
+     * spell ("that spell" / "it"); the mana's controller controls the trigger. The trigger is built
+     * with the spell as its source, so it fires whether or not the mana's producer is still on the
+     * battlefield, and it still resolves if the spell has left the stack in the meantime.
      *
-     * The rider is a no-op when the spell doesn't match (e.g. the {R} paid for a creature spell).
-     * Consuming two riders copies the spell twice, one independent copy per rider.
+     * The rider is a no-op when the spell doesn't match (the {G} paid for a non-Dragon spell).
+     * Consuming two riders fires [effect] twice, one trigger per rider.
      *
-     * @property spellFilter Which cast spells the rider copies.
+     * The trigger chooses no targets of its own, so [effect] must be untargeted: it may name the
+     * spell ([EffectTarget.TriggeringEntity]) and the controller, never a `ContextTarget`.
+     *
+     * @property spellFilter Which cast spells set the trigger off.
+     * @property effect What the trigger does when it resolves.
      */
-    @SerialName("CopySpellWhenSpent")
+    @SerialName("TriggersWhenSpent")
     @Serializable
-    data class CopySpellWhenSpent(
-        val spellFilter: GameObjectFilter
+    data class TriggersWhenSpent(
+        val spellFilter: GameObjectFilter,
+        val effect: Effect,
     ) : ManaSpellRider {
         override val description: String =
-            "When that mana is spent to cast a ${spellFilter.description} spell, copy that spell " +
-                "and you may choose new targets for the copy"
+            "When you spend this mana to cast ${article(spellFilter.description)} spell, " +
+                effect.description.replaceFirstChar { it.lowercase() }
     }
 
     /**
@@ -135,6 +146,44 @@ sealed interface ManaSpellRider {
             "If that mana is spent on ${article(spellFilter.description)} spell, it gains " +
                 keyword.lowercase().replace('_', ' ') +
                 (if (duration == Duration.Permanent) "" else " until end of turn")
+    }
+
+    /**
+     * "If that mana is spent on a [spellFilter] spell, that creature enters with [count] additional
+     * [counterType] counter(s) on it." (Guildmages' Forum, with
+     * `spellFilter = GameObjectFilter.Creature and GameObjectFilter.Multicolored`.)
+     *
+     * Like [GrantsKeywordWhenSpent] this is not a triggered ability — the printed card puts nothing on
+     * the stack, so it can't be responded to. On consumption the cast pipeline matches the spell against
+     * [spellFilter] (at payment time, against its cast characteristics) and, on a match, owes the
+     * counters to the spell (`SpellOnStackComponent.additionalEntryCounters`); they're placed as the
+     * permanent enters, so counter-placement replacements (Hardened Scales) apply then. A countered
+     * spell carries none into its next zone, and a copy of the spell owes none.
+     *
+     * Neither neighbour takes this axis: [GrantsKeywordWhenSpent] hands over a keyword, not counters, and
+     * [TriggersWhenSpent] with an `AddCounters` effect is the *triggered* reading — right for Jade Orb of
+     * Dragonkind's "When you spend this mana …", wrong for an "If that mana is spent …" rider, whose
+     * counters must not wait on (or be stoppable as) a trigger above the spell.
+     *
+     * @property spellFilter Which cast spells the rider adds counters to.
+     * @property counterType The kind of counter the permanent enters with.
+     * @property count How many additional counters each rider-carrying mana owes.
+     */
+    @SerialName("EntersWithCountersWhenSpent")
+    @Serializable
+    data class EntersWithCountersWhenSpent(
+        val spellFilter: GameObjectFilter,
+        val counterType: CounterType = CounterType.PLUS_ONE_PLUS_ONE,
+        val count: Int = 1,
+    ) : ManaSpellRider {
+        init {
+            require(count > 0) { "EntersWithCountersWhenSpent needs a positive count, got $count" }
+        }
+
+        override val description: String =
+            "If that mana is spent on ${article(spellFilter.description)} spell, that creature enters with " +
+                (if (count == 1) "an additional ${counterType.printed} counter" else "$count additional ${counterType.printed} counters") +
+                " on it"
     }
 }
 

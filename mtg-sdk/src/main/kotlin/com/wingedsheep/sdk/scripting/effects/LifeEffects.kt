@@ -69,13 +69,20 @@ data class LoseLifeEffect(
  * The gain is keyed to the life *actually* lost — each loss honors `ModifyLifeLoss`
  * replacements individually — and lands as a single life-gain event after all losses
  * (one lifegain trigger, not one per opponent).
+ *
+ * [amountPerLoser] measures [amount] separately for each losing player, read the way
+ * `ForEachPlayer` reads its body: `Player.You` inside [amount] is the player losing life, while
+ * [to] still names the drain's controller. "Each opponent loses life equal to the life that
+ * player lost this turn. You gain life equal to the life lost this way." (Gul Dukat, Colonial
+ * Prefect). Every player's amount is measured before anyone loses life.
  */
 @SerialName("DrainLife")
 @Serializable
 data class DrainLifeEffect(
     val amount: DynamicAmount,
     val from: EffectTarget = EffectTarget.PlayerRef(Player.EachOpponent),
-    val to: EffectTarget = EffectTarget.Controller
+    val to: EffectTarget = EffectTarget.Controller,
+    val amountPerLoser: Boolean = false
 ) : Effect {
     /** Convenience constructor for fixed amounts */
     constructor(
@@ -85,7 +92,12 @@ data class DrainLifeEffect(
     ) : this(DynamicAmount.Fixed(amount), from, to)
 
     override val description: String =
-        "${from.description.replaceFirstChar { it.uppercase() }} loses ${amount.description} life. " +
+        (if (amountPerLoser) {
+            "${from.description.replaceFirstChar { it.uppercase() }} loses life equal to " +
+                "${amount.description}, \"you\" meaning that player. "
+        } else {
+            "${from.description.replaceFirstChar { it.uppercase() }} loses ${amount.description} life. "
+        }) +
             "${to.description.replaceFirstChar { it.uppercase() }} gains life equal to the life lost this way"
 
     override fun applyTextReplacement(replacer: TextReplacer): Effect {
@@ -210,7 +222,7 @@ data class ExchangeLifeAndStatEffect(
 }
 
 /**
- * Exchange the controller's life total with [target] player's (CR 701.12c): each player gains or
+ * Exchange [player]'s life total (the controller by default) with [target] player's (CR 701.12c): each player gains or
  * loses the life needed to reach the other's former total. Applied through the shared gain/lose-life
  * primitives, so life-gain prevention/replacements and life-loss modification apply, and both
  * players' `LifeChangedEvent`s fire for "whenever you gain/lose life" triggers.
@@ -225,10 +237,13 @@ data class ExchangeLifeAndStatEffect(
 @Serializable
 data class ExchangeLifeTotalsEffect(
     val target: EffectTarget = EffectTarget.ContextTarget(0),
-    val drawEqualToLifeLost: Boolean = false
+    val drawEqualToLifeLost: Boolean = false,
+    /** The other side of the exchange — the controller by default; a second target for "two target players". */
+    val player: EffectTarget = EffectTarget.Controller
 ) : Effect {
     override val description: String = buildString {
-        append("Exchange life totals with ${target.description}")
+        if (player == EffectTarget.Controller) append("Exchange life totals with ${target.description}")
+        else append("${player.description} and ${target.description} exchange life totals")
         if (drawEqualToLifeLost) append(". If you lost life this way, draw that many cards")
     }
 }

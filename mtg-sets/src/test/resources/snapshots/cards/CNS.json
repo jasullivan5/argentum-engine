@@ -42,6 +42,217 @@
     ]
 }
 
+// Realm Seekers
+{
+    "name": "Realm Seekers",
+    "manaCost": "{4}{G}{G}",
+    "typeLine": "Creature — Elf Scout",
+    "oracleText": "This creature enters with X +1/+1 counters on it, where X is the total number of cards in all players' hands.\n{2}{G}, Remove a +1/+1 counter from this creature: Search your library for a land card, reveal it, put it into your hand, then shuffle.",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 0
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Realm Seekers:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{2}{G}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomRemoveCounters",
+                                "counterType": "PLUS_ONE_PLUS_ONE",
+                                "self": true
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Library",
+                                "filter": "land"
+                            },
+                            "storeAs": "searchable",
+                            "search": true
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "searchable",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "found",
+                            "prompt": "Search your library for a land card to put into your hand",
+                            "selectedLabel": "Put into your hand"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "found",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Hand"
+                            },
+                            "revealed": true
+                        },
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
+                    ]
+                }
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithDynamicCounters",
+                "count": {
+                    "type": "Count",
+                    "player": "Each",
+                    "zone": "Hand"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "38",
+        "rarity": "RARE",
+        "artist": "Mike Sass",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/e/4e469f84-004d-4a92-98fe-9869b4945181.jpg?1783939373",
+        "rulings": [
+            {
+                "date": "2014-05-29",
+                "text": "If Realm Seekers enters the battlefield directly from a player's hand without being cast, it counts itself when determining the value of X."
+            },
+            {
+                "date": "2014-05-29",
+                "text": "The value of X is determined as Realm Seekers enters the battlefield. Players can cast spells and activate abilities while Realm Seekers is on the stack to remove cards from their hands if they wish, and this will result in fewer counters being placed on Realm Seekers as it enters the battlefield."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Scourge of the Throne
+{
+    "name": "Scourge of the Throne",
+    "manaCost": "{4}{R}{R}",
+    "typeLine": "Creature — Dragon",
+    "oracleText": "Flying\nDethrone (Whenever this creature attacks the player with the most life or tied for most life, put a +1/+1 counter on it.)\nWhenever this creature attacks for the first time each turn, if it's attacking the player with the most life or tied for most life, untap all attacking creatures. After this phase, there is an additional combat phase.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Scourge of the Throne:1",
+                "trigger": {
+                    "type": "AttackEvent",
+                    "requires": [
+                        "AttacksDefenderIsPlayer"
+                    ]
+                },
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                },
+                "triggerRestriction": {
+                    "type": "PlayerHasMost",
+                    "player": "DefendingPlayer",
+                    "amount": {
+                        "type": "LifeTotal",
+                        "player": "You"
+                    }
+                }
+            },
+            {
+                "id": "Scourge of the Throne:2",
+                "trigger": {
+                    "type": "AttackEvent",
+                    "requires": [
+                        "AttacksFirstTimeEachTurn",
+                        "AttacksDefenderIsPlayer"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Group",
+                                "filter": {
+                                    "baseFilter": "creature attacking"
+                                }
+                            },
+                            "body": {
+                                "type": "TapUntap",
+                                "target": "IterationEntity",
+                                "tap": false
+                            }
+                        },
+                        "AddCombatPhase"
+                    ]
+                },
+                "interveningIf": {
+                    "type": "PlayerHasMost",
+                    "player": "DefendingPlayer",
+                    "amount": {
+                        "type": "LifeTotal",
+                        "player": "You"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "35",
+        "rarity": "MYTHIC",
+        "artist": "Michael Komarck",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/0/a01f829b-22aa-4988-9698-5e1ebceb1dd8.jpg?1783939374",
+        "rulings": [
+            {
+                "date": "2014-05-29",
+                "text": "Scourge of the Throne's ability has an intervening \"if\" clause. It must be attacking the player with the most life or tied with the most life both when it's declared as an attacker and as it starts to resolve for it to have any effect. If, at either time, the player isn't the one with the most life or tied for the most life, the ability will have no effect. Notably, this is different than how dethrone works. (Dethrone checks only once to see if the ability triggers.)"
+            },
+            {
+                "date": "2014-05-29",
+                "text": "Once dethrone triggers, it doesn't matter what happens to the players' life totals before the ability resolves. You'll put a +1/+1 counter on the creature even if the defending player doesn't have the most life as the ability resolves."
+            },
+            {
+                "date": "2023-07-28",
+                "text": "Dethrone doesn't trigger if the creature attacks a planeswalker, even if its controller has the most life. The same is true if the creature attacks a battle, even if its protector has the most life."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Selvala, Explorer Returned
 {
     "name": "Selvala, Explorer Returned",

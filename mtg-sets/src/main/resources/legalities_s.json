@@ -31493,7 +31493,8 @@
   ],
   "Sol Ring": [
     "COMMANDER",
-    "PREDH"
+    "PREDH",
+    "VINTAGE_RESTRICTED"
   ],
   "Sol Ring // Sol Ring": [],
   "Sol Talisman": [
@@ -48899,7 +48900,8 @@
     "COMMANDER",
     "OATHBREAKER",
     "PREDH",
-    "TIMELESS"
+    "TIMELESS",
+    "VINTAGE_RESTRICTED"
   ],
   "Striped Bears": [
     "BRAWL",

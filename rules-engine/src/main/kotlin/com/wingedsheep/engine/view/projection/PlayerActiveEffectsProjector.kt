@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.view.projection
 
+import com.wingedsheep.sdk.scripting.effects.describeSkippedPermanents
 import com.wingedsheep.engine.core.engineSerializersModule
 import com.wingedsheep.engine.event.DelayedTriggeredAbility
 import com.wingedsheep.engine.handlers.PredicateEvaluator
@@ -17,13 +18,19 @@ import com.wingedsheep.engine.state.components.battlefield.*
 import com.wingedsheep.engine.state.components.combat.MustAttackPlayerComponent
 import com.wingedsheep.engine.state.components.identity.*
 import com.wingedsheep.engine.state.components.player.*
+import com.wingedsheep.sdk.scripting.ProtectionScope
+import com.wingedsheep.sdk.scripting.effects.protectionDescription
 import com.wingedsheep.engine.view.ClientEffectProgress
 import com.wingedsheep.engine.view.ClientPlayerEffect
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
+import com.wingedsheep.engine.mechanics.durations.GrantDurationGate
+import com.wingedsheep.sdk.scripting.AttackTax
+import com.wingedsheep.sdk.scripting.CardsInZonesCantBeTargeted
 import com.wingedsheep.sdk.scripting.Duration
 import com.wingedsheep.sdk.scripting.GameObjectFilter
+import com.wingedsheep.sdk.scripting.predicates.ControllerPredicate
 import com.wingedsheep.sdk.scripting.effects.DelayedTriggerExpiry
 import com.wingedsheep.sdk.scripting.effects.DelayedTriggerStepScope
 import com.wingedsheep.sdk.scripting.effects.Effect
@@ -68,6 +75,9 @@ internal class PlayerActiveEffectsProjector(
             targetingAndCastingGrants(state, playerId, container) +
             designations(state, playerId, container, audience) +
             attackRequirements(container) +
+            attackTaxGrants(state, playerId) +
+            targetLockGrants(state, playerId) +
+            blockRestrictions(container) +
             pendingSpellRiders(state, playerId) +
             emblemsAndDelayedTriggers(state, playerId, container, audience)
     }
@@ -106,6 +116,8 @@ internal class PlayerActiveEffectsProjector(
         var preventsAllDamage = false
         var preventsAllCombatDamage = false
         val preventedNextFromMatching = mutableSetOf<String>()
+        /** "Prevent all damage that would be dealt to you this turn by <sources>" shields. */
+        val preventedAllDamageToYouFrom = mutableSetOf<String>()
         val preventedCombatDamageSources = mutableSetOf<String>()
         val preventedAllDamageSources = mutableSetOf<String>()
         val preventedFromSources = mutableSetOf<EntityId>()
@@ -129,17 +141,22 @@ internal class PlayerActiveEffectsProjector(
             when (modification) {
                 is SerializableModification.PreventAllCombatDamage -> tally.preventsAllCombatDamage = true
                 is SerializableModification.PreventCombatDamageFromGroup ->
-                    tally.preventedCombatDamageSources.add(modification.filter.description)
+                    tally.preventedCombatDamageSources.add(groupText(state, modification.filter, audience))
                 is SerializableModification.PreventAllDamageFromGroup ->
-                    if (modification.combatOnly) tally.preventedCombatDamageSources.add(modification.filter.description)
-                    else tally.preventedAllDamageSources.add(modification.filter.description)
+                    if (modification.combatOnly) tally.preventedCombatDamageSources.add(groupText(state, modification.filter, audience))
+                    else tally.preventedAllDamageSources.add(groupText(state, modification.filter, audience))
                 else -> {}
             }
             if (playerId !in floatingEffect.effect.affectedEntities) continue
             when (modification) {
                 is SerializableModification.PreventAllDamageTo -> {
                     // A Silhouette-style shield covers only targeted damage, not "all damage".
-                    if (!modification.onlyCausedByObjectTargetingIt) tally.preventsAllDamage = true
+                    when {
+                        modification.onlyCausedByObjectTargetingIt -> {}
+                        modification.sourceFilter != null ->
+                            tally.preventedAllDamageToYouFrom.add(modification.sourceFilter!!.sourcesPhrase())
+                        else -> tally.preventsAllDamage = true
+                    }
                 }
                 is SerializableModification.PreventNextDamage -> {
                     tally.preventNext += durationPhrase(state, floatingEffect) to modification.remainingAmount
@@ -231,6 +248,16 @@ internal class PlayerActiveEffectsProjector(
                         (ending?.let { " ($it)" } ?: ""),
                     icon = "prevent-damage",
                     duration = ending
+                )
+            )
+        }
+        for (sourceDescription in preventedAllDamageToYouFrom) {
+            effects.add(
+                ClientPlayerEffect(
+                    effectId = "prevent_all_damage_from_${sourceDescription.lowercase().replace(' ', '_')}",
+                    name = "Prevent Damage",
+                    description = "All damage that would be dealt to you by $sourceDescription is prevented",
+                    icon = "prevent-damage"
                 )
             )
         }
@@ -366,15 +393,11 @@ internal class PlayerActiveEffectsProjector(
             )
         }
 
-        // Check for SkipUntapComponent (Exhaustion effect)
+        // Check for SkipUntapComponent (Exhaustion, Icebreaker Kraken)
         val skipUntap = container.get<SkipUntapComponent>()
         if (skipUntap != null) {
-            val affected = when {
-                skipUntap.affectsCreatures && skipUntap.affectsLands -> "Creatures and lands"
-                skipUntap.affectsCreatures -> "Creatures"
-                skipUntap.affectsLands -> "Lands"
-                else -> "Permanents"
-            }
+            val affected = skipUntap.permanents.map(::describeSkippedPermanents).distinct()
+                .joinToString(" and ").ifEmpty { "permanents" }.replaceFirstChar { it.uppercase() }
             effects.add(
                 ClientPlayerEffect(
                     effectId = "skip_untap",
@@ -398,6 +421,17 @@ internal class PlayerActiveEffectsProjector(
                     effectId = "lose_at_end_step",
                     name = "Last Chance",
                     description = description,
+                    icon = "skull"
+                )
+            )
+        } else if (container.get<ExtraTurnsComponent>()?.pending?.any { it.loseAtEndStep } == true) {
+            // Last Chance / Final Fortune before their extra turn begins: the clause rides that
+            // turn, and drops with it if the turn is skipped.
+            effects.add(
+                ClientPlayerEffect(
+                    effectId = "lose_at_end_step",
+                    name = "Last Chance",
+                    description = "You will lose the game at the beginning of your extra turn's end step",
                     icon = "skull"
                 )
             )
@@ -470,6 +504,7 @@ internal class PlayerActiveEffectsProjector(
                     PlayerEffectRemoval.EndOfTurn -> "this_turn" to " this turn"
                     PlayerEffectRemoval.UntilYourNextTurn -> "until_next_turn" to " until your next turn"
                     PlayerEffectRemoval.EndOfYourNextTurn -> "end_of_next_turn" to " until the end of your next turn"
+                    PlayerEffectRemoval.DuringYourNextTurn -> "during_next_turn" to " during your next turn"
                     PlayerEffectRemoval.Permanent -> "permanent" to ""
                 }
                 effects.add(
@@ -483,7 +518,7 @@ internal class PlayerActiveEffectsProjector(
             }
         }
 
-        // Loyalty-activation permissions (Jace's Machinations, Urza Assembles the Titans).
+        // Loyalty-activation permissions (Jace's Machinations, Urza Assembles the Titans, The Chain Veil).
         container.get<com.wingedsheep.engine.state.components.player.LoyaltyActivationPermissionsComponent>()?.let { component ->
             val instant = component.grants.filter { it.instantSpeed }
             if (instant.isNotEmpty()) {
@@ -507,6 +542,23 @@ internal class PlayerActiveEffectsProjector(
                         effectId = "extra_loyalty_activations",
                         name = "Extra loyalty activations",
                         description = "You may activate loyalty abilities of $rendered this turn rather than only once",
+                        icon = "lightning"
+                    )
+                )
+            }
+            // Additional activations sum across grants (each Chain Veil resolution is one more).
+            val additional = component.grants.filter { it.additionalActivations >= 1 }
+                .groupBy { it.filter }
+                .map { (filter, grants) -> filter to grants.sumOf { it.additionalActivations } }
+            if (additional.isNotEmpty()) {
+                val rendered = additional.joinToString(" and ") { (filter, n) ->
+                    "${filter.description}s " + (if (n == 1) "one additional time" else "$n additional times")
+                }
+                effects.add(
+                    ClientPlayerEffect(
+                        effectId = "additional_loyalty_activations",
+                        name = "Additional loyalty activations",
+                        description = "You may activate loyalty abilities of $rendered this turn",
                         icon = "lightning"
                     )
                 )
@@ -538,6 +590,28 @@ internal class PlayerActiveEffectsProjector(
                     effectId = "player_hexproof",
                     name = "Hexproof",
                     description = "You have hexproof (you can't be the target of spells or abilities your opponents control)",
+                    icon = "shield"
+                )
+            )
+        }
+        // Hexproof from a quality (Veil of Summer). Full hexproof above already covers every source,
+        // so the narrower badge is dropped while it applies.
+        container.get<PlayerHexproofFromComponent>()?.grants
+            ?.takeIf { it.isNotEmpty() && effects.none { e -> e.effectId == "player_hexproof" } }
+            ?.let { grants ->
+            // "from blue and from black" (CR 702.11f): a color set reads as one quality per color.
+            val qualities = grants.flatMap { grant ->
+                (grant.scope as? ProtectionScope.Colors)?.colors?.map { it.name.lowercase() }
+                    ?: listOf(grant.scope.protectionDescription())
+            }.distinct()
+            effects.add(
+                ClientPlayerEffect(
+                    effectId = "player_hexproof_from",
+                    name = "Hexproof from " + qualities.joinToString(" and from "),
+                    description = if (grants.all { it.scope is ProtectionScope.Color || it.scope is ProtectionScope.Colors })
+                        "Spells and abilities your opponents control from " + qualities.joinToString(" or ") +
+                            " sources can't target you"
+                    else "Your opponents' spells and abilities can't target you if they match: " + qualities.joinToString(", "),
                     icon = "shield"
                 )
             )
@@ -660,6 +734,68 @@ internal class PlayerActiveEffectsProjector(
         )
     }
 
+    /**
+     * Attack taxes a resolved effect handed to this player (Summon: Yojimbo's "until your next turn,
+     * creatures can't attack you unless their controller pays {2} for each of those creatures").
+     * A printed tax shows on its permanent; a player-held one has no card to show on, so without
+     * this badge the attacker would only meet it at the payment prompt.
+     */
+    private fun attackTaxGrants(state: GameState, playerId: EntityId): List<ClientPlayerEffect> =
+        // Indexed among this player's own taxes, so an unrelated grant expiring doesn't renumber it.
+        state.grantedStaticAbilities.filter { it.entityId == playerId && it.ability is AttackTax }.mapIndexed { index, grant ->
+            val tax = grant.ability as AttackTax
+            val description = if (grant.duration is Duration.Permanent) {
+                tax.description.replaceFirstChar { it.uppercase() }
+            } else {
+                "${grant.duration.description.replaceFirstChar { it.uppercase() }}, ${tax.description}"
+            }
+            ClientPlayerEffect(
+                effectId = "attack_tax_${grant.sourceId?.value ?: "none"}_$index",
+                name = "Attack Tax",
+                description = description,
+                icon = "lock"
+            )
+        }
+
+    /**
+     * A targeting lock a resolving spell handed this player for a duration — "permanents you control
+     * can't be the targets of blue or black spells your opponents control this turn" (Display of
+     * Dominance). The player holds it, so it shows on them rather than on any one permanent.
+     */
+    private fun targetLockGrants(state: GameState, playerId: EntityId): List<ClientPlayerEffect> =
+        state.grantedStaticAbilities.filter {
+            it.entityId == playerId && it.ability is CardsInZonesCantBeTargeted &&
+                GrantDurationGate.holds(state, it.entityId, it.sourceId, it.duration)
+        }
+            .mapIndexed { index, grant ->
+                val lock = grant.ability as CardsInZonesCantBeTargeted
+                val description = if (grant.duration is Duration.Permanent) {
+                    lock.description
+                } else {
+                    "${lock.description} ${grant.duration.description}".trimEnd()
+                }
+                ClientPlayerEffect(
+                    effectId = "target_lock_${grant.sourceId?.value ?: "none"}_$index",
+                    name = "Targeting Shield",
+                    description = description,
+                    icon = "shield"
+                )
+            }
+
+    /** A per-combat cap on how many creatures this player may block with (Mirri, Weatherlight Duelist). */
+    private fun blockRestrictions(container: ComponentContainer): List<ClientPlayerEffect> {
+        val cap = container.get<BlockerCountLimitThisCombatComponent>()?.maxBlockers ?: return emptyList()
+        val creatures = if (cap == 1) "one creature" else "$cap creatures"
+        return listOf(
+            ClientPlayerEffect(
+                effectId = "blocker_count_limit",
+                name = "Block Limit",
+                description = "You can't block with more than $creatures this combat",
+                icon = "shield-off"
+            )
+        )
+    }
+
     /** "Your next spell …" riders still waiting for that spell: copy it, uncounterable, free. */
     private fun pendingSpellRiders(state: GameState, playerId: EntityId): List<ClientPlayerEffect> {
         val effects = mutableListOf<ClientPlayerEffect>()
@@ -695,6 +831,31 @@ internal class PlayerActiveEffectsProjector(
             )
         }
 
+        // Pending "the next time you cast … this turn, put that card into your hand instead" riders
+        // (Soulfire Grand Master) — the player sees the next matching spell will come back.
+        val pendingDestinations = state.pendingNextSpellResolveDestinations.filter { it.controllerId == playerId }
+        pendingDestinations.groupBy { it.destination }.forEach { (destination, riders) ->
+            val sourceName = riders.map { it.sourceName }.distinct().joinToString(", ")
+            val filterDesc = riders.map { it.spellFilter.description }.distinct().joinToString("/")
+            val fromDesc = riders.mapNotNull { it.fromZones }.flatten().distinct()
+                .takeIf { it.isNotEmpty() && riders.all { r -> r.fromZones != null } }
+                ?.let { zones -> " from your " + zones.joinToString(" or ") { it.name.lowercase() } } ?: ""
+            val (name, whereTo) = when (destination) {
+                com.wingedsheep.sdk.scripting.effects.AfterResolveDestination.HAND -> "Returns to Hand" to "returns to your hand"
+                com.wingedsheep.sdk.scripting.effects.AfterResolveDestination.EXILE -> "Exiled on Resolve" to "is exiled"
+                com.wingedsheep.sdk.scripting.effects.AfterResolveDestination.BOTTOM_OF_LIBRARY ->
+                    "Bottom of Library" to "goes to the bottom of your library"
+            }
+            effects.add(
+                ClientPlayerEffect(
+                    effectId = "pending_next_spell_destination_${destination.name.lowercase()}",
+                    name = name,
+                    description = "Your next $filterDesc spell cast$fromDesc this turn $whereTo as it resolves ($sourceName)",
+                    icon = "granted-ability"
+                )
+            )
+        }
+
         // Check for pending "next spell has improvise / convoke / delve" riders (Archway of
         // Innovation) — one badge per keyword, so the player sees the grant is still waiting.
         state.pendingNextSpellKeywords
@@ -719,7 +880,7 @@ internal class PlayerActiveEffectsProjector(
 
         // Check for pending "next spell can be cast without paying its mana cost" riders
         // (e.g. World War Hulk I) — the player needs to see the free cast is still available.
-        val pendingFreeCasts = state.pendingFreeCastSpells.filter { it.controllerId == playerId }
+        val pendingFreeCasts = state.pendingFreeCastSpells.filter { it.controllerId == playerId && it.nextSpellOnly }
         if (pendingFreeCasts.isNotEmpty()) {
             val sourceName = pendingFreeCasts.map { it.sourceName }.distinct().joinToString(", ")
             // With several riders the broadest one sets the wording: an unfiltered rider frees the
@@ -742,6 +903,26 @@ internal class PlayerActiveEffectsProjector(
                 )
             )
         }
+
+        // Whole-turn free-cast permissions (Chandra, Flame's Catalyst −8) — one badge each, since
+        // their filters and zones differ and none is spent by a cast.
+        state.pendingFreeCastSpells
+            .filter { it.controllerId == playerId && !it.nextSpellOnly }
+            .distinctBy { Triple(it.spellFilter, it.fromZones, it.sourceName) }
+            .forEachIndexed { index, grant ->
+                val filterDesc = if (grant.spellFilter == GameObjectFilter.Any) "" else "${grant.spellFilter.description} "
+                val fromDesc = grant.fromZones?.let { zones ->
+                    " from your " + zones.joinToString(" or ") { it.name.lowercase() }
+                } ?: ""
+                effects.add(
+                    ClientPlayerEffect(
+                        effectId = "free_cast_this_turn_$index",
+                        name = "Free Cast",
+                        description = "This turn you may cast ${filterDesc}spells$fromDesc without paying their mana costs (${grant.sourceName})",
+                        icon = "free-cast"
+                    )
+                )
+            }
 
         // Check for pending "for one spell this turn, mana of any type" riders (North Star) — the
         // player needs to see the rider is still waiting for the spell that needs it.
@@ -780,8 +961,11 @@ internal class PlayerActiveEffectsProjector(
 
         // Check for global triggered abilities controlled by this player
         // Group by source name so abilities from the same source show as one badge
+        // An emblem's ability (sourced from a synthetic emblem entity) is shown once, by the
+        // emblem-entity loop below, so two emblems from one planeswalker stay two badges.
         val globalAbilitiesBySource = state.globalGrantedTriggeredAbilities
             .filter { it.controllerId == playerId }
+            .filterNot { state.getEntity(it.sourceId)?.has<EmblemSourceComponent>() == true }
             .groupBy { it.sourceName to it.duration }
 
         for ((key, abilities) in globalAbilitiesBySource) {
@@ -984,6 +1168,21 @@ internal class PlayerActiveEffectsProjector(
         collect(effectJson.encodeToJsonElement<Effect>(effect))
         val names = captured.map { publicName(state, it, audience) }.distinct()
         return if (names.size == 1) text.replace(SPECIFIC_ENTITY, names.single()) else text
+    }
+
+    /**
+     * A shield's source group as text, the controller after the noun as Oracle prints it
+     * ("creatures you control"). A group baked at resolution — "creatures target opponent
+     * controls" (Encircling Fissure) — names its player as an [EffectTarget.SpecificEntity], whose
+     * own text is only "specific entity"; that player's name replaces it, so two shields aimed at
+     * different players stay two badges.
+     */
+    private fun groupText(state: GameState, filter: GameObjectFilter, audience: Audience): String {
+        val text = filter.pluralPermanentDescription
+        if (SPECIFIC_ENTITY !in text) return text
+        val player = ((filter.controllerPredicate as? ControllerPredicate.ControlledByReferencedPlayer)
+            ?.target as? EffectTarget.SpecificEntity)?.entityId ?: return text
+        return text.replace(SPECIFIC_ENTITY, publicName(state, player, audience))
     }
 
     /** What [audience] may call [entityId]: a player's name, a public card's, or a placeholder. */

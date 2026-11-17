@@ -54,10 +54,12 @@ class TargetEnumerationUtils(
         val untargetableKeywords = UntargetableByRules.blockingKeywords(state, sourceId, targetingSourceType, requirement, spellSubtypes)
         val unblocked = if (untargetableKeywords.isEmpty()) candidates
         else candidates.filterNot { UntargetableByRules.isBlocked(state, it, untargetableKeywords) }
-        // CardsInZonesCantBeTargeted (Ground Seal) — cards off the battlefield only.
+        // CardsInZonesCantBeTargeted (Ground Seal; Tomik, Distinguished Advokist).
         val zoneLocks = UntargetableByRules.zoneLocks(state)
         return if (zoneLocks.isEmpty()) unblocked
-        else unblocked.filterNot { UntargetableByRules.isZoneLocked(state, it, zoneLocks, predicateEvaluator) }
+        else unblocked.filterNot { UntargetableByRules.isZoneLocked(
+            state, it, playerId, zoneLocks, predicateEvaluator, sourceId, targetingSourceType
+        ) }
     }
 
     private fun findCandidateTargets(
@@ -72,7 +74,7 @@ class TargetEnumerationUtils(
                 !playerHasHexproofAgainst(state, it, playerId) && !playerHasProtectionFrom(state, it, sourceId, playerId) &&
                 PlayerTargetRestriction.isSatisfied(state, requirement.restriction, it, playerId, sourceId, predicateEvaluator = predicateEvaluator) }
             is TargetOpponent -> state.turnOrder.filter { it != playerId && state.hasEntity(it) && !playerHasShroud(state, it) &&
-                !playerHasHexproof(state, it) && !playerHasProtectionFrom(state, it, sourceId, playerId) &&
+                !playerHasHexproofAgainst(state, it, playerId) && !playerHasProtectionFrom(state, it, sourceId, playerId) &&
                 PlayerTargetRestriction.isSatisfied(state, requirement.restriction, it, playerId, sourceId, predicateEvaluator = predicateEvaluator) }
             is AnyTarget -> {
                 val projected = state.projectedState
@@ -107,7 +109,7 @@ class TargetEnumerationUtils(
             }
             is TargetOpponentOrPlaneswalker -> {
                 val opponents = state.turnOrder.filter { it != playerId && state.hasEntity(it) && !playerHasShroud(state, it) &&
-                    !playerHasHexproof(state, it) && !playerHasProtectionFrom(state, it, sourceId, playerId) }
+                    !playerHasHexproofAgainst(state, it, playerId) && !playerHasProtectionFrom(state, it, sourceId, playerId) }
                 val planeswalkers = findValidPermanentTargets(state, playerId, TargetFilter.Planeswalker, sourceId, targetingSourceType)
                 opponents + planeswalkers
             }
@@ -193,7 +195,9 @@ class TargetEnumerationUtils(
                 !HexproofSuppression.isSuppressedForCaster(state, projected, entityId, playerId, predicateEvaluator = predicateEvaluator)
             ) return@filter false
             if (entityController != playerId && sourceId != null &&
-                hasHexproofFromSource(state, entityId, sourceId)
+                hasHexproofFromSource(state, entityId, sourceId) &&
+                // CR 702.11e: a hexproof suppressor looks through "hexproof from" as well.
+                !HexproofSuppression.isSuppressedForCaster(state, projected, entityId, playerId, predicateEvaluator = predicateEvaluator)
             ) return@filter false
             if (projected.hasKeyword(entityId, Keyword.SHROUD)) return@filter false
             if (sourceId != null && hasColorProtectionFromSource(state, entityId, sourceId)) return@filter false
@@ -215,9 +219,7 @@ class TargetEnumerationUtils(
     }
 
     private fun sourceColorNames(state: GameState, sourceId: EntityId): Set<String> =
-        state.projectedState.getColors(sourceId).ifEmpty {
-            state.getEntity(sourceId)?.get<CardComponent>()?.colors?.map { it.name }?.toSet().orEmpty()
-        }
+        state.projectedState.colorsOf(sourceId)
 
     private fun hasHexproofFromSource(state: GameState, targetId: EntityId, sourceId: EntityId): Boolean {
         val projected = state.projectedState
@@ -547,22 +549,19 @@ class TargetEnumerationUtils(
     fun playerHasShroud(state: GameState, playerId: EntityId): Boolean =
         ControllerShroud.appliesTo(state, playerId, predicateEvaluator = predicateEvaluator)
 
-    fun playerHasHexproof(state: GameState, playerId: EntityId): Boolean =
-        ControllerHexproof.appliesTo(state, playerId, predicateEvaluator = predicateEvaluator)
-
     fun playerHasHexproofAgainst(state: GameState, playerId: EntityId, controllerId: EntityId): Boolean {
-        return playerId != controllerId && playerHasHexproof(state, playerId)
+        return ControllerHexproof.appliesAgainst(state, playerId, controllerId, predicateEvaluator = predicateEvaluator)
     }
 
     /**
      * True if [playerId] is protected from a source [sourceId] controlled by [casterId]
-     * (CR 702.16) — so the source can't legally target that player (The One Ring).
-     * Delegates to the shared [PlayerProtectionRules] used by the targeting validator and
-     * damage executor.
+     * (CR 702.16, The One Ring) or has hexproof from its quality (CR 702.11d, Veil of Summer) —
+     * so the source can't legally target that player. Delegates to the shared
+     * [PlayerProtectionRules] used by the targeting validator.
      */
     fun playerHasProtectionFrom(state: GameState, playerId: EntityId, sourceId: EntityId?, casterId: EntityId): Boolean =
         com.wingedsheep.engine.mechanics.targeting.PlayerProtectionRules
-            .isProtectedFromSource(state, playerId, sourceId, casterId, predicateEvaluator = predicateEvaluator)
+            .blocksTargeting(state, playerId, sourceId, casterId, predicateEvaluator = predicateEvaluator)
 
     companion object {
         /**

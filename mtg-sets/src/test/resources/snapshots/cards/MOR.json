@@ -1,3 +1,47 @@
+// Ambassador Oak
+{
+    "name": "Ambassador Oak",
+    "manaCost": "{3}{G}",
+    "typeLine": "Creature — Treefolk Warrior",
+    "oracleText": "When this creature enters, create a 1/1 green Elf Warrior creature token.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Ambassador Oak:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Elf",
+                        "Warrior"
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "113",
+        "artist": "Steve Prescott",
+        "flavorText": "Treefolk and elves share a common interest in the forests, but really the elves just feel at home with the view from above.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/0/904d3416-70bf-4043-8078-f5f033ecfb31.jpg?1783942781"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Ballyrush Banneret
 {
     "name": "Ballyrush Banneret",
@@ -34,6 +78,154 @@
     ]
 }
 
+// Bitterblossom
+{
+    "name": "Bitterblossom",
+    "manaCost": "{1}{B}",
+    "typeLine": "Kindred Enchantment — Faerie",
+    "oracleText": "At the beginning of your upkeep, you lose 1 life and create a 1/1 black Faerie Rogue creature token with flying.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Bitterblossom:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "LoseLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 1
+                            },
+                            "target": "Controller"
+                        },
+                        {
+                            "type": "CreateToken",
+                            "power": 1,
+                            "toughness": 1,
+                            "colors": [
+                                "BLACK"
+                            ],
+                            "creatureTypes": [
+                                "Faerie",
+                                "Rogue"
+                            ],
+                            "keywords": [
+                                "FLYING"
+                            ],
+                            "imageUri": "https://cards.scryfall.io/normal/front/1/6/1666cae8-8750-4091-8e45-259e76268db9.jpg?1783942773"
+                        }
+                    ]
+                },
+                "descriptionOverride": "At the beginning of your upkeep, you lose 1 life and create a 1/1 black Faerie Rogue creature token with flying."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "58",
+        "rarity": "RARE",
+        "artist": "Rebecca Guay",
+        "flavorText": "In Lorwyn's brief evenings, the sun pauses at the horizon long enough for a certain species of violet to bloom with the fragrance of mischief.",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/1/8145fed6-6b51-420a-84cf-4ea5e0aa1883.jpg?1783942795",
+        "rulings": [
+            {
+                "date": "2024-06-07",
+                "text": "This card was originally printed with the \"tribal\" card type. That card type has been replaced with \"kindred\". This change does not affect the gameplay function of this card."
+            },
+            {
+                "date": "2008-04-01",
+                "text": "The effect is mandatory. You'll lose 1 life even if you have only 1 life left."
+            },
+            {
+                "date": "2008-04-01",
+                "text": "The life loss isn't a payment. You'll get a token even if you had 0 life (and another effect is stopping you from losing the game)."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Bramblewood Paragon
+{
+    "name": "Bramblewood Paragon",
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature — Elf Warrior",
+    "oracleText": "Each other Warrior creature you control enters with an additional +1/+1 counter on it.\nEach creature you control with a +1/+1 counter on it has trample.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantKeyword",
+                "keyword": "TRAMPLE",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            {
+                                "type": "HasCounter",
+                                "counterType": "PLUS_ONE_PLUS_ONE"
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    }
+                }
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithCounters",
+                "count": 1,
+                "otherOnly": true,
+                "appliesTo": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature Warrior ctrl:you",
+                    "to": "Battlefield"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "115",
+        "rarity": "UNCOMMON",
+        "artist": "Jim Murray",
+        "flavorText": "Those who seek to escape her blades succeed only in dying on their stomachs.",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/9/3910f5b2-17da-41e4-bf40-1c40b513fa12.jpg?1783942781",
+        "rulings": [
+            {
+                "date": "2008-04-01",
+                "text": "If a Warrior would normally enter with a certain number of +1/+1 counters on it, it enters with that many +1/+1 counters plus one on it instead. If a Warrior would normally enter with no +1/+1 counters on it, it enters with one +1/+1 counter on it instead."
+            },
+            {
+                "date": "2008-04-01",
+                "text": "The creature gets the counter if it would enter under your control. It doesn't matter who owns the creature or what zone it enters from (such as your opponent's graveyard, for example)."
+            },
+            {
+                "date": "2008-04-01",
+                "text": "The effects from more than one Bramblewood Paragon are cumulative. That is, if you have more than one Bramblewood Paragon on the battlefield, Warrior creatures you control enter with that many additional +1/+1 counters on them."
+            },
+            {
+                "date": "2008-04-01",
+                "text": "If Bramblewood Paragon enters at the same time as another Warrior (due to Living End, for example), that creature doesn't get a +1/+1 counter."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Disperse
 {
     "name": "Disperse",
@@ -64,6 +256,57 @@
         "artist": "Steve Ellis",
         "flavorText": "Gryffid scowled at the sky. A perfect day for the hunt tainted by clouds. He wished them gone. High above, the clouds looked down, scowled, and made a wish of their own.",
         "imageUri": "https://cards.scryfall.io/normal/front/0/a/0ae239b2-1596-4906-9711-1d180a246d35.jpg?1783942800"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Distant Melody
+{
+    "name": "Distant Melody",
+    "manaCost": "{3}{U}",
+    "typeLine": "Sorcery",
+    "oracleText": "Choose a creature type. Draw a card for each permanent you control of that type.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ChooseOption",
+                    "optionType": "CREATURE_TYPE",
+                    "storeAs": "chosen0"
+                },
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsPermanent",
+                                {
+                                    "type": "HasSubtypeFromVariable",
+                                    "variableName": "chosen0"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "32",
+        "artist": "Omar Rayyan",
+        "flavorText": "Oona's song is like a twisted dinner chime. All the faeries return home, but it is Oona who feasts—on the stolen dreams and rumors they serve her.",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/a/5a28e4f9-3b68-40bb-bf77-850b08c6b096.jpg?1783942800",
+        "rulings": [
+            {
+                "date": "2008-04-01",
+                "text": "Note that this spell counts the number of permanents you control of the chosen type, not just the number of creatures you control. It will also take your kindred permanents of the chosen type into account."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "BLUE"
@@ -323,6 +566,56 @@
     ]
 }
 
+// Mothdust Changeling
+{
+    "name": "Mothdust Changeling",
+    "manaCost": "{U}",
+    "typeLine": "Creature — Shapeshifter",
+    "oracleText": "Changeling (This card is every creature type.)\nTap an untapped creature you control: This creature gains flying until end of turn.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "CHANGELING"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Mothdust Changeling:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomTapPermanents",
+                        "filter": "creature"
+                    }
+                },
+                "effect": {
+                    "type": "GrantKeyword",
+                    "keyword": "FLYING",
+                    "target": "Self"
+                },
+                "descriptionOverride": "Tap an untapped creature you control: This creature gains flying until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "42",
+        "artist": "Shelly Wan",
+        "flavorText": "\"Ever seen a changeling fly into a lantern?\"\n—Calydd, kithkin farmer",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/5/95da9bc9-6ac5-432d-ac12-04088cc6c74d.jpg?1783942798",
+        "rulings": [
+            {
+                "date": "2008-04-01",
+                "text": "Since the activated ability doesn't have a tap symbol in its cost, you can tap a creature (including Mothdust Changeling itself) that hasn't been under your control since your most recent turn began to pay the cost."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Negate
 {
     "name": "Negate",
@@ -468,6 +761,75 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Shared Animosity
+{
+    "name": "Shared Animosity",
+    "manaCost": "{2}{R}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever a creature you control attacks, it gets +1/+0 until end of turn for each other attacking creature that shares a creature type with it.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Shared Animosity:1",
+                "trigger": {
+                    "type": "AttackEvent",
+                    "filter": "creature ctrl:you"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "AggregateBattlefield",
+                        "player": "Each",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsCreature",
+                                {
+                                    "type": "SharesCreatureTypeWith",
+                                    "entity": "TriggeringEntity"
+                                }
+                            ],
+                            "statePredicates": [
+                                "IsAttacking",
+                                {
+                                    "type": "StateNot",
+                                    "predicate": "IsTriggeringEntity"
+                                }
+                            ]
+                        }
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": 0
+                    },
+                    "target": "TriggeringEntity"
+                },
+                "descriptionOverride": "Whenever a creature you control attacks, it gets +1/+0 until end of turn for each other attacking creature that shares a creature type with it."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "104",
+        "rarity": "RARE",
+        "artist": "Chuck Lukacs",
+        "flavorText": "\"It is the nature of souls that they burn more brightly together than apart.\"\n—Vessifrus, flamekin demagogue",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/e/fe332c46-90f0-4cc0-8bf1-35a3934ff8a0.jpg?1783942783",
+        "rulings": [
+            {
+                "date": "2008-04-01",
+                "text": "This ability counts creatures, not creature types. For example, if you attack with five creatures — an Elf Shaman, an Elf Warrior, a Goblin Shaman, an Elemental, and a creature with all creature types — the ability will trigger five times. Those creatures will get +3/+0, +2/+0, +2/+0, +1/+0, and +4/+0, respectively."
+            },
+            {
+                "date": "2008-04-01",
+                "text": "In a Two-Headed Giant game, only creatures you control trigger the ability and get the bonus, but your teammate's attacking creatures are included in the calculation of those bonuses."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 
@@ -855,5 +1217,127 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Wolf-Skull Shaman
+{
+    "name": "Wolf-Skull Shaman",
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature — Elf Shaman",
+    "oracleText": "Kinship — At the beginning of your upkeep, you may look at the top card of your library. If it shares a creature type with this creature, you may reveal it. If you do, create a 2/2 green Wolf creature token.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Wolf-Skull Shaman:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.MayDecide",
+                        "prompt": "Look at the top card of your library?"
+                    },
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "TopOfLibrary",
+                                    "count": {
+                                        "type": "Fixed",
+                                        "amount": 1
+                                    }
+                                },
+                                "storeAs": "gathered0"
+                            },
+                            {
+                                "type": "SelectFromCollection",
+                                "from": "gathered0",
+                                "selection": {
+                                    "type": "ChooseUpTo",
+                                    "count": {
+                                        "type": "Fixed",
+                                        "amount": 1
+                                    }
+                                },
+                                "filter": {
+                                    "cardPredicates": [
+                                        {
+                                            "type": "SharesCreatureTypeWith",
+                                            "entity": "Self"
+                                        }
+                                    ]
+                                },
+                                "storeSelected": "selected1",
+                                "storeRemainder": "remainder1",
+                                "prompt": "Reveal it to create a 2/2 green Wolf creature token?",
+                                "selectedLabel": "Reveal",
+                                "remainderLabel": "Keep it hidden",
+                                "showAllCards": true
+                            },
+                            {
+                                "type": "ConditionalOnCollection",
+                                "collection": "selected1",
+                                "ifNotEmpty": {
+                                    "type": "Composite",
+                                    "effects": [
+                                        {
+                                            "type": "RevealCollection",
+                                            "from": "selected1"
+                                        },
+                                        {
+                                            "type": "CreateToken",
+                                            "power": 2,
+                                            "toughness": 2,
+                                            "colors": [
+                                                "GREEN"
+                                            ],
+                                            "creatureTypes": [
+                                                "Wolf"
+                                            ],
+                                            "imageUri": "https://cards.scryfall.io/normal/front/0/2/02a80dc2-0811-4df0-95f1-dd80ce9e24de.jpg?1783942837"
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                },
+                "descriptionOverride": "Kinship — At the beginning of your upkeep, you may look at the top card of your library. If it shares a creature type with this creature, you may reveal it. If you do, create a 2/2 green Wolf creature token."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "140",
+        "rarity": "UNCOMMON",
+        "artist": "Jim Murray",
+        "flavorText": "A chorus of howls answers his call.",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/0/804ef999-0d44-420e-ad0c-a6dcf8e9c392.jpg?1783942775",
+        "rulings": [
+            {
+                "date": "2008-04-01",
+                "text": "You don't have to reveal the top card of your library, even if it shares a creature type with the creature that has the kinship ability."
+            },
+            {
+                "date": "2008-04-01",
+                "text": "After the kinship ability finishes resolving, the card you looked at remains on top of your library."
+            },
+            {
+                "date": "2008-04-01",
+                "text": "If you have multiple creatures with kinship abilities, each triggers and resolves separately. You'll look at the same card for each one, unless you have some method of shuffling your library or moving that card to a different zone."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }

@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.handlers.effects.permanent.types
 
+import com.wingedsheep.engine.state.components.identity.withTextBoxExchangeSuspended
 import com.wingedsheep.engine.core.CardEntityFactory
 import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.core.TransformedEvent
@@ -230,6 +231,16 @@ internal fun setDfcFace(
     entityId: EntityId,
     nextFace: DoubleFacedComponent.Face,
     manaValueOverride: Int? = null,
+): GameState? = state.withTextBoxExchangeSuspended(entityId, cardRegistry) { s ->
+    setOwnDfcFace(s, cardRegistry, entityId, nextFace, manaValueOverride)?.let { it to Unit }
+}?.first
+
+private fun setOwnDfcFace(
+    state: GameState,
+    cardRegistry: CardRegistry,
+    entityId: EntityId,
+    nextFace: DoubleFacedComponent.Face,
+    manaValueOverride: Int?,
 ): GameState? {
     val container = state.getEntity(entityId) ?: return null
     val dfc = container.get<DoubleFacedComponent>() ?: return null
@@ -500,6 +511,7 @@ internal fun buildCardComponentForDfcFace(
     hasNonManaActivatedAbility = face.hasNonManaActivatedAbility,
     hasActivatedAbility = face.hasActivatedAbility,
     hasCycling = face.hasCycling,
+    hasKicker = face.hasKicker,
     manaValueOverride = manaValueOverride,
 )
 
@@ -524,7 +536,8 @@ internal fun returnDfcFace(
     cardRegistry: CardRegistry,
     entityId: EntityId,
     destinationFace: DoubleFacedComponent.Face,
-    tapped: Boolean = false
+    tapped: Boolean = false,
+    controllerId: EntityId? = null
 ): ZoneTransitionResult {
     val container = state.getEntity(entityId)
         ?: return ZoneTransitionResult(state, emptyList())
@@ -532,6 +545,7 @@ internal fun returnDfcFace(
         ?: return ZoneTransitionResult(state, emptyList())
     val ownerId = container.get<OwnerComponent>()?.playerId ?: currentCard.ownerId
         ?: return ZoneTransitionResult(state, emptyList())
+    val enteringControllerId = controllerId ?: ownerId
     val prepared = prepareDfcFaceSwap(state, cardRegistry, entityId, destinationFace)
         ?: return ZoneTransitionResult(state, emptyList())
     val origin = prepared.logicalZone(entityId)
@@ -539,14 +553,14 @@ internal fun returnDfcFace(
         prepared,
         entityId,
         Zone.BATTLEFIELD,
-        options = ZoneEntryOptions(controllerId = ownerId, tapped = tapped)
+        options = ZoneEntryOptions(controllerId = enteringControllerId, tapped = tapped)
     )
     if (moved.actualDestination != Zone.BATTLEFIELD) return moved
     // The returned face's own enters-with replacements (CR 614.1c) — and any global ones — apply
     // as it enters, like every other non-stack battlefield entry: Ral, Leyline Prodigy's "enters
     // with an additional loyalty counter … for each instant and sorcery spell you've cast this turn".
     val (entered, entryEvents) = EntersWithReplacements.applyOnEntry(
-        moved.state, entityId, ownerId, cardRegistry,
+        moved.state, entityId, enteringControllerId, cardRegistry,
         predicateEvaluator = zones.predicateEvaluator, preEntryZone = origin
     )
     return moved.copy(state = entered, events = moved.events + entryEvents)

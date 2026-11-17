@@ -556,6 +556,217 @@
   padding: 0 6px;
   white-space: nowrap;
 }
+.aiReadTag {
+  --ai-band: var(--text-muted);
+  color: var(--ai-band);
+  font-size: var(--font-xs);
+  font-weight: var(--font-weight-semibold);
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  padding: 0 6px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.aiReadTag:hover {
+  background: color-mix(in srgb, var(--ai-band) 14%, transparent);
+}
+/* The AI-reading bands: colour plus a glyph (✓ ◐ !), never colour alone. */
+.aiReadTag[data-band='good'],
+.aiReadNoteButton[data-band='good'],
+.aiScore[data-band='good'] {
+  --ai-band: var(--color-success-light, #6fcf97);
+}
+.aiReadTag[data-band='fair'],
+.aiReadNoteButton[data-band='fair'],
+.aiScore[data-band='fair'] {
+  --ai-band: var(--color-warning, #f2b134);
+}
+.aiReadTag[data-band='low'],
+.aiReadNoteButton[data-band='low'],
+.aiScore[data-band='low'] {
+  --ai-band: var(--color-error, #eb5757);
+}
+.aiReadNote {
+  white-space: nowrap;
+}
+.aiReadNoteButton {
+  --ai-band: var(--text-muted);
+  color: var(--ai-band);
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.aiReadNoteButton:hover {
+  text-decoration-style: solid;
+}
+
+/* ---- a set's AI gaps ---- */
+.aiGaps {
+  border: 1px solid var(--border-medium);
+  border-radius: 10px;
+  padding: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.aiGapsHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+.aiScore {
+  --ai-band: var(--text-primary);
+  color: var(--ai-band);
+  font-size: var(--font-xl);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+}
+.aiGapsSummary {
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+}
+.aiGapsSummary strong {
+  color: var(--text-primary);
+}
+.draftRatings {
+  display: grid;
+  grid-template-columns: auto 7rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  font-size: var(--font-sm);
+}
+@media (max-width: 760px) {
+  .draftRatings {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+  .draftRatingsText {
+    grid-column: 1 / -1;
+  }
+}
+.draftRatingsLabel {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.draftRatingsBar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+.draftRatingsTable {
+  background: var(--color-success-light, #6fcf97);
+}
+.draftRatingsFallback {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--color-success-light, #6fcf97) 55%, transparent) 0 3px,
+    transparent 3px 6px
+  );
+}
+.draftRatingsGuess {
+  background: var(--color-warning, #f2b134);
+}
+.draftRatingsText {
+  color: var(--text-secondary);
+}
+.draftRatingsWarn {
+  color: var(--color-warning, #f2b134);
+}
+.draftRatingsText strong {
+  color: var(--text-primary);
+}
+.aiGapsLead {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  margin: var(--space-2) 0;
+}
+.aiGapsEmpty {
+  color: var(--text-muted);
+  font-size: var(--font-sm);
+  margin-top: var(--space-2);
+}
+.aiGroups {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.aiGroups li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .aiGroups li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+}
+.aiGroup {
+  display: grid;
+  grid-template-columns: 2.4em 5em minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 6px;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.aiGroup:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+.aiGroup[data-on] {
+  border-color: var(--color-warning, #f2b134);
+  background: rgba(242, 177, 52, 0.08);
+}
+.aiGroupCount {
+  text-align: right;
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+.aiGroupBar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.aiGroupBar span {
+  display: block;
+  height: 100%;
+  background: var(--color-warning, #f2b134);
+}
+.aiGroupText {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.aiGroupText code {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+.aiGroupCards {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  min-width: 0;
+}
 .assayNote {
   color: var(--color-warning, #f2b134);
   white-space: nowrap;
@@ -1100,4 +1311,117 @@
   .summaryMeta { flex-direction: column; gap: var(--space-1); }
   .summaryHint { order: 2; }
   .controls > .segmented { flex: 1 1 100%; }
+}
+
+/* ---- a card's AI reading, on the AI gaps tab ---- */
+/* The tile is a button there (it opens the card's AI reading in the explorer), so it sheds the
+   button chrome and keeps the plain tile's look, plus a focus ring for keyboard users. */
+.tileAi {
+  display: block;
+  width: 100%;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tileAi:focus-visible {
+  outline: 2px solid var(--color-warning, #f2b134);
+  outline-offset: 2px;
+}
+.tileAiBadge {
+  --ai-band: var(--text-primary);
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: var(--font-xs);
+  font-weight: var(--font-weight-bold);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--bg-overlay-darker, rgba(0, 0, 0, 0.8));
+  color: var(--ai-band);
+  border: 1px solid var(--ai-band);
+}
+.tileAiBadge[data-band='fair'],
+.aiHoverHead[data-band='fair'] {
+  --ai-band: var(--color-warning, #f2b134);
+}
+.tileAiBadge[data-band='low'],
+.aiHoverHead[data-band='low'] {
+  --ai-band: var(--color-error, #eb5757);
+}
+/* Along the bottom, where the plain tile's name caption sits on dimmed art: an implemented card
+   prints its own name, and the chips say why the card is in this list. */
+.tileAiChips {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 18px 5px 5px;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.92) 45%);
+}
+.tileAiChip {
+  font-size: 10px;
+  line-height: 1.3;
+  padding: 1px 5px;
+  border-radius: 4px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  white-space: nowrap;
+}
+.tileAiChip[data-on] {
+  background: var(--color-warning, #f2b134);
+  color: #1a1400;
+  font-weight: var(--font-weight-semibold);
+}
+.aiHoverPanel {
+  width: 280px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--bg-surface-2, #1e1e24);
+  border: 1px solid var(--border-medium);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+.aiHoverHead {
+  --ai-band: var(--text-primary);
+  color: var(--ai-band);
+  font-weight: var(--font-weight-semibold);
+}
+.aiHoverHead strong {
+  font-variant-numeric: tabular-nums;
+}
+.aiHoverList {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.aiHoverList li {
+  display: flex;
+  flex-direction: column;
+  padding: 3px 0 3px 8px;
+  border-left: 2px solid var(--border-medium);
+  color: var(--text-primary);
+}
+.aiHoverList li[data-on] {
+  border-left-color: var(--color-warning, #f2b134);
+}
+.aiHoverList code {
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+  overflow-wrap: anywhere;
+}
+.aiHoverHint {
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
 }

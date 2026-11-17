@@ -8,6 +8,7 @@ import com.wingedsheep.engine.core.ZoneChangeEvent
 import com.wingedsheep.engine.core.tap
 import com.wingedsheep.engine.handlers.CostHandler
 import com.wingedsheep.engine.handlers.PredicateContext
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.costs.ChoiceCostResolver
 import com.wingedsheep.engine.handlers.costs.ForageCostResolver
 import com.wingedsheep.engine.handlers.effects.DamageUtils
@@ -26,6 +27,7 @@ import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.AdditionalCost
 import com.wingedsheep.sdk.scripting.AdditionalCostPayment
+import com.wingedsheep.sdk.scripting.CardCostAction
 import com.wingedsheep.sdk.scripting.CostZone
 import com.wingedsheep.sdk.scripting.costs.PermanentCostAction
 
@@ -92,7 +94,7 @@ private fun validateBlightTarget(check: SpellCostCheck, targetId: EntityId): Str
     if (!projected.isCreature(targetId)) {
         return "Blight target must be a creature"
     }
-    if (!projected.canReceiveCounters(targetId)) {
+    if (!projected.canReceiveCounters(targetId, CounterType.MINUS_ONE_MINUS_ONE)) {
         return "Blight target can't have counters put on it"
     }
     return null
@@ -102,7 +104,7 @@ private fun validateBlightTarget(check: SpellCostCheck, targetId: EntityId): Str
 private fun blightableCreatures(env: SpellCostEnumeration): List<EntityId> {
     val projected = env.state.projectedState
     return projected.getBattlefieldControlledBy(env.playerId)
-        .filter { projected.isCreature(it) && projected.canReceiveCounters(it) }
+        .filter { projected.isCreature(it) && projected.canReceiveCounters(it, CounterType.MINUS_ONE_MINUS_ONE) }
 }
 
 /**
@@ -173,49 +175,95 @@ internal object PayLifeEqualToManaValueCostKind : SpellCostKind<AdditionalCost.P
 }
 
 /**
- * "Exile X cards from your graveyard" — at least [AdditionalCost.ExileVariableCards.minCount]. The
- * number exiled is the spell's X (CR 107.3a: X in an additional cost is chosen as the spell is
- * cast), so a flashback cost of this shape (Summons of Saruman) sets X for a spell whose `{X}` it
- * doesn't pay.
+ * "Exile X cards from your graveyard" / "discard X cards" — at least
+ * [AdditionalCost.VariableCards.minCount]. The number chosen is the spell's X (CR 107.3a: X in an
+ * additional cost is chosen as the spell is cast), so a flashback cost of this shape sets X for a
+ * spell whose `{X}` it doesn't pay (Summons of Saruman), and a spell with no `{X}` reads it as its
+ * X value (Channeled Force).
+ *
+ * "Discard X cards" is announced like "sacrifice X creatures": X is chosen with the spell (CR
+ * 601.2b) — before targets, so "each of up to X target creatures" (Nahiri's Wrath) is sized by it —
+ * and the payment must discard exactly that X. A cast that arrives with no announced X (an engine
+ * or test cast) lets the discard define it, as before.
  */
-internal object ExileVariableCardsCostKind : SpellCostKind<AdditionalCost.ExileVariableCards> {
+internal object VariableCardsCostKind : SpellCostKind<AdditionalCost.VariableCards> {
+    private val AdditionalCost.VariableCards.verb get() = if (action == CardCostAction.DISCARD) "discard" else "exile"
+
+    /**
+     * The X ceiling the "discard X cards" costs among [costs] put on the cast's announcement: the
+     * hand cards that could be discarded, never the card being cast ([castCardId], CR 601.2a).
+     * Null when no such cost is present. Fed to [SpellCosts.additionalCostMaxX], so the cast offer
+     * carries `hasXCost` and the client asks for X before targets.
+     */
+    fun maxX(
+        state: GameState,
+        payerId: EntityId,
+        costs: List<AdditionalCost>,
+        predicateEvaluator: PredicateEvaluator,
+        castCardId: EntityId?,
+    ): Int? = SpellCosts.flattenComposites(costs)
+        .filterIsInstance<AdditionalCost.VariableCards>()
+        .filter { it.action == CardCostAction.DISCARD }
+        .minOfOrNull { cost -> handCandidates(state, payerId, castCardId, cost.filter, predicateEvaluator).size }
+
     // `canPay` has no cast in hand and can't exclude the card being cast; `enumerate` does.
-    override fun canPay(state: GameState, payerId: EntityId, cost: AdditionalCost.ExileVariableCards, costHandler: CostHandler): Boolean {
+    override fun canPay(state: GameState, payerId: EntityId, cost: AdditionalCost.VariableCards, costHandler: CostHandler): Boolean {
         val zone = ZoneKey(payerId, cost.fromZone.toZone())
         return costHandler.findMatchingCardsUnified(state, state.getZone(zone), cost.filter, payerId).size >= cost.minCount
     }
 
     // The card being cast is on the stack before its costs are paid (CR 601.2a), so a flashback
-    // spell is never part of its own exile pool.
-    override fun enumerate(env: SpellCostEnumeration, cost: AdditionalCost.ExileVariableCards, offer: SpellCostOffer): Boolean {
-        val validExileTargets = env.costUtils.findExileTargets(
-            env.state, env.playerId, cost.filter, cost.fromZone.toZone(), excludeSelfId = env.castCardId,
-        )
-        offer.exileTargets = validExileTargets
-        offer.exileMinCount = cost.minCount
-        return validExileTargets.size >= cost.minCount
+    // spell is never part of its own exile pool, nor a spell cast from hand part of its discard pool.
+    override fun enumerate(env: SpellCostEnumeration, cost: AdditionalCost.VariableCards, offer: SpellCostOffer): Boolean {
+        val pool = candidates(env, cost)
+        when (cost.action) {
+            CardCostAction.EXILE -> {
+                offer.exileTargets = pool
+                offer.exileMinCount = cost.minCount
+            }
+            CardCostAction.DISCARD -> {
+                offer.discardTargets = pool
+                offer.discardCount = cost.minCount
+                offer.discardMaxCount = pool.size
+                offer.discardCountIsX = true
+                offer.discardDescription = cost.description
+            }
+        }
+        return pool.size >= cost.minCount
     }
 
     // Presented on its own when it rides an alternative cost (flashback's bundled cost).
-    override fun candidates(env: SpellCostEnumeration, cost: AdditionalCost.ExileVariableCards) =
-        env.costUtils.findExileTargets(
+    override fun candidates(env: SpellCostEnumeration, cost: AdditionalCost.VariableCards) = when (cost.action) {
+        CardCostAction.EXILE -> env.costUtils.findExileTargets(
             env.state, env.playerId, cost.filter, cost.fromZone.toZone(), excludeSelfId = env.castCardId,
         )
+        CardCostAction.DISCARD -> handCandidates(env, cost.filter)
+    }
 
-    override fun canPayFrom(env: SpellCostEnumeration, cost: AdditionalCost.ExileVariableCards, candidates: List<EntityId>) =
+    override fun canPayFrom(env: SpellCostEnumeration, cost: AdditionalCost.VariableCards, candidates: List<EntityId>) =
         candidates.size >= cost.minCount
 
     override fun present(
         env: SpellCostEnumeration,
-        cost: AdditionalCost.ExileVariableCards,
+        cost: AdditionalCost.VariableCards,
         candidates: List<EntityId>,
     ): Pair<String, AdditionalCostData>? {
+        if (candidates.isEmpty()) return null
+        if (cost.action == CardCostAction.DISCARD) {
+            return "Discard" to AdditionalCostData(
+                description = cost.description,
+                costType = "DiscardCard",
+                validDiscardTargets = candidates,
+                discardCount = cost.minCount,
+                discardMaxCount = candidates.size,
+                countIsX = true,
+            )
+        }
         val costType = when (cost.fromZone) {
             CostZone.GRAVEYARD -> "ExileFromGraveyard"
             CostZone.HAND -> "ExileFromHand"
             else -> return null
         }
-        if (candidates.isEmpty()) return null
         return "Exile from ${cost.fromZone.description}" to AdditionalCostData(
             description = cost.description,
             costType = costType,
@@ -225,26 +273,37 @@ internal object ExileVariableCardsCostKind : SpellCostKind<AdditionalCost.ExileV
         )
     }
 
-    override fun selectionSupplied(cost: AdditionalCost.ExileVariableCards, payment: AdditionalCostPayment) =
-        payment.exiledCards.isNotEmpty()
+    private fun chosen(cost: AdditionalCost.VariableCards, payment: AdditionalCostPayment?): List<EntityId> =
+        when (cost.action) {
+            CardCostAction.EXILE -> payment?.exiledCards
+            CardCostAction.DISCARD -> payment?.discardedCards
+        } ?: emptyList()
 
-    override fun validate(check: SpellCostCheck, cost: AdditionalCost.ExileVariableCards): String? {
+    override fun selectionSupplied(cost: AdditionalCost.VariableCards, payment: AdditionalCostPayment) =
+        chosen(cost, payment).isNotEmpty()
+
+    override fun validate(check: SpellCostCheck, cost: AdditionalCost.VariableCards): String? {
         val state = check.state
-        val exiled = check.payment?.exiledCards ?: emptyList()
-        if (exiled.distinct().size != exiled.size) {
-            return "Each card can be exiled only once"
+        val picks = chosen(cost, check.payment)
+        if (picks.distinct().size != picks.size) {
+            return "Each card can be chosen only once"
         }
-        if (exiled.size < cost.minCount) {
-            return "You must exile at least ${cost.minCount} ${cost.filter.description}(s) from your ${cost.fromZone.description}"
+        // "Discard X cards": exactly the announced X (CR 601.2b), which may be 0.
+        val announcedX = check.action.xValue
+        if (cost.action == CardCostAction.DISCARD && announcedX != null && picks.size != announcedX) {
+            return "You must discard exactly $announcedX card(s) to cast this spell (X = $announcedX)"
+        }
+        if (picks.size < cost.minCount) {
+            return "You must ${cost.verb} at least ${cost.minCount} ${cost.filter.description}(s) from your ${cost.fromZone.description}"
         }
         val zoneCards = state.getZone(ZoneKey(check.playerId, cost.fromZone.toZone()))
         val context = PredicateContext(controllerId = check.playerId)
-        for (cardId in exiled) {
+        for (cardId in picks) {
             if (cardId == check.action.cardId) {
-                return "A spell can't exile itself to pay its own cost"
+                return "A spell can't ${cost.verb} itself to pay its own cost"
             }
             if (cardId !in zoneCards) {
-                return "Card to exile is not in your ${cost.fromZone.description}"
+                return "Card to ${cost.verb} is not in your ${cost.fromZone.description}"
             }
             if (!check.predicateEvaluator.matches(state, state.projectedState, cardId, cost.filter, context)) {
                 val cardName = state.getEntity(cardId)?.get<CardComponent>()?.name ?: "Card"
@@ -254,19 +313,30 @@ internal object ExileVariableCardsCostKind : SpellCostKind<AdditionalCost.ExileV
         return null
     }
 
-    override fun pay(ledger: SpellCostLedger, cost: AdditionalCost.ExileVariableCards): String? {
-        val exiledCards = ledger.payment.exiledCards
-        exileFromOwnZone(ledger, exiledCards, cost.fromZone.toZone())
-        ledger.exiledAsCostCards.addAll(exiledCards)
-        ledger.exiledCardCount = exiledCards.size
-        ledger.costDefinedX = exiledCards.size
+    override fun pay(ledger: SpellCostLedger, cost: AdditionalCost.VariableCards): String? {
+        val picks = chosen(cost, ledger.payment)
+        when (cost.action) {
+            CardCostAction.EXILE -> {
+                exileFromOwnZone(ledger, picks, cost.fromZone.toZone())
+                ledger.exiledAsCostCards.addAll(picks)
+                ledger.exiledCardCount = picks.size
+            }
+            CardCostAction.DISCARD -> {
+                ledger.discardedAsCostCards.addAll(picks)
+                // The shared discard path, so madness (CR 702.35a) and discard triggers see it.
+                val discardResult = ledger.zones.discardCards(ledger.state, ledger.playerId, picks)
+                ledger.state = discardResult.state
+                ledger.events.addAll(discardResult.events)
+            }
+        }
+        ledger.costDefinedX = picks.size
         return null
     }
 }
 
 /**
- * "You may sacrifice / tap / exile from your hand any number of …; this spell costs {N} less for each"
- * (Torgaar, Explosive Singularity, the NEO Marches). Choosing none is always legal. The discount is
+ * "You may sacrifice / tap / exile from your hand or graveyard any number of …; this spell costs {N}
+ * less for each" (Torgaar, Explosive Singularity, the NEO Marches, Gorex). Choosing none is always legal. The discount is
  * part of the total cost (`CastCostTotaller`), priced from the declared picks — [chosen] reads them
  * from the payment channel the action's picker fills.
  */
@@ -287,7 +357,7 @@ internal object AnyNumberForCostReductionCostKind : SpellCostKind<AdditionalCost
                 env.costUtils.findAbilityTapTargets(env.state, env.playerId, cost.filter)
             // The spell is on its way to the stack (CR 601.2a), so it can't pay for itself.
             PermanentCostAction.EXILE ->
-                env.costUtils.findExileTargets(env.state, env.playerId, cost.filter, Zone.HAND)
+                env.costUtils.findExileTargets(env.state, env.playerId, cost.filter, cost.fromZone.toZone())
                     .filter { it != env.castCardId }
         }
 
@@ -304,9 +374,11 @@ internal object AnyNumberForCostReductionCostKind : SpellCostKind<AdditionalCost
      * pick is worth — "Tap any number of untapped creatures you control — each one makes this spell
      * cost {1} less" — shorter than the printed two sentences, which the cast's card already shows.
      */
-    fun data(cost: AdditionalCost.AnyNumberForCostReduction, candidates: List<EntityId>) =
+    fun data(cost: AdditionalCost.AnyNumberForCostReduction, candidates: List<EntityId>, genericBefore: Int? = null) =
         pickerData(cost, candidates).copy(
-            description = "${cost.choice} — each one makes this spell cost {${cost.reductionPerUnit}} less"
+            description = "${cost.choice} — each one makes this spell cost {${cost.reductionPerUnit}} less",
+            reductionPerPick = cost.reductionPerUnit,
+            genericBeforeReduction = genericBefore,
         )
 
     private fun pickerData(cost: AdditionalCost.AnyNumberForCostReduction, candidates: List<EntityId>) = when (cost.action) {
@@ -324,7 +396,7 @@ internal object AnyNumberForCostReductionCostKind : SpellCostKind<AdditionalCost
         )
         PermanentCostAction.EXILE -> AdditionalCostData(
             description = cost.description,
-            costType = "ExileFromHand",
+            costType = if (cost.fromZone == CostZone.GRAVEYARD) "ExileFromGraveyard" else "ExileFromHand",
             validExileTargets = candidates,
             exileMinCount = 0,
             exileMaxCount = candidates.size,
@@ -347,10 +419,18 @@ internal object AnyNumberForCostReductionCostKind : SpellCostKind<AdditionalCost
                     if (cost.action == PermanentCostAction.TAP && state.getEntity(id)?.has<TappedComponent>() == true) {
                         return "${card.name} is already tapped"
                     }
+                    if (cost.action == PermanentCostAction.SACRIFICE &&
+                        !com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality.canSacrificeForCost(state, id)
+                    ) {
+                        return "${card.name} can't be sacrificed to cast this spell"
+                    }
                 }
                 PermanentCostAction.EXILE -> {
                     if (id == check.action.cardId) return "A spell can't exile itself to pay its own cost"
-                    if (id !in state.getZone(ZoneKey(check.playerId, Zone.HAND))) return "${card.name} is not in your hand"
+                    val zone = cost.fromZone.toZone()
+                    if (id !in state.getZone(ZoneKey(check.playerId, zone))) {
+                        return "${card.name} is not in your ${cost.fromZone.description}"
+                    }
                 }
             }
             if (!check.predicateEvaluator.matches(state, projected, id, cost.filter, context)) {
@@ -374,10 +454,19 @@ internal object AnyNumberForCostReductionCostKind : SpellCostKind<AdditionalCost
                 val (tappedState, tapEvents) = tap(ledger.state, permId)
                 ledger.state = tappedState
                 ledger.events.addAll(tapEvents)
+                ledger.tappedAsCostPermanents.add(permId)
             }
             PermanentCostAction.EXILE -> {
                 ledger.exiledAsCostCards.addAll(picks)
-                exileFromOwnZone(ledger, picks, Zone.HAND)
+                exileFromOwnZone(ledger, picks, cost.fromZone.toZone())
+                // The cards are exiled *with* the spell (CR 607.2q linked abilities) — the permanent it
+                // becomes keeps the pile, so "a card exiled with Gorex" reads exactly these.
+                if (picks.isNotEmpty()) {
+                    ledger.state = ledger.state.updateEntity(ledger.action.cardId) { c ->
+                        val existing = c.get<LinkedExileComponent>()?.exiledIds.orEmpty()
+                        c.with(LinkedExileComponent(exiledIds = existing + picks))
+                    }
+                }
             }
         }
         return null
@@ -479,7 +568,7 @@ internal object BlightVariableCostKind : SpellCostKind<AdditionalCost.BlightVari
             .filter { permId ->
                 projected.getController(permId) == check.playerId &&
                     projected.isCreature(permId) &&
-                    projected.canReceiveCounters(permId)
+                    projected.canReceiveCounters(permId, CounterType.MINUS_ONE_MINUS_ONE)
             }
             .maxOfOrNull { projected.getToughness(it) ?: 0 } ?: 0
         if (amount > maxToughness) {
@@ -776,4 +865,79 @@ internal object CompositeCostKind : SpellCostKind<AdditionalCost.Composite> {
     // All steps must be payable.
     override fun canPay(state: GameState, payerId: EntityId, cost: AdditionalCost.Composite, costHandler: CostHandler) =
         cost.steps.all { SpellCosts.canPay(state, it, payerId, costHandler) }
+}
+
+/**
+ * "Have an opponent gain N life" / "have each other player gain N life" (Invigorate, Reverent
+ * Silence) — the non-mana half of a pitch-style alternative cost. A player who can't gain life can't
+ * be made to gain it to pay; one whose gain would be replaced (Sulfuric Vortex) still can, and the
+ * gain is then replaced as usual (Invigorate ruling, 2020-08-07). The life is gained through the same
+ * primitive every gain uses, so gain modifiers and replacements apply.
+ */
+internal object OthersGainLifeCostKind : SpellCostKind<AdditionalCost.OthersGainLife> {
+
+    /**
+     * The opponents the caster may name for an "an opponent gains life" cost — the ones who can gain
+     * life. The enumerator offers one cast per entry.
+     */
+    fun eligibleOpponents(state: GameState, payerId: EntityId): List<EntityId> =
+        state.getOpponents(payerId).filter { it in state.activePlayers && !DamageUtils.isLifeGainPrevented(state, it, prohibitionsOnly = true) }
+
+    private fun otherPlayers(state: GameState, payerId: EntityId): List<EntityId> =
+        state.activePlayers.filter { it != payerId }
+
+    private fun payable(state: GameState, payerId: EntityId, cost: AdditionalCost.OthersGainLife): Boolean =
+        if (cost.eachOtherPlayer) {
+            otherPlayers(state, payerId).let { others ->
+                others.isNotEmpty() && others.none { DamageUtils.isLifeGainPrevented(state, it, prohibitionsOnly = true) }
+            }
+        } else {
+            eligibleOpponents(state, payerId).isNotEmpty()
+        }
+
+    /** Who gains the life, or null when the submitted cast doesn't name a legal recipient. */
+    private fun recipients(
+        state: GameState,
+        payerId: EntityId,
+        cost: AdditionalCost.OthersGainLife,
+        payment: AdditionalCostPayment?,
+    ): List<EntityId>? {
+        if (cost.eachOtherPlayer) return otherPlayers(state, payerId)
+        val eligible = eligibleOpponents(state, payerId)
+        val named = payment?.lifeGainRecipient ?: return eligible.singleOrNull()?.let(::listOf)
+        return if (named in eligible) listOf(named) else null
+    }
+
+    override fun canPay(state: GameState, payerId: EntityId, cost: AdditionalCost.OthersGainLife, costHandler: CostHandler) =
+        payable(state, payerId, cost)
+
+    override fun enumerate(env: SpellCostEnumeration, cost: AdditionalCost.OthersGainLife, offer: SpellCostOffer) =
+        payable(env.state, env.playerId, cost)
+
+    // No object is selected, so the alternative-cost rails' candidate count says nothing; payability
+    // is whether the life can be gained at all.
+    override fun canPayFrom(env: SpellCostEnumeration, cost: AdditionalCost.OthersGainLife, candidates: List<EntityId>) =
+        payable(env.state, env.playerId, cost)
+
+    override fun validate(check: SpellCostCheck, cost: AdditionalCost.OthersGainLife): String? {
+        if (!payable(check.state, check.playerId, cost)) return "No player can gain the life to pay this cost"
+        return if (recipients(check.state, check.playerId, cost, check.payment) == null) {
+            "Choose an opponent who can gain life to pay this cost"
+        } else null
+    }
+
+    override fun paysUnprompted(cost: AdditionalCost.OthersGainLife) = true
+
+    override fun pay(ledger: SpellCostLedger, cost: AdditionalCost.OthersGainLife): String? {
+        val players = recipients(ledger.state, ledger.playerId, cost, ledger.action.additionalCostPayment)
+            ?: return "Choose an opponent who can gain life to pay this cost"
+        for (playerId in players) {
+            val (gained, event) = DamageUtils.gainLife(
+                ledger.state, playerId, cost.amount, predicateEvaluator = ledger.costHandler.predicateEvaluator
+            )
+            ledger.state = gained
+            event?.let { ledger.events.add(it) }
+        }
+        return null
+    }
 }

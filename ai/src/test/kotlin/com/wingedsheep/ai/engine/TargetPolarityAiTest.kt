@@ -26,6 +26,7 @@ import com.wingedsheep.mtg.sets.definitions.lrw.cards.Lignify
 import com.wingedsheep.mtg.sets.definitions.sth.cards.Overgrowth
 import com.wingedsheep.mtg.sets.definitions.lea.cards.Unsummon
 import com.wingedsheep.mtg.sets.definitions.mir.cards.Pacifism
+import com.wingedsheep.mtg.sets.definitions.ogw.cards.NissasJudgment
 import com.wingedsheep.mtg.sets.definitions.ons.cards.BlatantThievery
 import com.wingedsheep.mtg.sets.definitions.ons.cards.DaruHealer
 import com.wingedsheep.mtg.sets.definitions.ons.cards.GustcloakHarrier
@@ -37,6 +38,9 @@ import com.wingedsheep.mtg.sets.definitions.woe.cards.DiminisherWitch
 import com.wingedsheep.mtg.sets.definitions.woe.cards.EmberethVeteran
 import com.wingedsheep.mtg.sets.definitions.fin.cards.RestorationMagic
 import com.wingedsheep.mtg.sets.definitions.mh3.cards.ProudPackRhino
+import com.wingedsheep.mtg.sets.definitions.m19.cards.Suncleanser
+import com.wingedsheep.mtg.sets.definitions.akh.cards.CommitMemory
+import com.wingedsheep.mtg.sets.definitions.akh.cards.IllusoryWrappings
 import com.wingedsheep.engine.core.ChooseOptionDecision
 import com.wingedsheep.engine.core.ChooseTargetsDecision
 import com.wingedsheep.engine.core.OptionChosenResponse
@@ -67,7 +71,7 @@ class TargetPolarityAiTest : FunSpec({
         GiantGrowth, Unsummon, Pacifism, BlatantThievery, DaruHealer, GustcloakHarrier, Sandskin,
         GloriousAnthem, MischievousCatgeist, EmberethVeteran, StrandsOfUndeath, DiminisherWitch,
         PredefinedTokens.YoungHeroRole, PredefinedTokens.CursedRole,
-        ProudPackRhino, RestorationMagic, Overgrowth,
+        ProudPackRhino, RestorationMagic, Overgrowth, IllusoryWrappings,
     )
     val registry = CardRegistry().apply { register(cards) }
 
@@ -91,6 +95,11 @@ class TargetPolarityAiTest : FunSpec({
         test("a damage shield on any target is for our side") {
             val ability = DaruHealer.script.activatedAbilities.single()
             TargetPolarityAnalyzer.forAbility(DaruHealer, ability) shouldBe listOf(TargetPolarity.BENEFICIAL)
+        }
+        test("a victim bitten by each creature of a group is a removal slot") {
+            // Nissa's Judgment: support on up to two creatures, then "each creature you control
+            // with a +1/+1 counter on it deals damage equal to its power to" the second target.
+            TargetPolarityAnalyzer.forSpell(NissasJudgment)[1] shouldBe TargetPolarity.HARMFUL
         }
         test("a counterspell behind a mana-value gate is still aimed at their spell") {
             TargetPolarityAnalyzer.forSpell(Prohibit) shouldBe listOf(TargetPolarity.HARMFUL)
@@ -127,6 +136,13 @@ class TargetPolarityAiTest : FunSpec({
             val modal = ProudPackRhino.script.triggeredAbilities.single().effect as ModalEffect
             TargetPolarityAnalyzer.forMode(modal.modes[0]) shouldBe listOf(TargetPolarity.BENEFICIAL)
         }
+        test("a counter lock on a player is aimed at them; stripping a creature's counters is either-way") {
+            val modal = Suncleanser.script.triggeredAbilities.single().effect as ModalEffect
+            // "Target opponent loses all counters. That player can't get counters …"
+            TargetPolarityAnalyzer.forMode(modal.modes[1]) shouldBe listOf(TargetPolarity.HARMFUL)
+            // Clearing +1/+1 counters off theirs or -1/-1 counters off ours: the board decides.
+            TargetPolarityAnalyzer.forMode(modal.modes[0]) shouldBe listOf(TargetPolarity.UNKNOWN)
+        }
         test("a tiered spell's slots are its chosen tier's") {
             // Cure and Cura: "target permanent gains hexproof and indestructible" (Cura adds 3 life).
             TargetPolarityAnalyzer.forSpellModes(RestorationMagic, listOf(0)) shouldBe listOf(TargetPolarity.BENEFICIAL)
@@ -142,14 +158,23 @@ class TargetPolarityAiTest : FunSpec({
             // A granted mana ability is the same gift, put another way.
             TargetPolarityAnalyzer.forSpell(AbundantGrowth) shouldBe listOf(TargetPolarity.BENEFICIAL)
         }
+        test("an Aura setting a toothless base 0/2 is a curse") {
+            TargetPolarityAnalyzer.forSpell(IllusoryWrappings) shouldBe listOf(TargetPolarity.HARMFUL)
+        }
+        test("tucking a spell or nonland permanent into its owner's library is removal") {
+            // Commit: "Put target spell or nonland permanent into its owner's library second from the top."
+            val commit = CommitMemory.cardFaces.first().script
+            TargetPolarityAnalyzer.forRequirements(commit.spellEffect, commit.targetRequirements) shouldBe
+                listOf(TargetPolarity.HARMFUL)
+        }
         test("stealing, protecting and stripping Auras read off their statics") {
             TargetPolarityAnalyzer.forSpell(ControlMagic) shouldBe listOf(TargetPolarity.HARMFUL)
             TargetPolarityAnalyzer.forSpell(BlackWard) shouldBe listOf(TargetPolarity.BENEFICIAL)
             TargetPolarityAnalyzer.forSpell(Lignify) shouldBe listOf(TargetPolarity.HARMFUL)
         }
-        test("either-way effects stay unknown") {
+        test("known bounce is flexible while mixed effects stay unknown") {
             // Bouncing our own creature in response to removal is a real play.
-            TargetPolarityAnalyzer.forSpell(Unsummon) shouldBe listOf(TargetPolarity.UNKNOWN)
+            TargetPolarityAnalyzer.forSpell(Unsummon) shouldBe listOf(TargetPolarity.FLEXIBLE)
             // "Prevent combat damage dealt to and by": a Fog on their attacker or armour on ours.
             TargetPolarityAnalyzer.forSpell(Sandskin) shouldBe listOf(TargetPolarity.UNKNOWN)
         }
@@ -210,6 +235,23 @@ class TargetPolarityAiTest : FunSpec({
 
         aimedAt(polarity = false) shouldBe theirs
         aimedAt(polarity = true) shouldBe ours
+    }
+
+    test("a base-0/2 Aura goes on their creature, not ours") {
+        val d = driver()
+        d.putCreatureOnBattlefield(d.player1, "Gustcloak Harrier")
+        val theirs = d.putCreatureOnBattlefield(d.player2, "Grizzly Bears")
+        lands(d, d.player1, "Island" to 3)
+        val aura = d.putCardInHand(d.player1, "Illusory Wrappings")
+        val cast = d.legalActions(d.player1).single { (it.action as? CastSpell)?.cardId == aura }
+        val intents = IntentCatalog.of(registry)
+
+        TargetSelection.polarities(d.state, cast, intents) shouldBe listOf(TargetPolarity.HARMFUL)
+        val filled = TargetSelection.fillHeuristically(
+            d.state, cast, d.player1, fillPartialRequirements = true,
+            intents = intents, polarityFromEffect = true,
+        ) as CastSpell
+        (filled.targets.single() as ChosenTarget.Permanent).entityId shouldBe theirs
     }
 
     // Game 15 turn 12: Blossombind on our own Explosive Prodigy because they had no creatures.

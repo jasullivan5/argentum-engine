@@ -127,25 +127,54 @@ data class AddCountersUpToEffect(
  * counter-placement replacements (Hardened Scales) and counter-placed triggers apply. A recipient
  * that can't have counters put on it gets none. Works on a permanent or a player target.
  *
+ * With [CounterKindSource.LISTED_ABSENT] the candidates are the printed [kinds] the recipient
+ * doesn't already have a counter of — "choose a kind of counter at random that Crystalline Giant
+ * doesn't have on it from among flying, first strike, … and +1/+1" — read at resolution; none left
+ * is a no-op. [atRandom] has the engine draw the kind uniformly from the candidates instead of
+ * asking the controller (RECIPIENT or LISTED_ABSENT; ITERATION has no choice to randomise).
+ *
  * @property target The permanent (or player) that receives the counters.
  * @property count How many counters of the kind to add.
- * @property kindFrom Where the kind comes from: chosen among the recipient's own, or the loop's.
+ * @property kindFrom Where the kind comes from: the recipient's own, the loop's, or the printed list.
+ * @property kinds The printed candidate kinds for [CounterKindSource.LISTED_ABSENT]; empty otherwise.
+ * @property atRandom The kind is chosen at random rather than by the controller.
  */
 @SerialName("AddCountersOfChosenKind")
 @Serializable
 data class AddCountersOfChosenKindEffect(
     val target: EffectTarget = EffectTarget.ContextTarget(0),
     val count: Int = 1,
-    val kindFrom: CounterKindSource = CounterKindSource.RECIPIENT
+    val kindFrom: CounterKindSource = CounterKindSource.RECIPIENT,
+    val kinds: List<CounterType> = emptyList(),
+    val atRandom: Boolean = false
 ) : Effect {
+    init {
+        require((kindFrom == CounterKindSource.LISTED_ABSENT) == kinds.isNotEmpty()) {
+            "kinds lists the candidates of LISTED_ABSENT, and only of it"
+        }
+        require(!atRandom || kindFrom != CounterKindSource.ITERATION) {
+            "ITERATION places the loop's kind; there is no choice to make at random"
+        }
+    }
+
     override val description: String = when (kindFrom) {
         CounterKindSource.RECIPIENT ->
-            "Choose a kind of counter on ${target.description}. Put " +
+            "Choose a kind of counter on ${target.description}${if (atRandom) " at random" else ""}. Put " +
                 (if (count == 1) "an additional counter" else "$count additional counters") +
                 " of that kind on it"
         CounterKindSource.ITERATION ->
             "Put " + (if (count == 1) "a counter" else "$count counters") +
                 " of that kind on ${target.description}"
+        CounterKindSource.LISTED_ABSENT ->
+            "Choose a kind of counter${if (atRandom) " at random" else ""} that ${target.description} " +
+                "doesn't have on it from among ${listedKinds()}. Put " +
+                (if (count == 1) "a counter" else "$count counters") + " of that kind on it"
+    }
+
+    private fun listedKinds(): String {
+        val names = kinds.map { it.printed }
+        return if (names.size <= 2) names.joinToString(" and ")
+        else names.dropLast(1).joinToString(", ") + ", and " + names.last()
     }
 }
 
@@ -182,7 +211,13 @@ enum class CounterKindSource {
      * The kind an enclosing `IterationSpace.CounterKindsAmong` (Exotic Pets) or
      * `IterationSpace.CounterKindsOn` (Dramatist's Puppet) loop is visiting.
      */
-    ITERATION
+    ITERATION,
+
+    /**
+     * One of the effect's printed `kinds` that the recipient doesn't already have a counter of
+     * (Crystalline Giant) — read at resolution.
+     */
+    LISTED_ABSENT
 }
 
 /**
@@ -206,7 +241,7 @@ data class MoveAllLastKnownCountersEffect(
  * Double the number of counters already on a target (one-shot).
  * "Double the number of +1/+1 counters on that creature."
  *
- * Distinct from the `DoubleCounterPlacement` replacement effect, which doubles
+ * Distinct from the `ScaleCounterPlacement` replacement effect, which doubles
  * counters as they are *placed* in the future. This is an immediate doubling of
  * the counters present at resolution: the executor reads the current count of
  * [counterType] on the target and puts that many more on it (so the total
@@ -407,9 +442,10 @@ data class ConvertCountersToTokensEffect(
 }
 
 /**
- * Remove every counter (of any kind) from a target permanent.
+ * Remove every counter (of any kind) from a target permanent or player.
  *
- * "Remove all counters from target creature."
+ * "Remove all counters from target creature." / "Target opponent loses all counters." (Suncleanser
+ * — a player's poison, energy and experience counters).
  *
  * Mandatory and non-interactive — the executor clears every counter kind currently
  * on the target. No-op when the target has no counters.
@@ -511,11 +547,20 @@ data class MoveCountersEachKindMissingEffect(
  * Grounds) is `minTotal = maxTotal = 1` — the player picks which *kind* moves, not whether one
  * does. The floor is clamped to what the source actually carries.
  *
- * @property source The permanent counters are moved *from*
+ * [counterType] narrows the walk to one kind, leaving the others untouched. [source] may be an
+ * [EffectTarget.GroupRef]: the counters then come from every member of the group, one prompt per
+ * member and kind, and are put on [destination] in one placement per kind once every answer is in —
+ * so Hardened Scales adds one counter to the move, not one per member. "Move any number of +1/+1
+ * counters from other permanents you control onto this creature" (Aetherborn Marauder) is
+ * `source = GroupRef(other permanents you control with a +1/+1 counter)`,
+ * `counterType = PLUS_ONE_PLUS_ONE`.
+ *
+ * @property source The permanent counters are moved *from*, or a [EffectTarget.GroupRef] of them
  * @property destination The permanent counters are moved *onto*
  * @property drawCardOnMove When true, the controller draws a card if any counter was moved
  * @property maxTotal Most counters moved in total across all kinds, or null for no cap
  * @property minTotal Fewest counters that must be moved in total (0 = the move is optional)
+ * @property counterType The only kind that may move, or null for every kind on the source
  */
 @SerialName("MoveChosenCountersToTarget")
 @Serializable
@@ -524,7 +569,8 @@ data class MoveChosenCountersToTargetEffect(
     val destination: EffectTarget,
     val drawCardOnMove: Boolean = false,
     val maxTotal: Int? = null,
-    val minTotal: Int = 0
+    val minTotal: Int = 0,
+    val counterType: CounterType? = null
 ) : Effect {
     init {
         require(minTotal >= 0) { "minTotal must be non-negative" }
@@ -532,13 +578,16 @@ data class MoveChosenCountersToTargetEffect(
     }
 
     override val description: String = buildString {
+        val kind = counterType?.let { "${it.printed} " } ?: ""
         val what = when {
-            minTotal == 1 && maxTotal == 1 -> "a counter"
-            minTotal > 0 && minTotal == maxTotal -> "$minTotal counters"
-            maxTotal != null -> "up to $maxTotal counters"
+            minTotal == 1 && maxTotal == 1 -> "a ${kind}counter"
+            minTotal > 0 && minTotal == maxTotal -> "$minTotal ${kind}counters"
+            maxTotal != null -> "up to $maxTotal ${kind}counters"
+            counterType != null -> "any number of ${kind}counters"
             else -> "one or more counters"
         }
-        append("Move $what from ${source.description} onto ${destination.description}")
+        val from = (source as? EffectTarget.GroupRef)?.filter?.description?.removePrefix("all ") ?: source.description
+        append("Move $what from $from onto ${destination.description}")
         if (drawCardOnMove) append(". If you do, draw a card")
     }
 }
@@ -647,11 +696,20 @@ data class DistributeCountersFromSelfEffect(
  * The counters added are identical in both shapes: one of each kind the recipient currently has,
  * honoring counter-placement replacement effects, and attributed to the effect's controller so
  * counter-history predicates see the placement.
+ *
+ * [storeAs] publishes the **permanents that had a counter put on them this way** to that pipeline
+ * collection, for a follow-up that acts on them — "proliferate, then choose any number of
+ * permanents you control that had a counter put on them this way" (Ripples of Potential). Only
+ * permanents still on the battlefield whose placement actually happened are recorded: a chosen
+ * recipient that can't have counters put on it, or whose every counter a replacement reduced to
+ * zero, is left out, and players are never recorded (the follow-ups all choose permanents). Under
+ * "proliferate twice instead" the collection is the union of every proliferate in the run.
  */
 @SerialName("Proliferate")
 @Serializable
 data class ProliferateEffect(
-    val target: EffectTarget? = null
+    val target: EffectTarget? = null,
+    val storeAs: String? = null
 ) : Effect {
     override val description: String = if (target == null) {
         "Proliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)"
@@ -664,9 +722,8 @@ data class ProliferateEffect(
  * Distribute a number of counters among the targets from context.
  * "Distribute N counters among one or more target creatures you control."
  *
- * Distribution is deterministic when totalCounters equals number of targets * minPerTarget.
- * With 1 target, all counters go on it. With multiple targets, counters are divided evenly
- * (remainder goes to the first target).
+ * The controller chooses the division, each target getting at least [minPerTarget]; a lone
+ * target takes the whole pool (unless the pool is [upTo]).
  *
  * [totalCounters] is a [DynamicAmount] so the pool can come from the spell's X
  * ("Distribute X +1/+1 counters among any number of target creatures you control" —
@@ -676,19 +733,26 @@ data class ProliferateEffect(
  * `TargetObject(unlimited = true, dynamicMaxCount = DynamicAmount.XValue)` so the caster
  * can't declare more targets than there are counters to go around (CR 601.2d).
  *
+ * [upTo] is "distribute **up to** N counters" (Lathiel, the Bounteous Dawn): the controller may
+ * place fewer than [totalCounters] in all, each target still getting at least [minPerTarget]. The
+ * division is announced the same way, as a partial one — even with a single target, which then
+ * takes any number from [minPerTarget] up to the pool.
+ *
  * @property totalCounters Total number of counters to distribute
  * @property counterType The type of counter (e.g., "+1/+1")
  * @property minPerTarget Minimum counters each target must receive (per MTG rules, typically 1)
+ * @property upTo When true the pool is a cap ("up to N"), not an exact total
  */
 @SerialName("DistributeCountersAmongTargets")
 @Serializable
 data class DistributeCountersAmongTargetsEffect(
     val totalCounters: DynamicAmount,
     val counterType: CounterType = CounterType.PLUS_ONE_PLUS_ONE,
-    val minPerTarget: Int = 1
+    val minPerTarget: Int = 1,
+    val upTo: Boolean = false
 ) : Effect {
     override val description: String =
-        "Distribute ${totalCounters.description} ${counterType.printed} counters among targets"
+        "Distribute ${if (upTo) "up to " else ""}${totalCounters.description} ${counterType.printed} counters among targets"
 }
 
 /**
@@ -723,6 +787,45 @@ data class DistributeCountersAmongFilteredEffect(
 }
 
 /**
+ * "You may remove any number of [counterType] counters from among [filter]" — the controller picks,
+ * at resolution, how many of each matching permanent's [counterType] counters to take off (0 up to
+ * what it carries, any total including none), and the total actually removed is stored in the
+ * pipeline under [storeAmountAs] for a composed follow-up to read through
+ * `DynamicAmount.VariableReference(storeAmountAs)`. The eligible group is the battlefield
+ * permanents matching [filter] (projected state) that carry at least one such counter. No-op that
+ * stores 0 when none does.
+ *
+ * Galloping Lizrog: "you may remove any number of +1/+1 counters from among creatures you
+ * control. If you do, put twice that many +1/+1 counters on this creature." —
+ * `Composite(RemoveCountersFromAmong(PLUS_ONE_PLUS_ONE, Creature.youControl(), "removed"),
+ * AddDynamicCounters(PLUS_ONE_PLUS_ONE, Multiply(VariableReference("removed"), 2), Self))`.
+ *
+ * Closest existing types, and why neither takes the axis:
+ * - [RemoveAnyNumberOfCountersEffect] removes from ONE resolved target, one `ChooseNumber` prompt per
+ *   counter *kind*; "from among" is a group of permanents of one kind — a distribution across
+ *   objects, not a walk over kinds — and that effect records no count.
+ * - [DistributeCountersAmongFilteredEffect] resolves the same filtered group and asks the same
+ *   `DistributeDecision`, but it *creates* a fixed pool of counters; here the pool is what the
+ *   permanents carry, each one's share is capped by its own count, the total is the player's choice,
+ *   and the result is a recorded number.
+ *
+ * @property counterType The kind of counter removed.
+ * @property filter Which permanents counters may be removed from (resolved at execution).
+ * @property storeAmountAs Pipeline name the total removed is stored under.
+ */
+@SerialName("RemoveCountersFromAmong")
+@Serializable
+data class RemoveCountersFromAmongEffect(
+    val counterType: CounterType,
+    val filter: GameObjectFilter,
+    val storeAmountAs: String,
+) : Effect {
+    override val description: String =
+        "Remove any number of ${counterType.printed} counters from among " +
+            com.wingedsheep.sdk.scripting.describeObjectsForEvent(filter)
+}
+
+/**
  * Install a temporary, duration-scoped counter-placement-*modifier* replacement effect,
  * controlled by the resolving ability's controller.
  *
@@ -731,9 +834,11 @@ data class DistributeCountersAmongFilteredEffect(
  * Winding Constrictor). Where `ModifyCounterPlacement` lives on a permanent for as long as
  * that permanent is on the battlefield, this effect records a modifier in a turn-scoped store
  * on the game state, controller-scoped exactly like the static version: while it is active, if
- * the *controller* would put counters matching [counterType] on a recipient matching [recipient]
- * (resolved relative to that controller — e.g. "a creature you control" means a creature the
- * controller controls), [modifier] additional counters are placed instead.
+ * a player matching [placer] (default: the controller) would put counters matching [counterType]
+ * on a recipient matching [recipient] (resolved relative to that controller — e.g. "a creature
+ * you control" means a creature the controller controls), [modifier] additional counters are
+ * placed instead. A null [counterType] covers every kind, each kind placed counting as its own
+ * placement — "that many plus one of each of those kinds of counters".
  *
  * The store is consulted from the single counter-placement chokepoint, so every counter-adding
  * effect (AddCounters, AddDynamicCounters, Explore, enters-with-counters, proliferate-driven,
@@ -741,38 +846,53 @@ data class DistributeCountersAmongFilteredEffect(
  * (typically [Duration.EndOfTurn]) via the normal end-of-turn cleanup.
  *
  * General by construction — parameterized over [modifier] (positive or negative), [duration],
- * [counterType] and [recipient]. The defaults reproduce the most common case ("+1/+1 counters
- * on a creature you control, until end of turn"), which is what Prairie Dog's
- * "{4}{W}: Until end of turn, if you would put one or more +1/+1 counters on a creature you
- * control, put that many plus one +1/+1 counters on it instead" needs.
+ * [counterType], [recipient] and [placer]. The defaults reproduce the most common case ("if you
+ * would put +1/+1 counters on a creature you control, until end of turn").
  *
  * Examples:
  * - Prairie Dog (OTJ): `GrantCounterPlacementModifierEffect()` — +1, EndOfTurn, +1/+1, creature you control.
- * - A hypothetical "until end of turn, put one fewer counter…": `modifier = -1`.
+ * - Brad Boimler, Eager Ensign (TRK): "until end of turn, if one or more counters would be put on
+ *   a permanent you control, that many plus one of each of those kinds of counters are put on that
+ *   permanent instead" — `counterType = null`, `recipient = Recipient.PermanentYouControl`,
+ *   `placer = Player.Any`.
  *
  * @property modifier Additional counters placed (negative reduces; the chokepoint floors the
  *        resulting count at 0).
  * @property duration How long the modifier stays active (default [Duration.EndOfTurn]).
- * @property counterType Which counter kind the modifier applies to (default +1/+1).
+ * @property counterType Which counter kind the modifier applies to (default +1/+1; null = every kind).
  * @property recipient Which recipients the modifier applies to, resolved relative to the
  *        controller (default "a creature you control").
+ * @property placer Whose placements it modifies, relative to the controller: [Player.You]
+ *        (default, "if you would put"), [Player.Any] ("if one or more counters would be put") or
+ *        [Player.EachOpponent].
  */
 @SerialName("GrantCounterPlacementModifier")
 @Serializable
 data class GrantCounterPlacementModifierEffect(
     val modifier: Int = 1,
     val duration: Duration = Duration.EndOfTurn,
-    val counterType: CounterType = CounterType.PLUS_ONE_PLUS_ONE,
-    val recipient: Recipient = Recipient.CreatureYouControl
+    val counterType: CounterType? = CounterType.PLUS_ONE_PLUS_ONE,
+    val recipient: Recipient = Recipient.CreatureYouControl,
+    val placer: Player = Player.You
 ) : Effect {
+    init {
+        require(placer == Player.Any || placer == Player.You || placer == Player.EachOpponent) {
+            "GrantCounterPlacementModifierEffect.placer is a relation to the controller: Any, You or EachOpponent"
+        }
+    }
+
     override val description: String = buildString {
         val durationText = if (duration == Duration.Permanent) "" else "${duration.description.replaceFirstChar { it.uppercase() }}, "
         append(durationText)
-        append("if you would put one or more ${counterType.printed} counters on ${recipient.description}, ")
-        if (modifier >= 0) {
-            append("put that many plus $modifier ${counterType.printed} counter${if (modifier != 1) "s" else ""} on it instead")
-        } else {
-            append("put that many minus ${-modifier} ${counterType.printed} counter${if (-modifier != 1) "s" else ""} on it instead")
+        val kind = counterType?.let { "${it.printed} " } ?: ""
+        val amount = kotlin.math.abs(modifier)
+        val sign = if (modifier >= 0) "plus" else "minus"
+        val extra = if (counterType == null) "$amount of each of those kinds of counters"
+        else "$amount $kind" + "counter${if (amount != 1) "s" else ""}"
+        when (placer) {
+            Player.You -> append("if you would put one or more ${kind}counters on ${recipient.description}, put that many $sign $extra on it instead")
+            Player.EachOpponent -> append("if an opponent would put one or more ${kind}counters on ${recipient.description}, they put that many $sign $extra on it instead")
+            else -> append("if one or more ${kind}counters would be put on ${recipient.description}, that many $sign $extra are put on it instead")
         }
     }
 }

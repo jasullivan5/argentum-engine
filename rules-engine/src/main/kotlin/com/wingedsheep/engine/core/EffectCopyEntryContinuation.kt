@@ -4,6 +4,7 @@ import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.EntersAsCopy
 import com.wingedsheep.sdk.scripting.effects.Effect
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -12,6 +13,43 @@ data class EffectCopyEntryContinuation(
     val context: EffectContext,
     val entityId: EntityId,
     val replacement: EntersAsCopy,
+) : AnswerContinuation
+
+/**
+ * The work to replay once an entrant's controller has ordered its granted entry copies — work that
+ * put the entrant onto the battlefield before it could ask
+ * ([com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy.askIfUnasked]).
+ */
+@Serializable
+sealed interface EntryCopyReplay
+
+/** An effect: an effect move, a token, a return from linked exile. */
+@Serializable
+@SerialName("Effect")
+data class EffectReplay(val effect: Effect, val context: EffectContext) : EntryCopyReplay
+
+/** A resumed answer ([response] to [suspension]) whose resumer put the entrant onto the battlefield. */
+@Serializable
+@SerialName("Answer")
+data class AnswerReplay(val suspension: Suspension, val response: DecisionResponse) : EntryCopyReplay
+
+/** A land play (a land creature, Dryad Arbor). */
+@Serializable
+@SerialName("PlayLand")
+data class PlayLandReplay(val action: PlayLand) : EntryCopyReplay
+
+/**
+ * The entrant [entityId]'s controller choosing which of several granted entry copies
+ * ([com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy]) it applies last (CR 616.1) —
+ * two Mystic Reflections bound to different creatures. The answer picks one of [options].
+ * [replay] is the work to replay with the answer waiting for the entrant; null for a resolving
+ * permanent spell, which then finishes its entry.
+ */
+@Serializable
+data class GrantedEntryCopyOrderContinuation(
+    val entityId: EntityId,
+    val options: List<com.wingedsheep.engine.handlers.effects.copy.EntryCopyChoice>,
+    val replay: EntryCopyReplay?,
 ) : AnswerContinuation
 
 /**
@@ -26,4 +64,30 @@ data class EffectEntryChoiceContinuation(
     val context: EffectContext,
     val entityId: EntityId,
     val question: EntersWithChoiceOnBattlefieldContinuation,
+) : AnswerContinuation
+
+/**
+ * Pauses an effect that puts [entityId] onto the battlefield to ask its controller whether to pay
+ * its [com.wingedsheep.sdk.scripting.EntersOnlyIfPaid] [cost]. The resumer pays (or not), records
+ * the answer on [context] and replays [effect]; an unpaid entrant goes to its owner's graveyard.
+ */
+@Serializable
+data class EffectEntryPaymentContinuation(
+    val effect: Effect,
+    val context: EffectContext,
+    val entityId: EntityId,
+    val payerId: EntityId,
+    val cost: com.wingedsheep.sdk.scripting.costs.PayCost,
+) : AnswerContinuation
+
+/**
+ * Pauses a resolving permanent spell to ask whether to pay its
+ * [com.wingedsheep.sdk.scripting.EntersOnlyIfPaid] [cost]. Paid, the rest of its entry runs;
+ * declined, the card goes from the stack to its owner's graveyard and never enters.
+ */
+@Serializable
+data class EntersOnlyIfPaidSpellContinuation(
+    val spellId: EntityId,
+    val payerId: EntityId,
+    val cost: com.wingedsheep.sdk.scripting.costs.PayCost,
 ) : AnswerContinuation

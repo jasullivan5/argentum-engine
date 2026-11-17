@@ -3243,7 +3243,8 @@
                         ]
                     }
                 },
-                "ShuffleLibrary"
+                "ShuffleLibrary",
+                "EmitLibrarySearchedEvent"
             ]
         }
     },
@@ -6143,7 +6144,10 @@
             {
                 "id": "Eclipsed Realms:2",
                 "cost": "CostTap",
-                "effect": "AddAnyColorManaSpendOnChosenType",
+                "effect": {
+                    "type": "AddManaOfChoice",
+                    "restriction": "OfChosenType"
+                },
                 "timing": "ManaAbility",
                 "isManaAbility": true
             }
@@ -12714,7 +12718,8 @@
                                         "player": "TriggeringPlayer"
                                     },
                                     "storeAs": "gathered0",
-                                    "search": true
+                                    "search": true,
+                                    "searcher": "TriggeringPlayer"
                                 },
                                 {
                                     "type": "SelectFromCollection",
@@ -12746,7 +12751,8 @@
                                         "type": "PlayerRef",
                                         "player": "TriggeringPlayer"
                                     }
-                                }
+                                },
+                                "EmitLibrarySearchedEvent"
                             ]
                         }
                     ]
@@ -13016,13 +13022,10 @@
         "staticAbilities": [
             {
                 "type": "TransformPermanent",
-                "setCardTypes": [
-                    "CREATURE"
-                ],
-                "setSubtypes": [
+                "setColors": [],
+                "setCreatureSubtypes": [
                     "Noggle"
-                ],
-                "setColors": []
+                ]
             },
             "LoseAllAbilities",
             {
@@ -19029,7 +19032,10 @@
                     "type": "CreateTokenCopyOfTarget",
                     "target": "TriggeringEntity"
                 },
-                "interveningIf": "TriggeringEntityEnteredOrWasCastFromGraveyard",
+                "interveningIf": {
+                    "type": "TriggeringEntityEnteredOrWasCastFrom",
+                    "zone": "Graveyard"
+                },
                 "oncePerTurn": true
             }
         ]

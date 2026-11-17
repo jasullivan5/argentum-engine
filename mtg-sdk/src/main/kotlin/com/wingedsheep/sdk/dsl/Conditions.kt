@@ -158,6 +158,10 @@ object Conditions {
     fun CompareAmounts(left: DynamicAmount, operator: ComparisonOperator, right: Int): ConditionInterface =
         Compare(left, operator, DynamicAmount.Fixed(right))
 
+    /** "If you have a full party" — four creatures in [player]'s party (CR 700.8c). */
+    fun FullParty(player: Player = Player.You): ConditionInterface =
+        CompareAmounts(DynamicAmount.PartySize(player), ComparisonOperator.GTE, 4)
+
     /**
      * If [amount] is a prime number (2, 3, 5, 7, …). 0 and 1 are not prime.
      *
@@ -193,21 +197,29 @@ object Conditions {
         )
 
     /**
-     * If an opponent controls more lands than you.
+     * If an opponent controls more lands than you — any single opponent, not their combined
+     * total, so it reads the greatest count among opponents.
      */
     val OpponentControlsMoreLands: ConditionInterface =
         Compare(
-            DynamicAmount.AggregateBattlefield(Player.EachOpponent, GameObjectFilter.Land),
+            DynamicAmount.GreatestAmongPlayers(
+                Player.EachOpponent,
+                DynamicAmount.AggregateBattlefield(Player.You, GameObjectFilter.Land)
+            ),
             ComparisonOperator.GT,
             DynamicAmount.AggregateBattlefield(Player.You, GameObjectFilter.Land)
         )
 
     /**
-     * If an opponent controls more creatures than you.
+     * If an opponent controls more creatures than you — any single opponent, not their combined
+     * total, so it reads the greatest count among opponents.
      */
     val OpponentControlsMoreCreatures: ConditionInterface =
         Compare(
-            DynamicAmount.AggregateBattlefield(Player.EachOpponent, GameObjectFilter.Creature),
+            DynamicAmount.GreatestAmongPlayers(
+                Player.EachOpponent,
+                DynamicAmount.AggregateBattlefield(Player.You, GameObjectFilter.Creature)
+            ),
             ComparisonOperator.GT,
             DynamicAmount.AggregateBattlefield(Player.You, GameObjectFilter.Creature)
         )
@@ -626,18 +638,35 @@ object Conditions {
         com.wingedsheep.sdk.scripting.conditions.PlayerIs(subject, player)
 
     /**
-     * [player] has the most life, or is tied for the most life, among all players. The "most life"
-     * check a binary comparison can't express. Preacher of the Schism gates its attack triggers with
-     * `PlayerHasMostLife(Player.DefendingPlayer)` (the attacked player) and
-     * `PlayerHasMostLife(Player.You)`.
+     * [player] has the most of [amount] among the players still in the game. [amount] is measured
+     * once per player with `Player.You` rebound to that player, so write it from the measured
+     * player's side (`DynamicAmount.LifeTotal(Player.You)`, `DynamicAmount.Count(Player.You,
+     * Zone.HAND)`). [includeTies] `true` is "has the most … or is tied for the most"; `false` is
+     * "has more … than each other player" — see [PlayerHasMoreThanEachOtherPlayer].
+     */
+    fun PlayerHasMost(player: Player, amount: DynamicAmount, includeTies: Boolean = true): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.PlayerHasMost(player, amount, includeTies)
+
+    /**
+     * [player] has strictly more of [amount] than each other player still in the game — a tie for
+     * the top fails. Battle Angels of Tyr: "draw a card if that player has more cards in hand than
+     * each other player" is `PlayerHasMoreThanEachOtherPlayer(Player.TriggeringPlayer,
+     * DynamicAmount.Count(Player.You, Zone.HAND))`. Same per-player rebinding as [PlayerHasMost].
+     */
+    fun PlayerHasMoreThanEachOtherPlayer(player: Player, amount: DynamicAmount): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.PlayerHasMost(player, amount, includeTies = false)
+
+    /**
+     * [player] has the most life, or is tied for the most life, among all players. Preacher of the
+     * Schism gates its attack triggers with `PlayerHasMostLife(Player.DefendingPlayer)` (the
+     * attacked player) and `PlayerHasMostLife(Player.You)`. Team games read the shared total.
      */
     fun PlayerHasMostLife(player: Player): ConditionInterface =
-        com.wingedsheep.sdk.scripting.conditions.PlayerHasMostLife(player)
+        PlayerHasMost(player, DynamicAmount.LifeTotal(Player.You))
 
     /**
      * [player] controls the most permanents matching [filter], or is tied for the most, among all
-     * players. The board-count sibling of [PlayerHasMostLife] — same "max over every player" shape
-     * a binary comparison can't express. Counts come from the projected battlefield.
+     * players. Counts come from the projected battlefield.
      *
      * Wrap it in a per-player loop for "each player who controls the most X" (No Witnesses):
      * `ForEachPlayerEffect(Player.Each, Effects.If(PlayerControlsMostPermanents(Player.You,
@@ -647,7 +676,7 @@ object Conditions {
         player: Player,
         filter: GameObjectFilter = GameObjectFilter.Creature,
     ): ConditionInterface =
-        com.wingedsheep.sdk.scripting.conditions.PlayerControlsMostPermanents(player, filter)
+        PlayerHasMost(player, DynamicAmount.Count(Player.You, Zone.BATTLEFIELD, filter))
 
     /**
      * If the context target at [targetIndex] is a tapped battlefield permanent. Branch on a
@@ -1030,13 +1059,21 @@ object Conditions {
 
     /**
      * "If one or more of them entered from exile or was cast from exile" — the batch-enters,
-     * any-of exile counterpart of [TriggeringEntityEnteredOrWasCastFromGraveyard]. Evaluated over
+     * any-of exile counterpart of [TriggeringEntityEnteredOrWasCastFrom]. Evaluated over
      * the permanents a `Triggers.oneOrMore(filter).enter()` batch captured; works as a real
      * intervening-"if" (`interveningIf`) as well as a resolution-time gate. Extraordinary
      * Journey.
      */
     val AnyEnteredOrWasCastFromExile: ConditionInterface =
-        com.wingedsheep.sdk.scripting.conditions.AnyEnteredOrWasCastFromExile
+        com.wingedsheep.sdk.scripting.conditions.AnyEnteredOrWasCastFrom(Zone.EXILE)
+
+    /**
+     * "If one or more of them entered from a graveyard or was cast from a graveyard" — the
+     * graveyard twin of [AnyEnteredOrWasCastFromExile], same batch capture and timing. Kotis,
+     * Sibsig Champion.
+     */
+    val AnyEnteredOrWasCastFromGraveyard: ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.AnyEnteredOrWasCastFrom(Zone.GRAVEYARD)
 
     /**
      * If this permanent was cast from your hand.
@@ -1135,6 +1172,45 @@ object Conditions {
         CastChoiceMadeCondition(com.wingedsheep.sdk.scripting.ChoiceSlot.SELF_ALTERNATIVE_COST_PAID)
 
     /**
+     * "If this spell was foretold" (CR 702.143c, Kaldheim) — the spell was a foretold card in exile
+     * before it was cast, *even if it was cast for a cost other than its foretell cost* (a free cast
+     * of a foretold card still counts). False for a cast from hand or from any other zone.
+     *
+     * A facade over the durable choice-slot read ([com.wingedsheep.sdk.scripting.ChoiceSlot.FORETOLD]),
+     * stamped by the engine as the spell is cast: read from the spell while it resolves (Poison the
+     * Cup's "scry 2", Starnheim Unleashed's "create X of those tokens instead" — the X coming from an
+     * `{X}` in the foretell cost) and from the permanent a permanent spell becomes.
+     */
+    val WasForetold: ConditionInterface =
+        CastChoiceMadeCondition(com.wingedsheep.sdk.scripting.ChoiceSlot.FORETOLD)
+
+    /**
+     * "If this spell's madness cost was paid" (CR 702.35, Shadows over Innistrad) — the spell was
+     * cast from exile by its madness trigger, paying its madness cost rather than its mana cost.
+     * False for any other cast, including a free cast of the same exiled card.
+     *
+     * A facade over the durable choice-slot read ([com.wingedsheep.sdk.scripting.ChoiceSlot.MADNESS_CAST]),
+     * stamped by the engine as the spell is cast: read from the spell while it resolves (From Under
+     * the Floorboards' "instead create X of those tokens" — the X coming from an `{X}` in the
+     * madness cost) and from the permanent a permanent spell becomes.
+     */
+    val MadnessCostWasPaid: ConditionInterface =
+        CastChoiceMadeCondition(com.wingedsheep.sdk.scripting.ChoiceSlot.MADNESS_CAST)
+
+    /**
+     * "If its surge cost was paid" (CR 702.117, Oath of the Gatewatch) — the spell was cast for its
+     * [Surge][com.wingedsheep.sdk.scripting.KeywordAbility.Surge] cost rather than its mana cost.
+     * False for any other cast of the same card.
+     *
+     * A facade over the durable choice-slot read ([com.wingedsheep.sdk.scripting.ChoiceSlot.SURGE_CAST]),
+     * stamped by the engine as the spell is cast: read from the spell while it resolves (Crush of
+     * Tentacles' Octopus) and from the permanent a permanent spell becomes (Reckless Bushwhacker's
+     * enters trigger).
+     */
+    val SurgeCostWasPaid: ConditionInterface =
+        CastChoiceMadeCondition(com.wingedsheep.sdk.scripting.ChoiceSlot.SURGE_CAST)
+
+    /**
      * If **evidence was collected** for this spell (CR 701.59c, Murders at Karlov Manor) — its
      * optional "you may collect evidence N" additional cost was declared as it was cast.
      *
@@ -1197,6 +1273,19 @@ object Conditions {
      */
     val TeamworkWasPaid: ConditionInterface =
         CastChoiceMadeCondition(com.wingedsheep.sdk.scripting.ChoiceSlot.TEAMWORK)
+
+    /**
+     * If this spell was **entwined** (CR 702.42a, Mirrodin) — its optional entwine cost was declared
+     * as it was cast, so it takes all of its modes.
+     *
+     * A facade over the durable choice-slot read ([com.wingedsheep.sdk.scripting.ChoiceSlot.ENTWINED]),
+     * so entwine needs no condition type of its own. `entwineModal { }` reads it to move the mode
+     * count at cast time (the declaration this very cast made is in context, CR 601.2b); a card can
+     * also use it as a plain rider. Never true for a merely *kicked* or *bargained* spell. Pairs with
+     * the `entwine(cost)` DSL helper on [CardBuilder].
+     */
+    val WasEntwined: ConditionInterface =
+        CastChoiceMadeCondition(com.wingedsheep.sdk.scripting.ChoiceSlot.ENTWINED)
 
     /**
      * If this spell's sneak cost was paid (CR 702.190 — [com.wingedsheep.sdk.scripting.KeywordAbility.Sneak]).
@@ -1378,7 +1467,7 @@ object Conditions {
     val SourceHasDealtCombatDamageToPlayer: ConditionInterface =
         SourceMatches(
             com.wingedsheep.sdk.scripting.GameObjectFilter.Any
-                .copy(statePredicates = listOf(StatePredicate.HasDealtCombatDamageToPlayer))
+                .hasDealtCombatDamage(to = com.wingedsheep.sdk.scripting.predicates.DamageRecipientKind.Player)
         )
 
     /** If this permanent entered the battlefield this turn. */
@@ -1432,6 +1521,15 @@ object Conditions {
     val SourceIsMonstrous: ConditionInterface =
         SourceMatches(com.wingedsheep.sdk.scripting.GameObjectFilter.Any.monstrous())
 
+    /**
+     * If this permanent was embalmed — a token created by a resolving embalm ability
+     * (CR 702.128b). Vizier of Many Faces: "except if Vizier of Many Faces was embalmed, the token
+     * has no mana cost, it's white, and it's a Zombie in addition to its other types", an
+     * [com.wingedsheep.sdk.scripting.EntersAsCopy.conditionalExceptions] clause.
+     */
+    val SourceWasEmbalmed: ConditionInterface =
+        SourceMatches(com.wingedsheep.sdk.scripting.GameObjectFilter.Any.embalmed())
+
     /** If this creature is soulbond-paired with another creature (CR 702.95b). */
     val SourceIsPaired: ConditionInterface =
         SourceMatches(com.wingedsheep.sdk.scripting.GameObjectFilter.Any.paired())
@@ -1465,6 +1563,24 @@ object Conditions {
      */
     val SourceAttackedOrBlockedThisTurn: ConditionInterface =
         Any(SourceAttackedThisTurn, SourceBlockedThisTurn)
+
+    /**
+     * If this creature was declared attacking [player] directly this turn (attacking their
+     * planeswalker or a battle they protect doesn't count). Inside `ForEachPlayer`, pass
+     * [Player.You] to ask it of each iterated player — Angel of Destiny's "each player this
+     * creature attacked this turn loses the game".
+     */
+    fun SourceAttackedPlayerThisTurn(player: Player = Player.You): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.SourceAttackedPlayerThisTurn(player)
+
+    /**
+     * If any of the creatures this "whenever [player] attack(s) with …" trigger counted were
+     * declared attacking [player] directly — frozen as the trigger fired. "They draw a card if none
+     * of those creatures attacked you" is `Not(TriggeringAttackersAttackedPlayer())` (Firemane
+     * Commando).
+     */
+    fun TriggeringAttackersAttackedPlayer(player: Player = Player.You): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.TriggeringAttackersAttackedPlayer(player)
 
     /**
      * If this permanent was declared as an attacker during its controller's **most recent own
@@ -1788,6 +1904,14 @@ object Conditions {
         )
 
     /**
+     * "If you faced a dilemma this turn" (The Caretaker) — at least [atLeast] times this turn the
+     * player chose one or more modes for a spell or ability
+     * ([com.wingedsheep.sdk.scripting.values.TurnTracker.DILEMMAS_FACED]).
+     */
+    fun YouFacedADilemmaThisTurn(atLeast: Int = 1, player: Player = Player.You): ConditionInterface =
+        trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.DILEMMAS_FACED, atLeast, player)
+
+    /**
      * "If you've paid or lost N or more {E} this turn" (Izzet Generatorium) — every energy counter
      * removed from the player this turn, paid as a cost or lost to an effect
      * ([com.wingedsheep.sdk.scripting.values.TurnTracker.ENERGY_PAID_OR_LOST]).
@@ -1858,6 +1982,13 @@ object Conditions {
      */
     val YouLostLifeThisTurn: ConditionInterface =
         trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.LIFE_LOST)
+
+    /**
+     * If you lost life last turn — the turn before this one, whoever's it was (Paladin of Atonement).
+     * Only *losing* life counts, not a net decrease.
+     */
+    val YouLostLifeLastTurn: ConditionInterface =
+        trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.LIFE_LOST_LAST_TURN)
 
     /**
      * If you gained or lost life this turn.
@@ -2065,9 +2196,25 @@ object Conditions {
      * legendary creature this turn."
      */
     val AnOpponentWasDealtCombatDamageByLegendaryCreatureThisTurn: ConditionInterface =
-        trackerAtLeast(
-            com.wingedsheep.sdk.scripting.values.TurnTracker.DEALT_COMBAT_DAMAGE_BY_LEGENDARY_CREATURE,
-            player = Player.EachOpponent,
+        PlayerWasDealtCombatDamageThisTurnBy(GameObjectFilter.Creature.legendary(), player = Player.EachOpponent)
+
+    /**
+     * If [player] was dealt combat damage this turn by [atLeast] or more distinct sources matching
+     * [sourceFilter], each judged as it was when it dealt the damage — a [Compare] over
+     * [DynamicAmount.CombatDamageSourcesThisTurn]. "A player who was dealt combat damage by three or
+     * more Pirates this turn" (Admiral Beckett Brass, inside `StatePredicate.ControllerMeets`, where
+     * [Player.You] is the candidate's controller); "an opponent was dealt combat damage by a legendary
+     * creature this turn" (Blitzball).
+     */
+    fun PlayerWasDealtCombatDamageThisTurnBy(
+        sourceFilter: GameObjectFilter,
+        atLeast: Int = 1,
+        player: Player = Player.You,
+    ): ConditionInterface =
+        Compare(
+            DynamicAmount.CombatDamageSourcesThisTurn(player, sourceFilter),
+            ComparisonOperator.GTE,
+            DynamicAmount.Fixed(atLeast)
         )
 
     /**
@@ -2110,12 +2257,17 @@ object Conditions {
     ): ConditionInterface = PlayerCastSpellsThisTurn(Player.Candidate, filter, atLeast)
 
     /**
-     * Candidate-target restriction: this ability's source dealt damage to the player being targeted
-     * this turn. Backs "target player dealt damage by this creature this turn" (Wicked Akuba). Pair
-     * with a `descriptionOverride` on the `TargetPlayer`.
+     * Candidate-target restriction: this ability's source dealt damage of [damageType] to the player
+     * being targeted this turn. Backs "target player dealt damage by this creature this turn"
+     * (Wicked Akuba) and, with `DamageType.Combat`, "target player who was dealt combat damage by
+     * this creature this turn" (Hope of Ghirapur). Pair with a `descriptionOverride` on the
+     * `TargetPlayer`.
      */
-    fun candidateWasDealtDamageBySourceThisTurn(): ConditionInterface =
-        com.wingedsheep.sdk.scripting.conditions.SourceDealtDamageToPlayerThisTurn(Player.Candidate)
+    fun candidateWasDealtDamageBySourceThisTurn(
+        damageType: com.wingedsheep.sdk.scripting.events.DamageType =
+            com.wingedsheep.sdk.scripting.events.DamageType.Any
+    ): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.SourceDealtDamageToPlayerThisTurn(Player.Candidate, damageType)
 
     /**
      * Candidate restriction: the player being considered has the most life or is tied for the
@@ -2124,7 +2276,17 @@ object Conditions {
      * read, as the ability resolves.
      */
     fun candidateHasMostLife(): ConditionInterface =
-        com.wingedsheep.sdk.scripting.conditions.PlayerHasMostLife(Player.Candidate)
+        PlayerHasMostLife(Player.Candidate)
+
+    /**
+     * Candidate restriction: the player being considered is [player]. Wrapped in [Not] it backs
+     * "another target player" relative to a bound player — The Lord of Pain's
+     * `Not(candidateIs(Player.TriggeringPlayer))`, "choose another target player" than the one who
+     * cast the spell. A trigger's targeting binds `Player.TriggeringPlayer` both when targets are
+     * chosen and when they're re-checked at resolution.
+     */
+    fun candidateIs(player: Player): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.PlayerIs(Player.Candidate, player)
 
     /**
      * Candidate-target restriction: the player being targeted has [n] or less life.
@@ -2155,7 +2317,7 @@ object Conditions {
      * If you've sacrificed a Food this turn.
      */
     val SacrificedFoodThisTurn: ConditionInterface =
-        trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.FOOD_SACRIFICED)
+        YouSacrificedThisTurn(GameObjectFilter.Any.withSubtype(com.wingedsheep.sdk.core.Subtype.FOOD))
 
     /**
      * If you've sacrificed an artifact this turn — Murders at Karlov Manor's artifact-sacrifice
@@ -2166,7 +2328,7 @@ object Conditions {
      * The card-type sibling of [SacrificedFoodThisTurn].
      */
     val SacrificedArtifactThisTurn: ConditionInterface =
-        trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.ARTIFACT_SACRIFICED)
+        YouSacrificedThisTurn(GameObjectFilter.Artifact)
 
     /**
      * If you descended this turn (CR 700.11) — i.e. at least one nontoken permanent
@@ -2233,15 +2395,35 @@ object Conditions {
 
     /**
      * If you've sacrificed [atLeast] or more permanents this turn (controller-scoped, any
-     * permanent type). Backed by the per-player `PermanentsSacrificedThisTurnComponent` —
-     * distinct from the game-wide cost-reduction counter. Used by Sawblade Skinripper's
-     * intervening-if ("if you sacrificed one or more permanents this turn").
+     * permanent type) — [YouSacrificedThisTurn] unfiltered. Distinct from the game-wide
+     * cost-reduction counter. Used by Sawblade Skinripper's intervening-if ("if you sacrificed one
+     * or more permanents this turn").
      */
     fun YouSacrificedPermanentsThisTurn(atLeast: Int = 1): ConditionInterface =
-        trackerAtLeast(
-            com.wingedsheep.sdk.scripting.values.TurnTracker.PERMANENTS_SACRIFICED,
-            atLeast = atLeast,
+        YouSacrificedThisTurn(GameObjectFilter.Any, atLeast)
+
+    /**
+     * If you've sacrificed [atLeast] or more permanents matching [filter] this turn, each judged as
+     * it was when sacrificed — a [Compare] over [DynamicAmount.PermanentsSacrificedThisTurn].
+     * "If you sacrificed three or more Clues this turn" (Briarbridge Patrol); the narrower facades
+     * [YouSacrificedPermanentsThisTurn], [YouSacrificedNontokenPermanentsThisTurn],
+     * [SacrificedFoodThisTurn] and [SacrificedArtifactThisTurn] are this with a fixed filter.
+     */
+    fun YouSacrificedThisTurn(filter: GameObjectFilter, atLeast: Int = 1): ConditionInterface =
+        Compare(
+            DynamicAmount.PermanentsSacrificedThisTurn(Player.You, filter),
+            ComparisonOperator.GTE,
+            DynamicAmount.Fixed(atLeast)
         )
+
+    /**
+     * If you've sacrificed [atLeast] or more **nontoken** permanents this turn — the nontoken slice
+     * of [YouSacrificedPermanentsThisTurn], read off the same per-player sacrifice record (token-ness
+     * as it was when sacrificed). Evendo Brushrazer's "as long as you've sacrificed a nontoken
+     * permanent this turn".
+     */
+    fun YouSacrificedNontokenPermanentsThisTurn(atLeast: Int = 1): ConditionInterface =
+        YouSacrificedThisTurn(GameObjectFilter.Any.nontoken(), atLeast)
 
     /**
      * If red sources you controlled dealt [atLeast] or more noncombat damage this turn
@@ -2275,18 +2457,20 @@ object Conditions {
         PermanentTypeEnteredBattlefieldThisTurn(CardType.ARTIFACT)
 
     /**
-     * If a permanent of the given card type was put into the given player's graveyard from the
-     * battlefield this turn — owner-keyed turn history read off the permanent's last-known type
-     * line, so tokens and permanents that have since left the graveyard still count.
+     * If a permanent (of [cardType], or any when `null`) was put into the given player's [toZone] —
+     * graveyard or hand — from the battlefield this turn. Owner-keyed turn history read off the
+     * permanent's last-known type line, so tokens and cards that have since left that zone still count.
      *
-     * Used for Kami of Transience (NEO): "if an enchantment was put into your graveyard from the
-     * battlefield this turn".
+     * Kami of Transience (NEO): "if an enchantment was put into your graveyard from the battlefield
+     * this turn". Miles O'Brien, Transporter Ops (TRK): "if a permanent was returned to your hand from
+     * the battlefield this turn".
      */
-    fun PermanentTypePutIntoGraveyardFromBattlefieldThisTurn(
-        cardType: CardType,
+    fun PermanentPutIntoZoneFromBattlefieldThisTurn(
+        toZone: Zone,
+        cardType: CardType? = null,
         player: Player = Player.You
     ): ConditionInterface =
-        com.wingedsheep.sdk.scripting.conditions.PermanentTypePutIntoGraveyardFromBattlefieldThisTurn(cardType, player)
+        com.wingedsheep.sdk.scripting.conditions.PermanentPutIntoZoneFromBattlefieldThisTurn(toZone, cardType, player)
 
     /**
      * "If you've scried or surveilled this turn" — Surveillance Phantasm, Desperate Futurescribe,
@@ -2294,6 +2478,10 @@ object Conditions {
      */
     val ScriedOrSurveiledThisTurn: ConditionInterface =
         trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.SCRIED_OR_SURVEILED)
+
+    /** "If you've surveilled this turn" / "as long as you've surveilled this turn" — Darkblade Agent. */
+    val SurveiledThisTurn: ConditionInterface =
+        trackerAtLeast(com.wingedsheep.sdk.scripting.values.TurnTracker.SURVEILED)
 
     /**
      * If you put a counter on a creature this turn.
@@ -2434,6 +2622,14 @@ object Conditions {
      */
     val IsFirstEndStepOfTurn: ConditionInterface =
         com.wingedsheep.sdk.scripting.conditions.IsFirstEndStepOfTurn
+
+    /**
+     * If it's the first upkeep step of the turn (no upkeep step has ended yet this turn) — "at the
+     * beginning of [a player's] first upkeep each turn" as an `interveningIf`, and the loop guard for
+     * [Effects.AddAdditionalUpkeepSteps] with `afterThisStep` (Paradox Haze).
+     */
+    val IsFirstUpkeepStepOfTurn: ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.IsFirstUpkeepStepOfTurn
 
     /**
      * If it's the first combat phase of the turn (not an extra combat phase inserted by
@@ -2619,7 +2815,15 @@ object Conditions {
      * The Sibsig Ceremony).
      */
     val TriggeringEntityWasCast: ConditionInterface =
-        com.wingedsheep.sdk.scripting.conditions.TriggeringEntityWasCast
+        com.wingedsheep.sdk.scripting.conditions.TriggeringEntityWasCast()
+
+    /**
+     * If you cast the triggering entity from [zone] — `TriggeringEntityWasCastFrom(Zone.HAND)` is
+     * "if you cast it from your hand". Negate it for "if you didn't cast it from your hand"
+     * (Chainer, Nightmare Adept), which also holds when the permanent wasn't cast at all.
+     */
+    fun TriggeringEntityWasCastFrom(zone: Zone): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.TriggeringEntityWasCast(zone = zone)
 
     /**
      * Intervening-if: "if no mana was spent to cast it" about the triggering spell (Boromir, Warden
@@ -2636,11 +2840,20 @@ object Conditions {
         com.wingedsheep.sdk.scripting.conditions.TriggeringSpellManaSpentAtLeast(amount)
 
     /**
-     * If the triggering entity entered or was cast from a graveyard.
-     * Used by Twilight Diviner: "if they entered or were cast from a graveyard".
+     * If the triggering entity entered or was cast from a graveyard — the named shorthand for
+     * `TriggeringEntityEnteredOrWasCastFrom(Zone.GRAVEYARD)`, kept because the graveyard is the
+     * zone almost every printed card asks about (like the `AnyEnteredOrWasCastFromGraveyard`
+     * twin). Used by Twilight Diviner: "if they entered or were cast from a graveyard".
      */
     val TriggeringEntityEnteredOrWasCastFromGraveyard: ConditionInterface =
-        com.wingedsheep.sdk.scripting.conditions.TriggeringEntityEnteredOrWasCastFromGraveyard
+        com.wingedsheep.sdk.scripting.conditions.TriggeringEntityEnteredOrWasCastFrom(Zone.GRAVEYARD)
+
+    /**
+     * If the triggering entity entered from [zone] or was cast from [zone] — the zone-general form
+     * of [TriggeringEntityEnteredOrWasCastFromGraveyard]. Fblthp, the Lost (`Zone.LIBRARY`).
+     */
+    fun TriggeringEntityEnteredOrWasCastFrom(zone: Zone): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.TriggeringEntityEnteredOrWasCastFrom(zone)
 
     /**
      * If the triggering entity had a -1/-1 counter on it when it left the battlefield.
@@ -2804,6 +3017,17 @@ object Conditions {
     /** [CollectionSharesCardType] over a pipeline handle. */
     fun CollectionSharesCardType(collection: CollectionSlot): ConditionInterface =
         CollectionSharesCardType(collection.key)
+
+    /**
+     * Condition: "if all cards in the named collection share a card type" — one card type is
+     * common to every card (All Good Things...). False for an empty collection.
+     */
+    fun AllInCollectionShareCardType(collection: String): ConditionInterface =
+        com.wingedsheep.sdk.scripting.conditions.CollectionSharesCardType(collection, all = true)
+
+    /** [AllInCollectionShareCardType] over a pipeline handle. */
+    fun AllInCollectionShareCardType(collection: CollectionSlot): ConditionInterface =
+        AllInCollectionShareCardType(collection.key)
 
     // =========================================================================
     // Composite Conditions

@@ -3,6 +3,8 @@ package com.wingedsheep.mtg.sets.legality
 import com.wingedsheep.sdk.core.DeckFormat
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainAll
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 
 /**
@@ -35,5 +37,28 @@ class LegalityDataTest : FunSpec({
         val formats = LegalityData.forCard("Lightning Bolt")
         if (formats.isEmpty()) return@test  // dataset not yet populated; sync-time concern only
         formats shouldContain DeckFormat.MODERN
+    }
+
+    test("Highlander formats take the Vintage pool, restricted cards included") {
+        // Vintage-legal.
+        LegalityData.forCard("Lightning Bolt") shouldContainAll
+            setOf(DeckFormat.HIGHLANDER, DeckFormat.CANADIAN_HIGHLANDER)
+        // Restricted in Vintage: legal as a single copy, which is all a singleton deck plays.
+        val lotus = LegalityData.forCard("Black Lotus")
+        lotus shouldContainAll setOf(DeckFormat.HIGHLANDER, DeckFormat.CANADIAN_HIGHLANDER)
+        lotus shouldNotContain DeckFormat.VINTAGE
+    }
+
+    test("cards banned in Vintage stay out of both Highlander formats") {
+        // Shahrazad is banned in Vintage (a sub-game card).
+        val shahrazad = LegalityData.forCard("Shahrazad")
+        shahrazad shouldNotContain DeckFormat.HIGHLANDER
+        shahrazad shouldNotContain DeckFormat.CANADIAN_HIGHLANDER
+    }
+
+    test("Standard Brawl reads Scryfall's concatenated key") {
+        // The bundled data spells it STANDARDBRAWL; the enum is STANDARD_BRAWL. A Standard-legal
+        // card is legal in Standard Brawl too.
+        LegalityData.forCard("Llanowar Elves") shouldContain DeckFormat.STANDARD_BRAWL
     }
 })

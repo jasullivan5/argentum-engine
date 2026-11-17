@@ -65,7 +65,7 @@ Distinct implemented cards, day by day since the project began. Regenerated dail
 
 ### Prerequisites
 
-- JDK 21+
+- JDK 25+
 - Node.js 18+
 - Docker (optional, for Redis)
 - [just](https://github.com/casey/just) command runner
@@ -388,7 +388,7 @@ It checks your setup, then asks three questions:
 Cards that need new engine features aren't faked: the agent records them as gaps and builds each
 missing capability properly (with the `add-feature` skill) before the cards that need it.
 
-**You'll need:** JDK 21+, [`just`](https://github.com/casey/just), `git`, `jq`, Python 3, and
+**You'll need:** JDK 25+, [`just`](https://github.com/casey/just), `git`, `jq`, Python 3, and
 Claude Code or Codex. The [GitHub CLI](https://cli.github.com) (`gh`) is optional — it lets the agent
 skip cards someone else's open PR already adds.
 

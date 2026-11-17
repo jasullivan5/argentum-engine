@@ -4,6 +4,7 @@ import com.wingedsheep.engine.core.ActivateAbility
 import com.wingedsheep.engine.core.CardFlippedOntoBattlefieldEvent
 import com.wingedsheep.engine.core.FlipOntoBattlefieldDecision
 import com.wingedsheep.engine.core.FlipThrowResponse
+import com.wingedsheep.engine.mechanics.dexterity.FlipPhysics
 import com.wingedsheep.engine.mechanics.dexterity.FlipTableLayout
 import com.wingedsheep.engine.support.ScenarioTestBase
 import com.wingedsheep.sdk.core.Phase
@@ -28,16 +29,13 @@ import io.kotest.matchers.types.shouldBeInstanceOf
  *  at least one foot. If this artifact turns over completely at least once during the flip, destroy
  *  all nontoken permanents it touches. Then destroy this artifact."
  *
- * The flip is a [FlipOntoBattlefieldDecision]: the player aims at a point on the engine's table and
- * picks a release strength, and the engine rolls where it lands. Landings are random, so each test
+ * The flip is a [FlipOntoBattlefieldDecision]: the player flicks the card from their hand with some
+ * speed, direction and spin, and the engine rolls where it lands. Landings are random, so each test
  * reads the [CardFlippedOntoBattlefieldEvent] for what was touched and checks the board against it.
  */
 class ChaosOrbScenarioTest : ScenarioTestBase() {
 
     private val orbAbilityId = cardRegistry.getCard("Chaos Orb")!!.activatedAbilities.first().id
-
-    /** Middle of the engine's clean release zone. */
-    private val clean = 0.74
 
     private fun TestGame.activateOrb(): FlipOntoBattlefieldDecision {
         val activation = execute(
@@ -52,10 +50,11 @@ class ChaosOrbScenarioTest : ScenarioTestBase() {
         decision: FlipOntoBattlefieldDecision,
         x: Double,
         y: Double,
-        strength: Double = clean,
-        sway: Double = 0.0,
-    ): CardFlippedOntoBattlefieldEvent {
-        val result = submitDecision(FlipThrowResponse(decision.id, x, y, strength, sway))
+        spin: Double = FlipPhysics.IDEAL_SPIN,
+    ): CardFlippedOntoBattlefieldEvent = flick(decision, FlipThrowResponse.toward(decision.id, decision.table, x, y, spin))
+
+    private fun TestGame.flick(decision: FlipOntoBattlefieldDecision, response: FlipThrowResponse): CardFlippedOntoBattlefieldEvent {
+        val result = submitDecision(response)
         withClue("Throwing should succeed: ${result.error}") { result.error shouldBe null }
         return result.events.filterIsInstance<CardFlippedOntoBattlefieldEvent>().single()
     }
@@ -63,9 +62,8 @@ class ChaosOrbScenarioTest : ScenarioTestBase() {
     private fun TestGame.throwAtCard(
         decision: FlipOntoBattlefieldDecision,
         id: EntityId,
-        strength: Double = clean,
-        sway: Double = 0.0,
-    ) = decision.table.cards.single { it.entityId == id }.let { throwAt(decision, it.x, it.y, strength, sway) }
+        spin: Double = FlipPhysics.IDEAL_SPIN,
+    ) = decision.table.cards.single { it.entityId == id }.let { throwAt(decision, it.x, it.y, spin) }
 
     /** Everything the flip counts is destroyed; every other permanent on the table is untouched. */
     private fun TestGame.assertBoardMatches(event: CardFlippedOntoBattlefieldEvent) {
@@ -117,7 +115,7 @@ class ChaosOrbScenarioTest : ScenarioTestBase() {
                 game.assertBoardMatches(event)
             }
 
-            test("let go too early and it falls short — onto your own creature in front of you") {
+            test("flick too soft and it falls short — onto your own creature in front of you") {
                 // The landing scatters about a centimetre from the game RNG and neighbouring cards sit about
                 // a centimetre apart, so an unlucky roll clips the wrong card. Pin the seed: test the aim.
                 val game = baseScenario()
@@ -131,41 +129,17 @@ class ChaosOrbScenarioTest : ScenarioTestBase() {
                 val decision = game.activateOrb()
                 val target = decision.table.cards.single { it.entityId == bears }
                 val own = decision.table.cards.single { it.entityId == giant }
-                // Short by exactly the distance between the two creatures, along the line of the throw.
-                val gap = kotlin.math.hypot(own.x - target.x, own.y - target.y)
-                val early = decision.release.sweetSpot - gap / decision.release.depthPerStrength
-                val event = game.throwAtCard(decision, bears, strength = early)
+                // Flicked along the line to the bears, but only hard enough to carry as far as the giant.
+                val (vx, vy) = FlipPhysics.flickToward(decision.table, target.x, target.y)
+                val toTarget = kotlin.math.hypot(target.x - decision.table.handX, target.y - decision.table.handY)
+                val toOwn = kotlin.math.hypot(own.x - decision.table.handX, own.y - decision.table.handY)
+                val soft = toOwn / toTarget
+                val event = game.flick(decision, FlipThrowResponse(decision.id, vx * soft, vy * soft, FlipPhysics.IDEAL_SPIN))
 
-                event.landing.drift shouldBeLessThan -100.0
+                event.landing.speed shouldBeLessThan kotlin.math.hypot(vx, vy) - 100.0
                 event.affected shouldContain giant
                 event.affected shouldNotContain bears
                 game.isInGraveyard(1, "Hill Giant").shouldBeTrue()
-                game.isOnBattlefield("Grizzly Bears").shouldBeTrue()
-                game.assertBoardMatches(event)
-            }
-
-            test("let go mid-sway and it pulls sideways — onto the creature next to your target") {
-                // The landing scatters about a centimetre from the game RNG and neighbouring cards sit about
-                // a centimetre apart, so an unlucky roll clips the wrong card. Pin the seed: test the aim.
-                val game = baseScenario()
-                    .withRngSeed(1L)
-                    .withCardOnBattlefield(2, "Grizzly Bears")
-                    .withCardOnBattlefield(2, "Hill Giant")
-                    .build()
-                val bears = game.findPermanent("Grizzly Bears")!!
-                val giant = game.findPermanent("Hill Giant")!!
-
-                val decision = game.activateOrb()
-                val target = decision.table.cards.single { it.entityId == bears }
-                val neighbour = decision.table.cards.single { it.entityId == giant }
-                // From the thrower's seat, +x is their right: sway towards the neighbour by exactly the gap.
-                val sway = (neighbour.x - target.x) / decision.release.sidePerSway
-                val event = game.throwAtCard(decision, bears, sway = sway)
-
-                kotlin.math.abs(event.landing.pull) shouldBeGreaterThan 60.0
-                event.affected shouldContain giant
-                event.affected shouldNotContain bears
-                game.isInGraveyard(2, "Hill Giant").shouldBeTrue()
                 game.isOnBattlefield("Grizzly Bears").shouldBeTrue()
                 game.assertBoardMatches(event)
             }
@@ -201,8 +175,7 @@ class ChaosOrbScenarioTest : ScenarioTestBase() {
             }
 
             test("if it doesn't turn over completely, nothing it touches is destroyed") {
-                // A strength-0 release averages under one half-turn, but its spin noise still turns it over
-                // about one roll in forty. Pin the seed: test the limp release, not the dice.
+                // Half a turn per second makes about half a turn in the air — never the full turn it needs.
                 val game = baseScenario()
                     .withRngSeed(1L)
                     .withCardOnBattlefield(2, "Grizzly Bears")
@@ -210,8 +183,7 @@ class ChaosOrbScenarioTest : ScenarioTestBase() {
                 val bears = game.findPermanent("Grizzly Bears")!!
 
                 val decision = game.activateOrb()
-                // A limp release barely leaves the hand spinning.
-                val event = game.throwAtCard(decision, bears, strength = 0.0)
+                val event = game.throwAtCard(decision, bears, spin = 0.5)
 
                 event.landing.turnedOver.shouldBeFalse()
                 event.affected.shouldBeEmpty()

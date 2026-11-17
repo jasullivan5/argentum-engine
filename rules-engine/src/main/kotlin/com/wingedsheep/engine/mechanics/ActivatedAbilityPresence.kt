@@ -27,7 +27,7 @@ import com.wingedsheep.sdk.scripting.KeywordAbility
  *
  * Counted: the object's own abilities (printed, copied, class levels' activated abilities, unlocked
  * Room doors, the activated keyword abilities the engine keeps outside `activatedAbilities` —
- * cycling, crew, saddle — and the intrinsic mana ability of each basic land type, CR 305.6) unless
+ * cycling (printed, or granted to a card in hand), crew, saddle — and the intrinsic mana ability of each basic land type, CR 305.6) unless
  * it is face down or has lost all abilities; plus every ability granted to it by an effect, a
  * static ability or an emblem, counted exactly as the activated-ability enumerator offers them.
  */
@@ -45,6 +45,8 @@ object ActivatedAbilityPresence {
         val onBattlefield = entityId in state.getBattlefield()
         val faceDown = container.has<FaceDownComponent>()
         val removed = onBattlefield && projected.hasLostAllAbilities(entityId)
+        // "Except mana abilities" (Blood Sun) strips everything but the mana abilities.
+        val manaRemoved = onBattlefield && projected.hasLostManaAbilities(entityId)
         fun counted(ability: ActivatedAbility) = !(excludeManaAbilities && ability.isManaAbility)
 
         var total = 0
@@ -53,8 +55,12 @@ object ActivatedAbilityPresence {
         // one). They reach a face-down permanent too, and survive ability removal only when the same
         // effect set the basic type (Blood Moon), as in [com.wingedsheep.engine.mechanics.mana.ManaAbilityPresence].
         val intrinsic = if (onBattlefield) IntrinsicManaAbilities.forEntity(state, projected, entityId) else emptyList()
-        if (!excludeManaAbilities && (!removed || projected.hasBasicLandTypesSetByEffect(entityId))) {
+        if (!excludeManaAbilities && (!manaRemoved || projected.hasBasicLandTypesSetByEffect(entityId))) {
             total += intrinsic.size
+        }
+        if (!faceDown && removed && !manaRemoved && !excludeManaAbilities && intrinsic.isEmpty()) {
+            val level = container.get<ClassLevelComponent>()?.currentLevel
+            total += ownActivatedAbilities(card, registry.getCard(card.cardDefinitionId), level).count { it.isManaAbility }
         }
         if (!faceDown && !removed) {
             val definition = registry.getCard(card.cardDefinitionId)
@@ -76,6 +82,11 @@ object ActivatedAbilityPresence {
                         (!onBattlefield && it is KeywordAbility.Numeric && it.keyword == Keyword.CREW)
                 }
             }
+        }
+        // Cycling granted to a card in its owner's hand (Rhet-Tomb Mystic) — one ability per grant.
+        val owner = card.ownerId
+        if (!onBattlefield && owner != null) {
+            total += CyclingGrants.grants(state, entityId, owner, registry, predicates, projected).size
         }
         // Crew read off projected keywords covers both printed (gone with lost abilities) and granted.
         if (onBattlefield) total += CrewRequirement.count(state, projected, registry, entityId)

@@ -16,7 +16,7 @@ class ManaSpendRestrictionLegendaryTest : FunSpec({
 
     test("legendary-spells-only mana pays for a legendary spell but not a non-legendary one") {
         val cost = ManaCost.parse("{W}")
-        val pool = ManaPool().addRestricted(Color.WHITE, 1, ManaRestriction.LegendarySpellsOnly)
+        val pool = ManaPool().addRestricted(Color.WHITE, 1, ManaRestriction.LegendarySpellsOnly())
 
         val legendarySpell = SpellPaymentContext(isLegendary = true)
         val plainSpell = SpellPaymentContext(isLegendary = false)
@@ -27,7 +27,7 @@ class ManaSpendRestrictionLegendaryTest : FunSpec({
 
     test("legendary-spells-only mana is rejected for ability activations") {
         val cost = ManaCost.parse("{W}")
-        val pool = ManaPool().addRestricted(Color.WHITE, 1, ManaRestriction.LegendarySpellsOnly)
+        val pool = ManaPool().addRestricted(Color.WHITE, 1, ManaRestriction.LegendarySpellsOnly())
 
         // Even if the source is legendary, an ability activation is not casting a legendary spell.
         val abilityActivation = SpellPaymentContext(isAbilityActivation = true, isLegendary = true)

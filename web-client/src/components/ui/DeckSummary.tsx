@@ -11,11 +11,32 @@ export interface DeckValidationIssue {
   cardName: string | null
 }
 
+/** A points-list format's tally (Canadian Highlander): points spent of the cap, per card. */
+export interface DeckPoints {
+  total: number
+  cap: number
+  /** Card name → points it costs in this deck. Only cards that cost points appear. */
+  byCard: Record<string, number>
+}
+
 export interface DeckValidationResult {
   valid: boolean
   totalCards: number
   errors: DeckValidationIssue[]
   warnings: DeckValidationIssue[]
+  /** Present only for a format with a points list. */
+  points?: DeckPoints | null
+}
+
+/** "7 / 10 points", or null when the format has no points list. */
+export function pointsLabel(v: DeckValidationResult | null): string | null {
+  const p = v?.points
+  return p ? `${p.total} / ${p.cap} points` : null
+}
+
+export function pointsClass(v: DeckValidationResult | null): string {
+  const p = v?.points
+  return p && p.total > p.cap ? styles.statusBad! : styles.statusPoints!
 }
 
 /** Minimal card shape `computeDeckStats` needs. Both `cardFilter.CardSummary` and the
@@ -166,6 +187,13 @@ export function DeckSummary({
           {statusLabel(validation, totalCards)}
         </span>
       </div>
+
+      {pointsLabel(validation) && (
+        <div className={styles.summaryRow}>
+          <span>Points</span>
+          <span className={pointsClass(validation)}>{pointsLabel(validation)}</span>
+        </div>
+      )}
 
       {validation && validation.errors.length > 0 && (
         <ul className={styles.issues}>

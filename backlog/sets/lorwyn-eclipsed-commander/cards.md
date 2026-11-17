@@ -2,7 +2,7 @@
 
 **Set Size:** 153 cards
 **Release Date:** January 23, 2026
-**Implemented:** 7 / 153
+**Implemented:** 9 / 153
 | Color      | Total | Done |
 |------------|-------|------|
 | White      | 4     | 0    |
@@ -21,7 +21,7 @@
 - [ ] Abundant Growth
 - [ ] Ancient Ziggurat
 - [ ] Arcane Signet
-- [ ] Archfiend of Ifnir
+- [x] Archfiend of Ifnir
 - [ ] Ashling, the Limitless
 - [ ] Assassin's Trophy
 - [ ] Auntie Ool, Cursewretch
@@ -84,7 +84,7 @@
 - [ ] Hoarder's Greed
 - [ ] Hoofprints of the Stag
 - [ ] Horde of Notions
-- [ ] Ifnir Deadlands
+- [x] Ifnir Deadlands
 - [ ] Ignoble Hierarch
 - [ ] Impulsivity
 - [ ] Incandescent Soulstoke
@@ -160,7 +160,7 @@
 - [ ] Timeless Lotus
 - [ ] Titan of Industry
 - [x] Tree of Perdition
-- [ ] Unclaimed Territory
+- [x] Unclaimed Territory
 - [ ] Vernal Fen
 - [ ] Vernal Sovereign
 - [ ] Village Pillagers

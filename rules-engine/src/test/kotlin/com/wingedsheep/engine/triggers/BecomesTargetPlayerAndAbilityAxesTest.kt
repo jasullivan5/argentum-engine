@@ -22,6 +22,8 @@ import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.model.Deck
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.EventPattern
+import com.wingedsheep.sdk.scripting.GameObjectFilter
+import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
@@ -37,7 +39,8 @@ import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
  *  - **player targets** — `StackResolver.emitBecomesTarget` now emits a [BecomesTargetEvent] when a
  *    *player* is chosen as a target (CR 601.2c: "The chosen objects and/or players each become a
  *    target of that spell"), stamped `targetIsPlayer = true`; the trigger side opts in with
- *    `EventPattern.BecomesTargetEvent.includePlayerTargets`.
+ *    `EventPattern.BecomesTargetEvent.playerTargets`, naming which players count (`Player.Any`,
+ *    `Player.You`).
  *  - **`abilitiesOnly`** — the mirror of the existing `spellsOnly`, reading the same `sourceIsSpell`
  *    axis: "becomes the target of an **ability**" (Loki, God of Mischief) versus "of a **spell**"
  *    (King of the Oathbreakers).
@@ -107,7 +110,7 @@ class BecomesTargetPlayerAndAbilityAxesTest : FunSpec({
         power = 0
         toughness = 1
         triggeredAbility {
-            trigger = Triggers.a().becomesTarget(byYou = true, abilitiesOnly = true, includePlayerTargets = true)
+            trigger = Triggers.a().becomesTarget(byYou = true, abilitiesOnly = true, players = Player.Any)
             oncePerTurn = true
             effect = Effects.DrawCards(1)
         }
@@ -132,7 +135,7 @@ class BecomesTargetPlayerAndAbilityAxesTest : FunSpec({
         power = 0
         toughness = 1
         triggeredAbility {
-            trigger = Triggers.a().becomesTarget(includePlayerTargets = true)
+            trigger = Triggers.a().becomesTarget(players = Player.Any)
             effect = Effects.DrawCards(1)
         }
     }
@@ -161,7 +164,32 @@ class BecomesTargetPlayerAndAbilityAxesTest : FunSpec({
         }
     }
 
+    /**
+     * Valkmira, Protector's Shield's shape: "you or another permanent you control becomes the
+     * target of a spell or ability an opponent controls" — the player half narrowed to `You`, the
+     * object half to other permanents you control.
+     */
+    val youOrYoursObserver = card("You Or Yours Observer") {
+        manaCost = "{0}"
+        typeLine = "Artifact"
+        triggeredAbility {
+            trigger = Triggers.another(GameObjectFilter.Permanent.youControl())
+                .becomesTarget(byOpponent = true, players = Player.You)
+            effect = Effects.DrawCards(1)
+        }
+    }
+
+    val youOnlyObserver = card("You Only Observer") {
+        manaCost = "{0}"
+        typeLine = "Artifact"
+        triggeredAbility {
+            trigger = Triggers.you.becomesTarget(byOpponent = true)
+            effect = Effects.DrawCards(1)
+        }
+    }
+
     val extras = listOf(
+        youOrYoursObserver, youOnlyObserver,
         playerPinger, playerDrain, playerAndCreatureSpell, retargeter,
         lokiLike, abilityObjectObserver, anySourcePlayerObserver, plainObserver, spellObserver,
     )
@@ -395,7 +423,7 @@ class BecomesTargetPlayerAndAbilityAxesTest : FunSpec({
             ) shouldHaveSize 0
         }
 
-        test("includePlayerTargets is required for a targeted player to fire anything") {
+        test("playerTargets is required for a targeted player to fire anything") {
             val driver = createDriver()
             val loki = driver.putCreatureOnBattlefield(driver.player1, "Ability Player Observer")
             val objectOnly = driver.putCreatureOnBattlefield(driver.player1, "Ability Object Observer")
@@ -465,6 +493,103 @@ class BecomesTargetPlayerAndAbilityAxesTest : FunSpec({
             )
             firings(driver, event, loki) shouldHaveSize 1
         }
+
+        context("player half narrowed to you (Valkmira)") {
+
+            test("you targeted by an opponent fires; an opponent targeted does not") {
+                val driver = createDriver()
+                val shield = driver.putPermanentOnBattlefield(driver.player1, "You Or Yours Observer")
+
+                withClue("you, targeted by an opponent's spell") {
+                    firings(
+                        driver,
+                        targeted(driver, driver.player1, driver.player2, sourceIsSpell = true, targetIsPlayer = true),
+                        shield
+                    ) shouldHaveSize 1
+                }
+                withClue("the opponent targeting themselves is not 'you'") {
+                    firings(
+                        driver,
+                        targeted(driver, driver.player2, driver.player2, sourceIsSpell = true, targetIsPlayer = true),
+                        shield
+                    ) shouldHaveSize 0
+                }
+                withClue("you targeting yourself is not an opponent's spell") {
+                    firings(
+                        driver,
+                        targeted(driver, driver.player1, driver.player1, sourceIsSpell = false, targetIsPlayer = true),
+                        shield
+                    ) shouldHaveSize 0
+                }
+            }
+
+            test("the object half still reads its own filter and binding") {
+                val driver = createDriver()
+                val shield = driver.putPermanentOnBattlefield(driver.player1, "You Or Yours Observer")
+                val yourBears = driver.putCreatureOnBattlefield(driver.player1, "Grizzly Bears")
+                val theirBears = driver.putCreatureOnBattlefield(driver.player2, "Grizzly Bears")
+
+                withClue("another permanent you control") {
+                    firings(driver, targeted(driver, yourBears, driver.player2, sourceIsSpell = false, targetIsPlayer = false), shield) shouldHaveSize 1
+                }
+                withClue("a permanent an opponent controls") {
+                    firings(driver, targeted(driver, theirBears, driver.player2, sourceIsSpell = false, targetIsPlayer = false), shield) shouldHaveSize 0
+                }
+                withClue("'another' excludes the source itself") {
+                    firings(driver, targeted(driver, shield, driver.player2, sourceIsSpell = false, targetIsPlayer = false), shield) shouldHaveSize 0
+                }
+            }
+
+            test("a filtered object half no longer forbids a player half") {
+                EventPattern.BecomesTargetEvent(
+                    targetFilter = GameObjectFilter.Permanent.youControl(),
+                    byOpponent = true,
+                    playerTargets = Player.You,
+                ).description shouldBe
+                    "you or a permanent you control becomes the target of a spell or ability an opponent controls"
+            }
+
+            test("the batch template names the objects in the plural") {
+                EventPattern.BecomesTargetEvent(
+                    targetFilter = GameObjectFilter.Permanent.youControl(),
+                    byOpponent = true,
+                    playerTargets = Player.You,
+                    batch = true,
+                ).description shouldBe
+                    "you and/or one or more permanents you control become the target of a spell or ability an opponent controls"
+            }
+        }
+
+        context("player-only subject (Amulet of Safekeeping)") {
+
+            test("only you, targeted by an opponent, fires it — never a permanent") {
+                val driver = createDriver()
+                val amulet = driver.putPermanentOnBattlefield(driver.player1, "You Only Observer")
+                val yourBears = driver.putCreatureOnBattlefield(driver.player1, "Grizzly Bears")
+
+                withClue("you, targeted by an opponent's ability") {
+                    firings(driver, targeted(driver, driver.player1, driver.player2, sourceIsSpell = false, targetIsPlayer = true), amulet) shouldHaveSize 1
+                }
+                withClue("a permanent you control is not 'you'") {
+                    firings(driver, targeted(driver, yourBears, driver.player2, sourceIsSpell = true, targetIsPlayer = false), amulet) shouldHaveSize 0
+                }
+                withClue("nor is the observer itself") {
+                    firings(driver, targeted(driver, amulet, driver.player2, sourceIsSpell = true, targetIsPlayer = false), amulet) shouldHaveSize 0
+                }
+                withClue("an opponent targeted is not you") {
+                    firings(driver, targeted(driver, driver.player2, driver.player2, sourceIsSpell = true, targetIsPlayer = true), amulet) shouldHaveSize 0
+                }
+            }
+
+            test("it reads 'you become', and an object-free pattern without players is rejected") {
+                Triggers.you.becomesTarget(byOpponent = true).event.description shouldBe
+                    "you become the target of a spell or ability an opponent controls"
+                Triggers.anOpponent.becomesTarget(spellsOnly = true).event.description shouldBe
+                    "an opponent becomes the target of a spell"
+                runCatching { EventPattern.BecomesTargetEvent(includeObjectTargets = false) }
+                    .exceptionOrNull().shouldNotBeNull()
+            }
+        }
     }
 
     // =========================================================================
@@ -480,7 +605,7 @@ class BecomesTargetPlayerAndAbilityAxesTest : FunSpec({
 
     test("the pattern describes both new axes") {
         EventPattern.BecomesTargetEvent(
-            abilitiesOnly = true, includePlayerTargets = true, byYou = true
+            abilitiesOnly = true, playerTargets = Player.Any, byYou = true
         ).description shouldBe "a player or permanent becomes the target of an ability you control"
     }
 

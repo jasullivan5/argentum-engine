@@ -2,12 +2,16 @@ package com.wingedsheep.gameserver.controller
 
 import com.wingedsheep.gameserver.auth.AdminAuthService
 import com.wingedsheep.gameserver.stats.AiBucket
+import com.wingedsheep.gameserver.stats.AiVsHumanFilter
+import com.wingedsheep.gameserver.stats.GameFilter
 import com.wingedsheep.gameserver.stats.GeoIpService
+import com.wingedsheep.gameserver.stats.OpponentFilter
 import com.wingedsheep.gameserver.stats.StatsQueryService
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.http.HttpHeaders
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
@@ -37,24 +41,41 @@ class AdminStatsController(
         val games: Long,
     )
 
+    // The game-derived panels take an optional slice: `vs` = all / humans / ai and `period` days
+    // (absent or 0 = all time) — see [GameFilter]. Games no seat's result counts in are
+    // left out; the overview reports how many.
+
     @GetMapping("/overview")
     fun overview(
         @RequestHeader("X-Admin-Password", required = false) password: String?,
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
-    ): ResponseEntity<Any> = adminAuth.guard(password, authorization) { ResponseEntity.ok(statsQuery.overview()) }
+        @RequestParam(required = false) vs: String?,
+        @RequestParam(required = false) period: Int?,
+    ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
+        ResponseEntity.ok(statsQuery.overview(GameFilter.of(vs, period)))
+    }
 
+    /**
+     * Counted games over time for the dashboard chart. `days = 0` means all time; the bucket (day,
+     * week or month) follows the span and comes back with the points.
+     */
     @GetMapping("/games-per-day")
     fun gamesPerDay(
         @RequestHeader("X-Admin-Password", required = false) password: String?,
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
         @RequestParam(defaultValue = "30") days: Int,
+        @RequestParam(required = false) vs: String?,
     ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
-        ResponseEntity.ok(statsQuery.gamesPerDay(days.coerceIn(1, 365)))
+        ResponseEntity.ok(statsQuery.gamesOverTime(days.takeIf { it > 0 }?.coerceAtMost(3650), OpponentFilter.parse(vs)))
     }
 
     /**
      * The AI's record against human players: overall, over time, per build and per game mode.
      * `days = 0` means all time; `bucket` is `day`, `week` or `month`.
+     *
+     * Optional slice: `gameMode` and `format` (as `byMode` reports them), `set` (a set code), and the
+     * humans to leave out — `excludeHuman` (repeatable, a `topHumans[].key`) and/or `excludeTopHumans`
+     * (the N busiest humans in the slice). The response's `options` lists the values to offer.
      */
     @GetMapping("/ai-vs-human")
     fun aiVsHuman(
@@ -62,17 +83,66 @@ class AdminStatsController(
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
         @RequestParam(defaultValue = "90") days: Int,
         @RequestParam(defaultValue = "week") bucket: String,
+        @RequestParam(required = false) gameMode: String?,
+        @RequestParam(required = false) format: String?,
+        @RequestParam(name = "set", required = false) setCode: String?,
+        @RequestParam(required = false) excludeHuman: List<String>?,
+        @RequestParam(defaultValue = "0") excludeTopHumans: Int,
     ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
         val parsedBucket = AiBucket.entries.firstOrNull { it.name.equals(bucket, ignoreCase = true) }
             ?: return@guard ResponseEntity.badRequest().body(mapOf("error" to "bucket must be day, week or month"))
-        ResponseEntity.ok(statsQuery.aiVsHuman(days.takeIf { it > 0 }?.coerceAtMost(3650), parsedBucket))
+        val filter = AiVsHumanFilter(
+            gameMode = gameMode?.takeIf { it.isNotBlank() },
+            format = format?.takeIf { it.isNotBlank() },
+            setCode = setCode?.takeIf { it.isNotBlank() },
+            excludeHumans = excludeHuman.orEmpty().filter { it.isNotBlank() }.toSet(),
+            excludeTopHumans = excludeTopHumans.coerceIn(0, 20),
+        )
+        ResponseEntity.ok(statsQuery.aiVsHuman(days.takeIf { it > 0 }?.coerceAtMost(3650), parsedBucket, filter))
+    }
+
+    /**
+     * One human's games against the AI, newest first — the drawer behind a row of the report's humans
+     * table. `key` is a `topHumans[].key`; `days`, `gameMode`, `format` and `set` take the report's
+     * values so the list holds the same games the row counts.
+     */
+    @GetMapping("/ai-vs-human/player-games")
+    fun aiVsHumanPlayerGames(
+        @RequestHeader("X-Admin-Password", required = false) password: String?,
+        @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
+        @RequestParam key: String,
+        @RequestParam(defaultValue = "90") days: Int,
+        @RequestParam(required = false) gameMode: String?,
+        @RequestParam(required = false) format: String?,
+        @RequestParam(name = "set", required = false) setCode: String?,
+    ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
+        val filter = AiVsHumanFilter(
+            gameMode = gameMode?.takeIf { it.isNotBlank() },
+            format = format?.takeIf { it.isNotBlank() },
+            setCode = setCode?.takeIf { it.isNotBlank() },
+        )
+        ResponseEntity.ok(statsQuery.aiVsHumanPlayerGames(key, days.takeIf { it > 0 }?.coerceAtMost(3650), filter))
+    }
+
+    /** Every seat's recorded deck for one match (a `recent[].matchId` of the AI-vs-human report). */
+    @GetMapping("/matches/{matchId}/decks")
+    fun matchDecks(
+        @RequestHeader("X-Admin-Password", required = false) password: String?,
+        @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
+        @PathVariable matchId: Long,
+    ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
+        statsQuery.decksForMatch(matchId)?.let { ResponseEntity.ok<Any>(it) } ?: ResponseEntity.notFound().build()
     }
 
     @GetMapping("/modes")
     fun modes(
         @RequestHeader("X-Admin-Password", required = false) password: String?,
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
-    ): ResponseEntity<Any> = adminAuth.guard(password, authorization) { ResponseEntity.ok(statsQuery.modeDistribution()) }
+        @RequestParam(required = false) vs: String?,
+        @RequestParam(required = false) period: Int?,
+    ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
+        ResponseEntity.ok(statsQuery.modeDistribution(GameFilter.of(vs, period)))
+    }
 
     @GetMapping("/tournament-sets")
     fun tournamentSets(
@@ -86,15 +156,21 @@ class AdminStatsController(
     fun colors(
         @RequestHeader("X-Admin-Password", required = false) password: String?,
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
-    ): ResponseEntity<Any> = adminAuth.guard(password, authorization) { ResponseEntity.ok(statsQuery.colorDistribution()) }
+        @RequestParam(required = false) vs: String?,
+        @RequestParam(required = false) period: Int?,
+    ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
+        ResponseEntity.ok(statsQuery.colorDistribution(GameFilter.of(vs, period)))
+    }
 
     @GetMapping("/cards")
     fun cards(
         @RequestHeader("X-Admin-Password", required = false) password: String?,
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
         @RequestParam(defaultValue = "50") limit: Int,
+        @RequestParam(required = false) vs: String?,
+        @RequestParam(required = false) period: Int?,
     ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
-        ResponseEntity.ok(statsQuery.topCards(limit.coerceIn(1, 500)))
+        ResponseEntity.ok(statsQuery.topCards(limit.coerceIn(1, 500), GameFilter.of(vs, period)))
     }
 
     @GetMapping("/cards/win-rates")
@@ -103,8 +179,10 @@ class AdminStatsController(
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
         @RequestParam(defaultValue = "10") minDecks: Int,
         @RequestParam(defaultValue = "50") limit: Int,
+        @RequestParam(required = false) vs: String?,
+        @RequestParam(required = false) period: Int?,
     ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
-        ResponseEntity.ok(statsQuery.cardWinRates(minDecks.coerceAtLeast(1), limit.coerceIn(1, 500)))
+        ResponseEntity.ok(statsQuery.cardWinRates(minDecks.coerceAtLeast(1), limit.coerceIn(1, 500), GameFilter.of(vs, period)))
     }
 
     @GetMapping("/tournaments")

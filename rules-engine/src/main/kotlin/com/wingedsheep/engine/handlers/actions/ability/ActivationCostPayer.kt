@@ -14,7 +14,6 @@ import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.core.ManaSpentEvent
 import com.wingedsheep.engine.core.ZoneChangeEvent
 import com.wingedsheep.sdk.core.Zone
-import com.wingedsheep.engine.core.LoyaltyChangedEvent
 import com.wingedsheep.engine.core.PaymentStrategy
 import com.wingedsheep.engine.handlers.CostHandler
 import com.wingedsheep.engine.handlers.CostPaymentChoices
@@ -22,6 +21,7 @@ import com.wingedsheep.engine.handlers.costs.GraveyardTotalExileResolver
 import com.wingedsheep.engine.handlers.effects.bend.BendEvents
 import com.wingedsheep.engine.mechanics.mana.AlternativePaymentHandler
 import com.wingedsheep.engine.mechanics.mana.ManaPool
+import com.wingedsheep.engine.mechanics.mana.paysGeneric
 import com.wingedsheep.engine.mechanics.mana.ManaSolver
 import com.wingedsheep.engine.mechanics.mana.SpellPaymentContext
 import com.wingedsheep.engine.state.GameState
@@ -235,7 +235,8 @@ internal class ActivationCostPayer(
             xValue = xValue,
             distributedCounterRemovals = action.costPayment?.distributedCounterRemovals ?: emptyList(),
             blightChoices = action.costPayment?.blightTargets ?: emptyList(),
-            granterId = activation.staticGranterId
+            granterId = activation.staticGranterId,
+            millCount = action.costPayment?.millCount
         )
 
         val snapshots = captureCostSnapshots(currentState, action, effectiveCost, firstTapSlice)
@@ -312,8 +313,10 @@ internal class ActivationCostPayer(
 
         // Emit events for cost types. Tap/TapAttachedCreature/TapXPermanents taps are emitted by
         // the tap atom inside costHandler.payAbilityCost (folded in via costResult.events above), so
-        // only the loyalty change — which payAbilityCost mutates without an event — is emitted here.
-        val abilityCost = ability.cost
+        // only the loyalty counters — which payAbilityCost moves without an event — are reported here.
+        // The totalled cost: a surcharged [−3] (Carth the Lion) removed two counters, and a [−X]
+        // with a surcharge was paid as a fixed [−X+N].
+        val abilityCost = effectiveCost.extractLoyaltyCost()
         if (abilityCost is AbilityCost.Loyalty && abilityCost.change > 0) {
             // A [+N] cost *puts* N loyalty counters on the planeswalker (CR 606.4), and the
             // activating player is the one putting them (CR 122.6). Emitting the ordinary
@@ -336,10 +339,22 @@ internal class ActivationCostPayer(
                     )
                 )
             }
-        } else if (abilityCost is AbilityCost.Loyalty) {
-            events.add(LoyaltyChangedEvent(action.sourceId, activation.sourceName, abilityCost.change))
-        } else if (abilityCost == AbilityCost.LoyaltyX) {
-            events.add(LoyaltyChangedEvent(action.sourceId, activation.sourceName, -xValue))
+        } else if (abilityCost is AbilityCost.Loyalty || abilityCost == AbilityCost.LoyaltyX) {
+            // A [−N] / [−X] cost *removes* loyalty counters (CR 606.4), paid by the activating
+            // player — the ordinary counters-removed event, so "whenever one or more loyalty
+            // counters are removed from ~" (Chandra, Fire Artisan) sees it. A [0] cost removes none.
+            val remaining = currentState.getEntity(action.sourceId)
+                ?.get<com.wingedsheep.engine.state.components.battlefield.CountersComponent>()
+                ?.getCount(CounterType.LOYALTY) ?: 0
+            val removed = loyaltyBeforeCost - remaining
+            if (removed > 0) {
+                events.add(
+                    com.wingedsheep.engine.core.CountersRemovedEvent(
+                        action.sourceId, CounterType.LOYALTY, removed, activation.sourceName,
+                        remainingCount = remaining, removedBy = action.playerId
+                    )
+                )
+            }
         }
 
         return ActivationPaymentOutcome.Paid(
@@ -516,6 +531,7 @@ internal class ActivationCostPayer(
                     action.playerId, sourceId = action.sourceId,
                 )
                 .let { if (sacrificeCost.excludeSelf) it.filter { id -> id != action.sourceId } else it }
+                .let { com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality.sacrificeableForCost(state, it) }
                 .takeIf { it.size <= sacrificeCost.count && !sacrificeCost.distinctNames }
                 .orEmpty()
         } else {
@@ -645,7 +661,8 @@ internal class ActivationCostPayer(
                 // A color-restricted X can't be paid with off-color or colorless restricted mana.
                 if (entry.color != null && entry.color !in xColorsAllowed) continue
                 if (entry.color == null && xManaRestriction.isNotEmpty()) continue
-                manaPool.spendRestricted(entry.color, paymentContext)?.let {
+                if (!entry.restriction.paysGeneric) continue
+                manaPool.spendRestricted(entry.color, paymentContext, forGeneric = true)?.let {
                     manaPool = it
                     xRemainingToPay--
                 }

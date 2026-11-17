@@ -179,6 +179,27 @@ class RolloutCandidateEvaluatorTest : ScenarioTestBase() {
             }
         }
 
+        test("a lone lost playout does not outweigh the static leaf once the leaf counts as a playout") {
+            // Two candidates, one playout each. The static leaf prefers the second by 5; its one
+            // playout is a loss, the first's a 0.4. Raw, `logit(0.0)` clamps to −55 and a quarter of
+            // that buries the 5. With the static leaf counted as one playout, the loss averages
+            // with it instead, and the static preference survives.
+            val states = candidateStates(2)
+            val playerId = states.first().turnOrder.first()
+            val (held, cast) = states
+            val playouts = Playouts { start, _, _, _, _ -> if (start === cast) 0.0 else 0.4 }
+            val static = BoardEvaluator { state, _, _ -> if (state === cast) 5.0 else 0.0 }
+
+            val raw = RolloutCandidateEvaluator(playouts, static)
+                .scoreAll(held, states, playerId, budget(BudgetTier.NORMAL, 2))
+            raw[0] shouldBeGreaterThan raw[1]
+
+            val withPrior = RolloutCandidateEvaluator(
+                playouts, static, RolloutSettings.DEFAULT.copy(staticPriorPlayouts = 1.0),
+            ).scoreAll(held, states, playerId, budget(BudgetTier.NORMAL, 2))
+            withPrior[1] shouldBeGreaterThan withPrior[0]
+        }
+
         test("a critical decision looks further ahead than a normal one") {
             val states = candidateStates(2)
             val playerId = states.first().turnOrder.first()

@@ -3435,6 +3435,14 @@
                     }
                 },
                 {
+                    "type": "GrantKeyword",
+                    "keyword": "VIGILANCE",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
                     "type": "DealDamage",
                     "amount": {
                         "type": "EntityProperty",
@@ -3629,7 +3637,8 @@
                                                 }
                                             ]
                                         }
-                                    ]
+                                    ],
+                                    "controllerPredicate": "ControlledByYou"
                                 }
                             },
                             "id": "t0"
@@ -8683,7 +8692,11 @@
                                 "type": "GrantMayPlayFromExile",
                                 "from": "selected1",
                                 "expiry": "Permanent",
-                                "landEntersTapped": true
+                                "entersTapped": {
+                                    "cardPredicates": [
+                                        "IsLand"
+                                    ]
+                                }
                             },
                             {
                                 "type": "GrantPlayWithCostIncrease",
@@ -8782,7 +8795,7 @@
     "script": {
         "replacementEffects": [
             {
-                "type": "DoubleCounterPlacement",
+                "type": "ScaleCounterPlacement",
                 "appliesTo": {
                     "type": "CounterPlacementEvent",
                     "recipient": {
@@ -11239,71 +11252,20 @@
                     "to": "Battlefield"
                 },
                 "effect": {
-                    "type": "Gated",
-                    "gate": {
-                        "type": "Gate.WhenCondition",
-                        "condition": {
-                            "type": "SourceInZone",
-                            "zones": [
-                                "Battlefield"
-                            ]
+                    "type": "MoveUntilSourceLeaves",
+                    "target": {
+                        "type": "GroupRef",
+                        "filter": {
+                            "baseFilter": "artifact|creature mv<=2"
                         }
                     },
-                    "then": {
-                        "type": "Composite",
-                        "effects": [
-                            {
-                                "type": "GatherCards",
-                                "source": {
-                                    "type": "BattlefieldMatching",
-                                    "filter": "artifact|creature mv<=2",
-                                    "excludeSelf": true
-                                },
-                                "storeAs": "linked_exile"
-                            },
-                            {
-                                "type": "MoveCollection",
-                                "from": "linked_exile",
-                                "destination": {
-                                    "type": "ToZone",
-                                    "zone": "Exile"
-                                },
-                                "linkToSource": true
-                            }
-                        ]
-                    }
-                }
-            },
-            {
-                "id": "Pinnacle Starcage:2",
-                "trigger": {
-                    "type": "ZoneChangeEvent",
-                    "from": "Battlefield"
-                },
-                "effect": {
-                    "type": "Composite",
-                    "effects": [
-                        {
-                            "type": "GatherCards",
-                            "source": "FromLinkedExile",
-                            "storeAs": "linked_return"
-                        },
-                        {
-                            "type": "MoveCollection",
-                            "from": "linked_return",
-                            "destination": {
-                                "type": "ToZone",
-                                "zone": "Battlefield"
-                            },
-                            "underOwnersControl": true
-                        }
-                    ]
+                    "destination": "Exile"
                 }
             }
         ],
         "activatedAbilities": [
             {
-                "id": "Pinnacle Starcage:3",
+                "id": "Pinnacle Starcage:2",
                 "cost": {
                     "type": "CostAtomWrapper",
                     "atom": {
@@ -12974,9 +12936,12 @@
                     "zone": "Graveyard"
                 },
                 "id": "t0",
-                "totalManaValueAtMost": {
-                    "type": "Fixed",
-                    "amount": 3
+                "totalAtMost": {
+                    "property": "MANA_VALUE",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 3
+                    }
                 }
             }
         ]
@@ -15208,9 +15173,13 @@
                 "interveningIf": {
                     "type": "Compare",
                     "left": {
-                        "type": "AggregateBattlefield",
-                        "player": "EachOpponent",
-                        "filter": "land"
+                        "type": "GreatestAmongPlayers",
+                        "players": "EachOpponent",
+                        "inner": {
+                            "type": "AggregateBattlefield",
+                            "player": "You",
+                            "filter": "land"
+                        }
                     },
                     "operator": "GT",
                     "right": {

@@ -24,6 +24,7 @@ import type {
   GameRules,
   PlayerStandingInfo,
   MatchResultInfo,
+  BetweenGamesMessage,
   ActiveMatchInfo,
   FfaStandingInfo,
   LobbyGameMode,
@@ -193,8 +194,8 @@ export interface CombatState {
   /**
    * The seat this declaration is being made for, from the legal action's
    * `playerId`. Matters in multiplayer: a hotseat connection declares for the
-   * acting seat, and a defender's blocks are scoped to the attackers attacking
-   * *them* (CR 509.1b). Null when unknown (legacy 2-player fallbacks apply).
+   * acting seat. The server provides the defending player's or shared team's
+   * eligible blockers and attackers. Null when unknown.
    */
   actingSeat: EntityId | null
   /**
@@ -217,10 +218,17 @@ export interface CombatState {
   attackTargetsByAttacker: Readonly<Record<EntityId, readonly EntityId[]>>
   /** Blocker assignments: blocker ID -> attacker IDs (supports blocking multiple attackers) */
   blockerAssignments: Record<EntityId, EntityId[]>
+  /** Previously submitted team choices: shown as arrows but never included in this seat's input. */
+  proposedBlockerAssignments?: Readonly<Record<EntityId, readonly EntityId[]>>
   /** Valid creatures that can participate (attackers or blockers depending on mode) */
   validCreatures: readonly EntityId[]
   /** Creatures that must attack this combat (from MustAttack, Taunt, etc.) */
   mandatoryAttackers: readonly EntityId[]
+  /**
+   * Valid attackers that can only attack alone (Master of Cruelties) — the server's list. Picking
+   * one clears the rest of the selection; picking another creature drops it.
+   */
+  loneAttackers?: readonly EntityId[]
   /** For blockers mode: creatures that are attacking */
   attackingCreatures: readonly EntityId[]
   /** For blockers mode: attackers that must be blocked by all creatures able to block them */
@@ -281,9 +289,16 @@ export interface DecisionSelectionState {
   /** Transient warning shown when the user tries an illegal toggle (e.g. clicking past max
    * on a multi-select step). Cleared on the next successful toggle. */
   warning?: string | null
-  /** "... with total mana value N or less": the picks' summed mana value may not exceed `cap`;
-   * `values` holds each option's mana value. */
-  manaValueCap?: { readonly cap: number; readonly values: Readonly<Record<EntityId, number>> } | null
+  /** "... with total mana value / power N or less": for each cap, the picks' summed value may not
+   * exceed `cap`; `values` holds each option's value and `label` names it ("mana value", "power"). */
+  totalCaps?: readonly SelectionTotalCap[] | null
+}
+
+/** One aggregate cap on a decision selection — see [DecisionSelectionState.totalCaps]. */
+export interface SelectionTotalCap {
+  readonly label: string
+  readonly cap: number
+  readonly values: Readonly<Record<EntityId, number>>
 }
 
 /**
@@ -613,6 +628,11 @@ export interface DeckBuildingState {
    * usual 4-of cap), so adding a card must not remove it from the pool view.
    */
   poolPlay: boolean
+  /**
+   * Per-card copy cap (basic lands exempt), or null when the pool's own copy count is the only
+   * limit. Sent by the server, which enforces the same cap on submit.
+   */
+  maxCopiesPerCard: number | null
 }
 
 /**
@@ -723,6 +743,32 @@ export interface TournamentState {
    * that *our* match ended, so it must never be read as "the round is over".
    */
   currentRoundComplete: boolean
+  /**
+   * Set while our best-of-three sits between two of its games — the sideboarding step. The server's
+   * latest snapshot, replaced whole; null (or absent) the rest of the time.
+   */
+  betweenGames?: BetweenGamesMessage | null
+  /** The game being played in our current match, when the match is longer than one game. */
+  currentGame?: CurrentMatchGame | null
+  /**
+   * Our last decided best-of-three, for the game-over card ("You won the match 2–1"). Set when the
+   * match completes and cleared when the next one starts, so it never describes an older match.
+   */
+  lastMatchScore?: LastMatchScore | null
+}
+
+export interface LastMatchScore {
+  readonly result: 'WIN' | 'LOSS' | 'DRAW'
+  readonly yourGameWins: number
+  readonly opponentGameWins: number
+}
+
+/** Where a best-of-N match stands while one of its games is played. */
+export interface CurrentMatchGame {
+  readonly gameNumber: number
+  readonly bestOf: number
+  readonly yourGameWins: number
+  readonly opponentGameWins: number
 }
 
 /**
@@ -796,6 +842,8 @@ export interface MatchIntro {
   playerAvatar?: string | null
   opponentAvatars?: (string | null)[]
   round?: number
+  /** Within a best-of-three: "Game 1 of 3", or "Game 2 · 1–0" with the score going in. */
+  matchGame?: string
   playerRecord?: string
   opponentRecord?: string
 }
@@ -877,7 +925,7 @@ export interface FlipShow {
   /** True on the thrower's own client. */
   isYours: boolean
   /** The thrower's intent, known only on their client before the result arrives. */
-  aim: { x: number; y: number; strength: number } | null
+  aim: { x: number; y: number } | null
   result: {
     landing: FlipLanding
     turnedOver: boolean
@@ -1062,6 +1110,17 @@ export type GameStore = {
   spectatorCount: number
   /** Names of currently-active spectators (for hover display on the badge). */
   spectatorNames: readonly string[]
+  /** The last forced question this client answered for the player, shown as a brief notice. */
+  autoAnswerNotice: import('./handlers/autoAnswer').AutoAnswerNotice | null
+  dismissAutoAnswerNotice: () => void
+  /**
+   * Automatic ordering just put several of the player's triggers on the stack in an order they
+   * could have chosen — a tip shown once, the first time it happens.
+   */
+  triggerOrderNotice: { key: number; count: number } | null
+  dismissTriggerOrderNotice: () => void
+  /** A forced question is waiting to be answered for the player (see `autoAnswer.ts`). */
+  autoAnswerPending: boolean
   createGame: (deckList: Record<string, number>, setCode?: string) => void
   createAiGame: (deckList: Record<string, number>, setCode?: string) => void
   joinGame: (sessionId: string, deckList: Record<string, number>) => void
@@ -1078,7 +1137,7 @@ export type GameStore = {
   submitOptionDecision: (decisionId: string, optionIndex: number) => void
   submitReplacementDecision: (decisionId: string, fromIndex: number, toIndex: number) => void
   submitBudgetModalDecision: (decisionId: string, selectedModeIndices: readonly number[]) => void
-  submitFlipThrow: (decisionId: string, aimX: number, aimY: number, strength: number, sway: number) => void
+  submitFlipThrow: (decisionId: string, velocityX: number, velocityY: number, spin: number) => void
   submitDistributeDecision: (decisionId: string, distribution: Record<EntityId, number>) => void
   submitDamageAssignmentDecision: (decisionId: string, assignments: Record<EntityId, number>) => void
   submitCombatResolutionDecision: (decisionId: string, edges: ReadonlyArray<{ edgeId: string; amount: number }>) => void
@@ -1133,6 +1192,10 @@ export type GameStore = {
   /** Disconnected tournament players: playerId -> info */
   disconnectedPlayers: Record<string, { playerName: string; secondsRemaining: number; disconnectedAt: number }>
   readyForNextRound: () => void
+  /** Between games of a best-of-three: play `deck` for the rest of the match and ready up. */
+  submitMatchDeck: (deck: Readonly<Record<string, number>>, playFirst?: boolean) => void
+  /** Between games: take back a ready to keep sideboarding. */
+  editMatchDeck: () => void
   addExtraRound: () => void
   spectateGame: (gameSessionId: string) => void
   stopSpectating: () => void
@@ -1167,6 +1230,8 @@ export type GameStore = {
     secondCommander?: string | null,
     /** The deck's companion (CR 702.139), a sideboard card; null for none. */
     companion?: string | null,
+    /** The format the deck was built for, or null; see `SubmitQuickGameLobbyDeckMessage.deckFormat`. */
+    deckFormat?: string | null,
   ) => void
   setQuickGameLobbyReady: (ready: boolean) => void
   setQuickGameLobbySetCode: (setCodes: readonly string[]) => void
@@ -1420,6 +1485,8 @@ export type GameStore = {
   startDecisionSelection: (state: DecisionSelectionState) => void
   toggleDecisionSelection: (cardId: EntityId) => void
   decrementDecisionSelection: (cardId: EntityId) => void
+  /** Replace the whole pick at once (quick-select "All" / "Recommended" / "Clear"). Ids outside the pool are dropped. */
+  setDecisionSelection: (cardIds: readonly EntityId[]) => void
   cancelDecisionSelection: (decisionId: string) => void
   confirmDecisionSelection: (decisionId: string) => void
   startDamageDistribution: (state: DamageDistributionState) => void

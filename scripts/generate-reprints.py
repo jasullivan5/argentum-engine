@@ -13,7 +13,7 @@ Metadata is read entirely from the local Scryfall caches written by
 check-card-printing.py / card-status (no network):
   - per-card printings cache  ~/.cache/scryfall/printings/<slug>.json
         -> oracleId, scryfallId, collectorNumber, releaseDate, rarity, setCode
-  - per-set cache             ~/.cache/scryfall/<set>.json
+  - per-set cache             ~/.cache/scryfall/set-<set>.json
         -> artist, imageUri (matched by card name)
 
 Cards with no fresh per-card cache entry are skipped (run missing-reprints.py
@@ -57,6 +57,8 @@ import sys
 import time
 from collections import defaultdict
 from pathlib import Path
+
+from scryfall_cache import set_cache_path
 
 from set_dirs import (
     dir_for_codes,
@@ -166,7 +168,7 @@ _set_cache: dict[str, dict] = {}
 
 def set_cache_entry(set_code: str, name: str) -> dict | None:
     if set_code not in _set_cache:
-        path = SET_CACHE / f"{set_code}.json"
+        path = set_cache_path(set_code, SET_CACHE)
         if path.is_file():
             try:
                 _set_cache[set_code] = json.loads(path.read_text(encoding="utf-8")).get("cards", {})

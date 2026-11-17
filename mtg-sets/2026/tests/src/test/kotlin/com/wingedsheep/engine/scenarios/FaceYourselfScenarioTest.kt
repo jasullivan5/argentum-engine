@@ -106,5 +106,20 @@ class FaceYourselfScenarioTest : ScenarioTestBase() {
             game.tokensNamed("Savannah Lions").size shouldBe 1
             game.tokensNamed("Grizzly Bears").size shouldBe 0
         }
+
+        test("the tokens enter together, so a copied Greenhouse Propagator sees the other copies enter") {
+            val game = builder()
+                .withCardOnBattlefield(1, "Grizzly Bears")
+                .withCardOnBattlefield(1, "Greenhouse Propagator")
+                .build()
+
+            game.castSpellTargetingPlayer(1, "Face Yourself", 1).error shouldBe null
+            game.resolveStack()
+
+            game.tokensNamed("Greenhouse Propagator").size shouldBe 1
+            withClue("original Propagator: 3 other tokens; token Propagator: the Lions and Bears tokens (CR 603.6a)") {
+                game.getLifeTotal(1) shouldBe 25
+            }
+        }
     }
 }

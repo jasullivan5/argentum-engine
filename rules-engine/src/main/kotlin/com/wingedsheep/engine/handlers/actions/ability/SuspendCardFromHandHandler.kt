@@ -11,10 +11,8 @@ import com.wingedsheep.engine.core.SuspendCardFromHand
 import com.wingedsheep.engine.core.TurnManager
 import com.wingedsheep.engine.core.ZoneChangeEvent
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.effects.library.markSuspended
 import com.wingedsheep.engine.handlers.actions.ActionHandler
-import com.wingedsheep.engine.mechanics.layers.Layer
-import com.wingedsheep.engine.mechanics.layers.SerializableModification
-import com.wingedsheep.engine.mechanics.layers.addFloatingEffect
 import com.wingedsheep.engine.mechanics.mana.ManaAbilitySideEffectExecutor
 import com.wingedsheep.engine.mechanics.mana.ManaPool
 import com.wingedsheep.engine.mechanics.mana.ManaSolver
@@ -31,7 +29,6 @@ import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
-import com.wingedsheep.sdk.scripting.Duration
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import kotlin.reflect.KClass
 
@@ -53,8 +50,8 @@ import kotlin.reflect.KClass
  * effect exactly like [com.wingedsheep.engine.handlers.effects.library.GrantSuspendExecutor]
  * (the runtime-grant path used by cards like Taigam, Master Opportunist) — so a printed and a
  * granted suspend share the same exile-side lifecycle from here on: the engine's synthesized
- * [com.wingedsheep.sdk.scripting.Suspend.countdownAbility] removes a counter each upkeep and,
- * when the last is removed, plays the card for free.
+ * [com.wingedsheep.sdk.scripting.Suspend.exileAbilities] remove a counter each upkeep and,
+ * when the last is removed (by whatever), let its owner play the card for free.
  */
 class SuspendCardFromHandHandler(
     private val cardRegistry: CardRegistry,
@@ -290,16 +287,11 @@ class SuspendCardFromHandHandler(
             )
         )
 
-        // Mark it suspended and pre-arm haste — identical to GrantSuspendExecutor, so the
-        // engine's synthesized countdown-and-cast trigger (Suspend.countdownAbility) takes
-        // over from here exactly as it does for a runtime-granted suspend.
-        currentState = currentState.updateEntity(action.cardId) { c -> c.with(SuspendedComponent) }
-        currentState = currentState.addFloatingEffect(
-            layer = Layer.ABILITY,
-            modification = SerializableModification.GrantKeyword(Keyword.HASTE.name),
-            affectedEntities = setOf(action.cardId),
-            duration = Duration.WhileControlledByController,
-            context = EffectContext(sourceId = action.cardId, controllerId = action.playerId),
+        // Mark it suspended and pre-arm haste — the same tail GrantSuspendExecutor uses, so the
+        // engine's synthesized countdown and cast triggers (Suspend.exileAbilities) take over
+        // from here exactly as it does for a runtime-granted suspend.
+        currentState = currentState.markSuspended(
+            action.cardId, EffectContext(sourceId = action.cardId, controllerId = action.playerId)
         )
 
         currentState = currentState.tick()

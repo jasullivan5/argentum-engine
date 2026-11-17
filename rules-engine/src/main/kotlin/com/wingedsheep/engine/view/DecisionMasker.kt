@@ -60,8 +60,8 @@ class DecisionMasker(private val visibility: Visibility) {
                 decision.copy(
                     attackers = decision.attackers.map { if (hidden(it.id)) it.copy(name = label(it.id)) else it },
                     blockers = decision.blockers.map { if (hidden(it.id)) it.copy(name = label(it.id)) else it },
-                    prompt = if (singleHidden) decision.prompt.replace(single!!.name, label(single.id)) else decision.prompt,
-                    context = if (singleHidden && context.sourceName == single!!.name) {
+                    prompt = if (singleHidden) decision.prompt.replace(single.name, label(single.id)) else decision.prompt,
+                    context = if (singleHidden && context.sourceName == single.name) {
                         context.copy(sourceName = label(single.id))
                     } else {
                         context

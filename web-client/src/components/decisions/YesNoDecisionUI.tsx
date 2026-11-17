@@ -1,8 +1,12 @@
+import { useState } from 'react'
 import { useGameStore } from '@/store/gameStore.ts'
 import type { YesNoDecision, ClientGameState } from '@/types'
 import { AbilityText } from '../ui/ManaSymbols'
 import { DecisionContextCards, hasDecisionContextCards, resolveDecisionCards } from './DecisionContextCards'
 import styles from './DecisionUI.module.css'
+
+/** Tooltip on a "yes" the server marked impossible. */
+const NOT_POSSIBLE = 'Not possible right now'
 
 /**
  * Yes/No decision - make a binary choice.
@@ -12,6 +16,11 @@ import styles from './DecisionUI.module.css'
  * creatures in turn) — the subject this instance is about.
  *
  * Supports an optional hint (e.g., keyword reminder text) and a View Battlefield button.
+ *
+ * A pure "you may" of a card ability (`canRememberAnswer`) also offers "remember my answer": the
+ * answer is submitted as usual and set as an Always Yes / Always No yield on the ability, so every
+ * later copy resolves without asking. Revocable from the stack's yield menu or the Active yields
+ * panel.
  */
 export function YesNoDecisionUI({
   decision,
@@ -23,13 +32,27 @@ export function YesNoDecisionUI({
   onMinimize?: () => void
 }) {
   const submitYesNoDecision = useGameStore((s) => s.submitYesNoDecision)
+  // The server asks even when "yes" is impossible, so the question doesn't reveal hidden cards;
+  // then "no" is the only answer and "yes" is shown disabled.
+  const yesAvailable = decision.yesAvailable !== false
+  const setAbilityYield = useGameStore((s) => s.setAbilityYield)
+  const identity = decision.canRememberAnswer ? decision.context.abilityIdentity : null
+  const [remember, setRemember] = useState(false)
+
+  const answer = (choice: boolean) => {
+    // The yield goes first on the same socket, so it is in force before the answer is processed.
+    if (remember && identity) {
+      setAbilityYield(identity.cardDefinitionId, identity.abilityId, choice ? 'ALWAYS_ANSWER_YES' : 'ALWAYS_ANSWER_NO')
+    }
+    submitYesNoDecision(decision.id, choice)
+  }
 
   const handleYes = () => {
-    submitYesNoDecision(decision.id, true)
+    if (yesAvailable) answer(true)
   }
 
   const handleNo = () => {
-    submitYesNoDecision(decision.id, false)
+    answer(false)
   }
 
   const cards = resolveDecisionCards(decision.context, gameState)
@@ -61,7 +84,7 @@ export function YesNoDecisionUI({
         <>
           {/* Two outcomes of equal standing (endure: counters or a Spirit) — neither is "decline". */}
           <div className={styles.peerOptions}>
-            <PeerOption label={decision.yesText} detail={decision.yesDetail} onClick={handleYes} />
+            <PeerOption label={decision.yesText} detail={decision.yesDetail} onClick={handleYes} disabled={!yesAvailable} />
             <span className={styles.peerOptionsOr} aria-hidden="true">or</span>
             <PeerOption label={decision.noText} detail={decision.noDetail} onClick={handleNo} />
           </div>
@@ -81,7 +104,7 @@ export function YesNoDecisionUI({
               View Battlefield
             </button>
           )}
-          <button onClick={handleYes} className={styles.yesButton}>
+          <button onClick={handleYes} className={styles.yesButton} disabled={!yesAvailable} title={yesAvailable ? undefined : NOT_POSSIBLE}>
             <AbilityText text={decision.yesText} size={16} />
           </button>
           <button onClick={handleNo} className={styles.noButton}>
@@ -89,13 +112,25 @@ export function YesNoDecisionUI({
           </button>
         </div>
       )}
+
+      {identity && (
+        <label className={`${styles.rememberAnswer} ${remember ? styles.rememberAnswerOn : ''}`}>
+          <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+          <span>
+            Remember my answer — don’t ask again{decision.context.sourceName ? ` for ${decision.context.sourceName}` : ''}
+            <span className={styles.rememberAnswerHint}>
+              Every copy of this ability gets the same answer for the rest of the game. Undo it from Active yields.
+            </span>
+          </span>
+        </label>
+      )}
     </>
   )
 }
 
-function PeerOption({ label, detail, onClick }: { label: string; detail?: string | null | undefined; onClick: () => void }) {
+function PeerOption({ label, detail, onClick, disabled = false }: { label: string; detail?: string | null | undefined; onClick: () => void; disabled?: boolean }) {
   return (
-    <button onClick={onClick} className={styles.peerOption}>
+    <button onClick={onClick} className={styles.peerOption} disabled={disabled} title={disabled ? NOT_POSSIBLE : undefined}>
       <span className={styles.peerOptionLabel}>
         <AbilityText text={label} size={18} />
       </span>

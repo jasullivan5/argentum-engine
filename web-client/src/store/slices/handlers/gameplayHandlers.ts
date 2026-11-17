@@ -4,7 +4,7 @@
 import type { MessageHandlers } from '@/network/messageHandlers.ts'
 import { ErrorCode, ZoneType } from '@/types'
 import type { EntityId } from '@/types'
-import type { ClientGameState, ClientEvent, LegalActionInfo, PendingDecision, OpponentDecisionStatus, PriorityModeValue, Step, CardFlippedOntoBattlefieldEvent } from '@/types'
+import type { ClientGameState, ClientEvent, DecisionResponse, LegalActionInfo, PendingDecision, OpponentDecisionStatus, PriorityModeValue, Step, CardFlippedOntoBattlefieldEvent } from '@/types'
 import type { FlipShow } from '../types'
 import { trackEvent, setInGame } from '@/utils/analytics.ts'
 import { applyStateDelta } from '@/network/deltaApplicator.ts'
@@ -13,7 +13,8 @@ import { keepAttackerPreview, keepBlockerPreview } from './combatPreview'
 import { CLEARED_PIPELINE_SELECTIONS, isActionStillOffered } from '../ui/pipelineSlice'
 import type { SetState, GetState } from './types'
 import { useTableTalkStore } from '@/store/tableTalkStore'
-import { getPreferences } from '@/store/preferencesStore'
+import { getPreferences, usePreferences } from '@/store/preferencesStore'
+import { autoAnswerFor, scheduleAutoAnswer } from './autoAnswer'
 import { createSetPriorityModeMessage, createSetStopOverridesMessage, createSetTriggerOrderingMessage } from '@/types'
 import type {
   LogEntry,
@@ -115,6 +116,7 @@ function getEventLogType(eventType: string): 'action' | 'turn' | 'combat' | 'sys
     case 'creatureBlocked': return 'combat'
     case 'abilityFizzled':
     case 'abilityAutoAnswered':
+    case 'triggersOrderedAutomatically':
     case 'gameEnded':
     case 'playerLost': return 'system'
     default: return 'action'
@@ -219,6 +221,8 @@ interface StateUpdateEnvelope {
   readonly stopOverrides?: { readonly myTurnStops: readonly string[]; readonly opponentTurnStops: readonly string[] } | null
   readonly undoAvailable?: boolean
   readonly priorityMode?: PriorityModeValue | null
+  readonly autoAnswer?: DecisionResponse | null
+  readonly autoAnswerPublic?: boolean
 }
 
 /** A replaced timeline invalidates every partially built action in the same store update. */
@@ -728,11 +732,21 @@ function processStateUpdate(
     })
   }
 
+  // A question with one legal answer, which the server answered for us: never put it in front of
+  // the player — not even for a frame — and send that answer after a short delay instead.
+  const autoAnswer = autoAnswerFor(
+    msg.pendingDecision,
+    msg.autoAnswer,
+    getPreferences().gameplay.forcedChoices,
+    msg.autoAnswerPublic === true
+  )
+
   set((state) => ({
     gameState: resolvedState,
     interactionEpoch: msg.interactionEpoch ?? null,
     legalActions: msg.legalActions.map((action) => ({ ...action, interactionEpoch: msg.interactionEpoch ?? null })),
-    pendingDecision: msg.pendingDecision ?? null,
+    pendingDecision: autoAnswer ? null : msg.pendingDecision ?? null,
+    autoAnswerPending: autoAnswer != null,
     opponentDecisionStatus: msg.opponentDecisionStatus ?? null,
     nextStopPoint: msg.nextStopPoint ?? null,
     undoAvailable: msg.undoAvailable ?? false,
@@ -806,13 +820,31 @@ function processStateUpdate(
     )
       ? state.opponentBlockerAssignments
       : null,
+    // Shared-team choices can hand this connection another seat's declaration without an
+    // epoch change. Drop the old seat's draft atomically; App enters the new server offer.
+    ...(state.combatState && !msg.legalActions.some(({ action }) =>
+      action.type === (state.combatState?.mode === 'declareAttackers' ? 'DeclareAttackers' : 'DeclareBlockers') &&
+      (state.combatState?.actingSeat == null || action.playerId === state.combatState.actingSeat)
+    ) ? { combatState: null, draggingBlockerId: null, draggingAttackerId: null } : {}),
     ...(state.interactionEpoch !== (msg.interactionEpoch ?? null)
       ? CLEARED_ACTION_SELECTIONS
       : isPipelineOutpaced(state, msg.legalActions) ? CLEARED_PIPELINE_SELECTIONS : {}),
   }))
 
+  scheduleAutoAnswer(autoAnswer, set, get)
+
+  // The game just ordered several of our triggers where the order could have mattered: say so,
+  // the first time it happens, so a player learns they can choose it — then never again.
+  const autoOrdered = msg.events.find((e) => e.type === 'triggersOrderedAutomatically') as
+    | { type: 'triggersOrderedAutomatically'; count: number }
+    | undefined
+  if (autoOrdered && !suppressAnimations && getPreferences().gameplay.triggerOrderTip) {
+    usePreferences.getState().update('gameplay', { triggerOrderTip: false })
+    set({ triggerOrderNotice: { key: Date.now(), count: autoOrdered.count } })
+  }
+
   // Auto-initialize inline distribute state for DistributeDecision
-  const decision = msg.pendingDecision
+  const decision = autoAnswer ? undefined : msg.pendingDecision
   if (decision?.type === 'DistributeDecision') {
     const initial: Record<string, number> = {}
     for (const targetId of decision.targets) {
@@ -881,7 +913,7 @@ export function createGameplayHandlers(set: SetState, get: GetState): Pick<Messa
       setInGame(true)
 
       // Clear spectating state — active game takes priority. Fresh game, fresh camera.
-      set({ spectatingState: null })
+      set({ spectatingState: null, triggerOrderNotice: null })
       useTableTalkStore.getState().resetForNewGame()
       get().resetBoardView()
 
@@ -908,10 +940,18 @@ export function createGameplayHandlers(set: SetState, get: GetState): Pick<Messa
       const playerName = localStorage.getItem('argentum-player-name') ?? 'You'
       const { tournamentState, playerId } = get()
       let round: number | undefined
+      let matchGame: string | undefined
       let playerRecord: string | undefined
       let opponentRecord: string | undefined
       if (tournamentState && playerId) {
         round = tournamentState.currentRound
+        const game = tournamentState.currentGame
+        if (game && game.bestOf > 1) {
+          // "Game 2 · 1–0": which game of the best-of-three, and the score going in (ours first).
+          matchGame = game.gameNumber > 1
+            ? `Game ${game.gameNumber} · ${game.yourGameWins}–${game.opponentGameWins}`
+            : `Game 1 of ${game.bestOf}`
+        }
         const playerStanding = tournamentState.standings.find((s) => s.playerId === playerId)
         const opponentStanding = tournamentState.standings.find((s) => s.playerName === opponentName)
         if (playerStanding) {
@@ -929,6 +969,7 @@ export function createGameplayHandlers(set: SetState, get: GetState): Pick<Messa
           playerAvatar: msg.players.find((p) => p.isYou)?.avatar ?? null,
           opponentAvatars: msg.players.filter((p) => !p.isYou).map((p) => p.avatar ?? null),
           ...(round != null ? { round } : {}),
+          ...(matchGame != null ? { matchGame } : {}),
           ...(playerRecord != null ? { playerRecord } : {}),
           ...(opponentRecord != null ? { opponentRecord } : {}),
         },

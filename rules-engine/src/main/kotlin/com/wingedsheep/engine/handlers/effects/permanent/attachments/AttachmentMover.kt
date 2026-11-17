@@ -62,7 +62,7 @@ object AttachmentMover {
                     state, projected, predicateEvaluator, cardRegistry, attachmentId, card, hostId, controllerId
                 )
             }
-            card.typeLine.isEquipment ->
+            projected.hasSubtype(attachmentId, "Equipment") ->
                 projected.isCreature(hostId) &&
                     !(projected.isCreature(attachmentId) && !projected.hasKeyword(attachmentId, Keyword.RECONFIGURE)) &&
                     !EnchantRestriction.hostProtectedFromAttachment(
@@ -71,7 +71,7 @@ object AttachmentMover {
                     equipRestrictionAllows(state, predicateEvaluator, cardRegistry, attachmentId, hostId)
             // CR 301.6: a Fortification can be attached only to a land, and one that's also a
             // creature can't fortify a land; otherwise rules 301.5a–f apply as for Equipment.
-            card.typeLine.isFortification ->
+            projected.hasSubtype(attachmentId, "Fortification") ->
                 projected.hasType(hostId, "LAND") &&
                     !projected.isCreature(attachmentId) &&
                     !EnchantRestriction.hostProtectedFromAttachment(

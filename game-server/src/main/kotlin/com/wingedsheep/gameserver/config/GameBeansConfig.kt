@@ -115,14 +115,19 @@ class GameBeansConfig(
                 val pool = set.boosterCardPool(cardRegistry, limitedNames)
                 val allExtras = if (limitedNames == null) emptyList() else {
                     set.boosterCardPool(cardRegistry, limitedCardNames = null)
-                        .filterNot { it.name in limitedNames }
+                        .filterNot { limitedNames.admits(it.name) }
                         .map { it.copy(metadata = it.metadata.copy(inBooster = true)) }
                 }
                 val extrasByName = allExtras.associateBy { it.name }
                 val extrasByProduct = setCoverageService.limitedProducts(set.code)
                     .mapValues { (_, names) -> names.mapNotNull(extrasByName::get) }
                     .filterValues { it.isNotEmpty() }
-                if (pool.isEmpty()) null else set.code to set.toBoosterSetConfig(pool, extrasByProduct)
+                if (pool.isEmpty()) {
+                    null
+                } else {
+                    val guests = set.boosterGuestPool(cardRegistry)
+                    set.code to set.toBoosterSetConfig(pool + guests, extrasByProduct, guests.mapTo(hashSetOf()) { it.name })
+                }
             }
             .toMap()
     )
@@ -190,6 +195,13 @@ private fun List<CardDefinition>.withLegalities(): List<CardDefinition> =
     map { LegalityData.stamp(it) }
 
 /**
+ * Whether a set's Scryfall booster-name list admits [cardName]. The list names a split card by its
+ * first half ("Carnival"), where the engine names it by both halves ("Carnival // Carnage").
+ */
+private fun Set<String>.admits(cardName: String): Boolean =
+    cardName in this || cardName.substringBefore(" // ") in this
+
+/**
  * The card pool a set contributes to booster / sealed / draft generation.
  *
  * A set contributes both its own [MtgSet.cards] and every distinct reprinted card in
@@ -204,6 +216,11 @@ private fun List<CardDefinition>.withLegalities(): List<CardDefinition> =
  * This union is needed for both all-reprint sets (such as Eighth Edition) and mixed sets (such as
  * Foundations). Returning early when [MtgSet.cards] was non-empty silently omitted every reprint
  * from mixed-set boosters.
+ *
+ * The set's own pack-only basics — its [MtgSet.basicLands] that a Limited player can't add freely,
+ * such as Oath of the Gatewatch's two Wastes — join the pool too, one entry per printing (so its two
+ * Wastes open twice as often as any other common). They keep their own `inBooster` flag rather than
+ * the Scryfall list's override: a basic snow land that opts out (Ice Age's) stays out.
  */
 private fun MtgSet.boosterCardPool(
     registry: CardRegistry,
@@ -211,16 +228,19 @@ private fun MtgSet.boosterCardPool(
 ): List<CardDefinition> {
     val eligibleOwnCards = cards.stamp(this)
         .asSequence()
-        .filter { limitedCardNames == null || it.name in limitedCardNames }
+        .filter { limitedCardNames == null || limitedCardNames.admits(it.name) }
         .map { card ->
             if (limitedCardNames == null) card
             else card.copy(metadata = card.metadata.copy(inBooster = true))
         }
         .toList()
-    val ownNames = eligibleOwnCards.asSequence().map { it.name }.toHashSet()
+    val packOnlyBasics = basicLands.stamp(this)
+        .filter { !it.typeLine.isFreelyAddedBasicLand && it.metadata.inBooster }
+        .filter { limitedCardNames == null || limitedCardNames.admits(it.name) }
+    val ownNames = (eligibleOwnCards + packOnlyBasics).asSequence().map { it.name }.toHashSet()
     val resolvedReprints = printings
         .asSequence()
-        .filter { limitedCardNames == null || it.name in limitedCardNames }
+        .filter { limitedCardNames == null || limitedCardNames.admits(it.name) }
         .filter { it.name !in ownNames }
         .groupBy { it.name }
         .mapNotNull { (_, treatments) ->
@@ -231,17 +251,34 @@ private fun MtgSet.boosterCardPool(
                 withArt.copy(
                     metadata = withArt.metadata.copy(
                         rarity = printing.rarity,
-                        inBooster = limitedCardNames != null || withArt.metadata.inBooster,
+                        inBooster = limitedCardNames != null || (withArt.metadata.inBooster && printing.inBooster),
                     ),
                 )
             }
         }
-    return (eligibleOwnCards + resolvedReprints).sortedBy { it.name }
+    return (eligibleOwnCards + packOnlyBasics + resolvedReprints).sortedBy { it.name }
 }
+
+/**
+ * The [MtgSet.boosterGuestCards] this set's packs open: each resolved from its source set's own
+ * booster pool, so it carries that set's art and rarity, and stamped `inBooster` — it is in this
+ * set's pack even where the source set's flag would say otherwise. A guest whose source set or
+ * card isn't implemented is skipped, like an unimplemented reprint.
+ */
+private fun MtgSet.boosterGuestPool(registry: CardRegistry): List<CardDefinition> =
+    boosterGuestCards.entries
+        .groupBy({ it.value }, { it.key })
+        .flatMap { (sourceCode, names) ->
+            val source = MtgSetCatalog.byCode(sourceCode) ?: return@flatMap emptyList()
+            source.boosterCardPool(registry, limitedCardNames = null)
+                .filter { it.name in names }
+                .map { it.copy(metadata = it.metadata.copy(inBooster = true)) }
+        }
 
 private fun MtgSet.toBoosterSetConfig(
     cards: List<CardDefinition>,
     extraCardsByProduct: Map<String, List<CardDefinition>>,
+    guestCardNames: Set<String>,
 ): BoosterGenerator.SetConfig {
     val defaultPoolNames = cards.mapTo(hashSetOf()) { it.name }
     return BoosterGenerator.SetConfig(
@@ -260,5 +297,6 @@ private fun MtgSet.toBoosterSetConfig(
         // default booster pool; optional product printings are counted in their product rows.
         printings = printings.filter { it.name in defaultPoolNames },
         variantChance = boosterVariantChance,
+        guestCardNames = guestCardNames,
     )
 }

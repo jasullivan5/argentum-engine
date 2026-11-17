@@ -1,6 +1,7 @@
 package com.wingedsheep.gameserver.persistence
 
 import com.wingedsheep.gameserver.ai.AiGameManager
+import com.wingedsheep.gameserver.lobby.TournamentLobby
 import com.wingedsheep.gameserver.repository.RedisGameRepository
 import com.wingedsheep.gameserver.repository.RedisLobbyRepository
 import com.wingedsheep.gameserver.session.PlayerIdentity
@@ -36,7 +37,21 @@ class SessionRecoveryService(
         var tournamentsRecovered = 0
         var playersRecovered = 0
 
-        // Recover game sessions
+        // Lobbies before games. Each source deserializes its own PlayerIdentity for the same token,
+        // and only the first one registered is the live one: the reconnect path attaches the new
+        // socket to it. A tournament lobby holds its seats' identities directly (it reads
+        // `isConnected` and sends to `webSocketSession` through them), whereas a game session only
+        // keeps the token and gets a fresh PlayerSession on reconnect. So the lobby's copy has to
+        // be the registered one; the game's copy merges into it.
+        val lobbies = redisLobbyRepository.loadAllLobbiesFromRedis()
+        for ((_, identities) in lobbies) {
+            for (identity in identities) {
+                registerIdentityIfNew(identity)
+                playersRecovered++
+            }
+            lobbiesRecovered++
+        }
+
         val gameSessions = redisGameRepository.loadAllFromRedis()
         for ((_, identities) in gameSessions) {
             for (identity in identities) {
@@ -46,14 +61,11 @@ class SessionRecoveryService(
             gamesRecovered++
         }
 
-        // Recover lobbies
-        val lobbies = redisLobbyRepository.loadAllLobbiesFromRedis()
-        for ((_, identities) in lobbies) {
-            for (identity in identities) {
-                registerIdentityIfNew(identity)
-                playersRecovered++
-            }
-            lobbiesRecovered++
+        // A token can still appear in more than one lobby (a seat kept for rejoin in one, a seat in
+        // another); point every lobby seat at the registered identity so none is left holding a
+        // copy that never reconnects.
+        for ((lobby, _) in lobbies) {
+            rebindLobbySeats(lobby)
         }
 
         // Recover tournaments
@@ -75,6 +87,21 @@ class SessionRecoveryService(
                 "$playersRecovered player identities, " +
                 "$aiCount AI players rehydrated"
         )
+    }
+
+    /**
+     * Replace any lobby seat whose [PlayerIdentity] is not the instance in [sessionRegistry] with a
+     * copy bound to the registered one. A seat left on an unregistered copy reads as disconnected
+     * forever after a restart: the lobby never sees the player's new socket, so it stops sending
+     * them round results and match starts, and they drop out of the tournament.
+     */
+    private fun rebindLobbySeats(lobby: TournamentLobby) {
+        for ((playerId, state) in lobby.players.entries.toList()) {
+            val registered = sessionRegistry.getIdentityByToken(state.identity.token) ?: continue
+            if (registered === state.identity) continue
+            if (registered.currentLobbyId == null) registered.currentLobbyId = lobby.lobbyId
+            lobby.players[playerId] = state.copy(identity = registered)
+        }
     }
 
     /**

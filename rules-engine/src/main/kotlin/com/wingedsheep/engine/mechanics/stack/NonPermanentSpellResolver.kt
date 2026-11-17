@@ -1,10 +1,12 @@
 package com.wingedsheep.engine.mechanics.stack
 
+import com.wingedsheep.sdk.scripting.ChoiceSlot
 import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 import com.wingedsheep.engine.state.components.identity.TextChanges
 import com.wingedsheep.engine.state.components.identity.TextReplacementComponent
 import com.wingedsheep.engine.core.*
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.effects.library.markSuspended
 import com.wingedsheep.engine.handlers.effects.EffectExecutorRegistry
 import com.wingedsheep.engine.handlers.PipelineState
 import com.wingedsheep.engine.handlers.PredicateEvaluator
@@ -23,15 +25,18 @@ import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.engine.state.components.identity.AfterResolveDestinationComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.CopyOfComponent
+import com.wingedsheep.engine.state.components.stack.CipherEncodeChoiceComponent
 import com.wingedsheep.engine.state.components.identity.DoubleFacedComponent
 import com.wingedsheep.engine.state.components.identity.PlayWithoutPayingCostComponent
 import com.wingedsheep.engine.state.components.stack.*
 import com.wingedsheep.engine.state.permissions.addMayPlayPermission
 import com.wingedsheep.engine.state.permissions.removeMayPlayPermissionsForCard
+import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.effects.Effect
+import com.wingedsheep.sdk.scripting.effects.ZonePlacement
 import com.wingedsheep.sdk.scripting.targets.*
 
 /**
@@ -47,11 +52,6 @@ internal class NonPermanentSpellResolver(
     private val spliceTargetValidator: TargetValidator
 ) {
     /**
-     * Re-validates a spliced card's own targets as the spell resolves (CR 608.2b via 702.47d): the
-     * spliced text is skipped when its targets have become illegal, exactly as a modal spell's
-     * pre-chosen mode is.
-     */
-    /**
      * The spliced text of [spellComponent]'s spell as a drain queue (CR 702.47b) — one entry per
      * spliced card, in the caster's chosen order, each carrying its own target slice and requirements.
      *
@@ -61,6 +61,7 @@ internal class NonPermanentSpellResolver(
     private fun buildSpliceEntries(
         spellComponent: SpellOnStackComponent,
         boundRequirements: List<TargetRequirement>,
+        splicedAlignedTargets: List<ChosenTarget?>,
     ): List<PreTargetedEffectEntry> {
         // Each spliced card's requirements as the cast bound them — the tail of the recorded list,
         // in splice order — so a partly filled "up to N" spliced group names the targets it holds.
@@ -69,13 +70,23 @@ internal class NonPermanentSpellResolver(
         val bound = printed.map { reqs ->
             (if (cursor >= 0) boundRequirements.subList(cursor, cursor + reqs.size) else reqs).also { cursor += reqs.size }
         }
+        // Each spliced card's slice of the spell's resolution-validated slots (CR 608.2b): a target
+        // that became illegal is a null in its slot, so the spliced text still acts on the targets
+        // that remain legal, and on whatever it does without a target.
+        var slot = 0
+        val alignedSlices = bound.map { reqs ->
+            val count = reqs.sumOf { it.count }
+            splicedAlignedTargets.drop(slot).take(count).also { slot += count }
+        }
         return spellComponent.splicedCardNames.mapIndexedNotNull { index, name ->
             val splicedDef = cardRegistry.getCard(name) ?: return@mapIndexedNotNull null
             val effect = splicedDef.script.spellEffect ?: return@mapIndexedNotNull null
+            val aligned = alignedSlices[index]
             PreTargetedEffectEntry(
                 effect = effect,
-                targets = spellComponent.splicedTargetsOrdered.getOrNull(index) ?: emptyList(),
-                targetRequirements = bound[index]
+                targets = aligned.filterNotNull(),
+                targetRequirements = bound[index],
+                alignedTargets = aligned
             )
         }
     }
@@ -107,6 +118,7 @@ internal class NonPermanentSpellResolver(
 
         val resolvedCardDef = cardComponent?.let { cardRegistry.getCard(it.name) }
         val spellEffect = resolvingSpellEffect(state, spellId, spellComponent, cardComponent, resolvedCardDef)
+            ?.let { withCipherEncodeStep(state, spellId, resolvedCardDef, it) }
         // Splice (CR 702.47): the spliced cards' text is a tail that runs after the main spell's own
         // effects (CR 702.47b). Its targets were appended to the end of the flat list at cast time, so
         // the same tail is peeled off here — the main spell must see only its own targets, or an effect
@@ -117,9 +129,9 @@ internal class NonPermanentSpellResolver(
             cardRegistry.getCard(name)?.script?.targetRequirements?.size ?: 0
         }
         val allTargetRequirements = state.getEntity(spellId)?.get<TargetsComponent>()?.targetRequirements ?: emptyList()
-        val spliceEntries = buildSpliceEntries(spellComponent, allTargetRequirements)
         val splicedSlotCount = SpliceCasts
             .splicedTargetSlotCounts(spellComponent.splicedCardNames, cardRegistry, allTargetRequirements).sum()
+        val spliceEntries = buildSpliceEntries(spellComponent, allTargetRequirements, alignedTargets.takeLast(splicedSlotCount))
 
         val fusedDefinition = resolvedCardDef?.takeIf { spellComponent.castFused }
         if (spellEffect != null || fusedDefinition != null) {
@@ -154,7 +166,7 @@ internal class NonPermanentSpellResolver(
                     com.wingedsheep.sdk.core.Keyword.FUSE.name, context.programOrigin))
                 processPreTargetedEffectQueue(newState, entries + spliceEntries,
                     PreTargetedEffectContext(baseContext = halves, controllerId = context.controllerId,
-                        sourceId = spellId, sourceName = cardComponent?.name, xValue = context.xValue,
+                        sourceId = spellId, sourceName = cardComponent.name, xValue = context.xValue,
                         triggeringEntityId = null, objectReferences = context.objectReferences),
                     effects::execute, spliceTargetValidator, emptyList())
             } else runMainEffectThenSplice(
@@ -223,50 +235,18 @@ internal class NonPermanentSpellResolver(
         mainAlignedTargets: List<ChosenTarget?>,
         targetRequirements: List<TargetRequirement>
     ): EffectContext =
-        EffectContext(
-            sourceId = spellId,
+        EffectContext.forSpellOnStack(spellId, spellComponent).copy(
             // The spell's effect runs as a program whose origin is this resolving stack object.
             programOrigin = state.objectRef(spellId)?.let { com.wingedsheep.engine.core.ProgramOrigin.Resolving(it) },
             objectReferences = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(
                 captured = true, origin = state.objectRef(spellId), source = state.objectRef(spellId),
                 resolutionKey = "$spellId:${state.objectRef(spellId)?.generation}",
             ),
-            controllerId = spellComponent.casterId,
             targets = mainTargets,
             // Position-preserving view (null in slots dropped by 608.2b) so positional
             // references — ContextTarget(n), ContextPlayer(n) —
             // resolve by ORIGINAL slot and don't shift onto a later still-valid target.
             alignedTargets = mainAlignedTargets,
-            // A pay-X-life additional cost (AdditionalCost.PayXLife, e.g. Vicious Rivalry) feeds
-            // its declared X through the same X slot read by DynamicAmount.XValue and the
-            // ManaValue*X predicates. Such a card never also carries an {X} mana cost, so
-            // coalescing is unambiguous (CR 601.2b — the value is locked in as the spell is cast).
-            xValue = spellComponent.xValue ?: spellComponent.additionalCostPayXLifeAmount,
-            totalManaSpent = spellComponent.manaSpentWhite + spellComponent.manaSpentBlue +
-                spellComponent.manaSpentBlack + spellComponent.manaSpentRed +
-                spellComponent.manaSpentGreen + spellComponent.manaSpentColorless,
-            manaSpentOnXByColor = spellComponent.manaSpentOnXByColor,
-            manaSpent = com.wingedsheep.engine.mechanics.mana.SpentMana(
-                white = spellComponent.manaSpentWhite, blue = spellComponent.manaSpentBlue,
-                black = spellComponent.manaSpentBlack, red = spellComponent.manaSpentRed,
-                green = spellComponent.manaSpentGreen, colorless = spellComponent.manaSpentColorless,
-            ),
-            declaredCostSlot = spellComponent.declaredCostSlot,
-            wasBlightPaid = spellComponent.wasBlightPaid,
-            wasWaterbendPaid = spellComponent.wasWaterbendPaid,
-            wasSneaked = spellComponent.wasSneaked,
-            wasWebSlung = spellComponent.wasWebSlung,
-            wasMayhem = spellComponent.wasMayhem,
-            sacrificedPermanents = spellComponent.sacrificedPermanents,
-            discardedAsCostCards = spellComponent.discardedAsCostCards,
-            revealedAsCostSnapshots = spellComponent.revealedAsCostSnapshots,
-            exiledAsCostCards = spellComponent.exiledAsCostCards,
-            exiledAsCostSnapshots = spellComponent.exiledAsCostSnapshots,
-            chosenEntitySnapshots = spellComponent.chosenEntitySnapshots,
-            damageDistribution = spellComponent.damageDistribution,
-            chosenModes = spellComponent.chosenModes,
-            modeTargetsOrdered = spellComponent.modeTargetsOrdered,
-            modeTargetRequirements = spellComponent.modeTargetRequirements,
             // A repeated mode can bind a different number of targets on each occurrence.
             // The flat requirements already carry those announced counts, including zero.
             modeTargetRequirementsOrdered = spellComponent.chosenModes.takeIf { modes ->
@@ -278,10 +258,6 @@ internal class NonPermanentSpellResolver(
                     targetRequirements.drop(cursor).take(size).also { cursor += size }
                 }
             }.orEmpty(),
-            chosenCreatureType = spellComponent.chosenCreatureType,
-            exiledCardCount = spellComponent.exiledCardCount,
-            additionalCostBlightAmount = spellComponent.additionalCostBlightAmount,
-            castFromZone = spellComponent.castFromZone,
             pipeline = PipelineState(
                 // Use the positionally-aligned validated list so a sub-effect that
                 // references a target dropped by 608.2b through its BoundVariable id
@@ -395,6 +371,7 @@ internal class NonPermanentSpellResolver(
             }
         }
 
+        val cipherCreatureId = newState.getEntity(spellId)?.get<CipherEncodeChoiceComponent>()?.creatureId
         val destination = decideDestination(state, newState, spellId, spellComponent, cardDef, resolvedScript)
         val intendedDestination = destination.intendedZone
 
@@ -413,8 +390,10 @@ internal class NonPermanentSpellResolver(
                 .without<TargetsComponent>()
                 .without<com.wingedsheep.engine.state.components.identity.PlayWithoutPayingCostComponent>()
                 .without<com.wingedsheep.engine.state.components.identity.PlayWithCostIncreaseComponent>()
+                .without<com.wingedsheep.engine.state.components.identity.PlayWithCostReductionComponent>()
                 .without<com.wingedsheep.engine.state.components.identity.PlayWithFixedAlternativeManaCostComponent>()
                 .without<AfterResolveDestinationComponent>()
+                .without<CipherEncodeChoiceComponent>()
         }
         newState = newState.removeMayPlayPermissionsForCard(spellId)
         newState = newState.addToZone(destZoneKey, spellId)
@@ -434,6 +413,11 @@ internal class NonPermanentSpellResolver(
         newState = applyAfterResolveAndRedirectRiders(
             newState, spellId, cardComponent, ownerId, destinationZone, destination, redirect, events
         )
+        // Cipher (CR 702.99a): the card went from the stack straight to exile — encode it there.
+        // A redirect that sent it anywhere else leaves nothing encoded.
+        if (cipherCreatureId != null && destinationZone == Zone.EXILE) {
+            newState = encodeOnCreature(newState, spellId, cipherCreatureId, cardComponent?.name ?: "Unknown")
+        }
 
         events.add(
             ZoneChangeEvent(
@@ -457,8 +441,17 @@ internal class NonPermanentSpellResolver(
         val exileAfterResolveComp: AfterResolveDestinationComponent?,
         val adventureFaceExile: Boolean,
         val omenFaceShuffle: Boolean,
+        /** The card's own "into its owner's library" clause is the shuffling one (not "on the bottom"). */
         val selfShuffleIntoLibrary: Boolean,
         val reboundExile: Boolean,
+        /** Time counters the card's own "exile with N time counters" clause puts on it (0 = none). */
+        val selfSuspendCounters: Int,
+        /**
+         * Whether a [AfterResolveDestinationComponent.exiledRider]'s "If you do, …" follows: only when
+         * the rider really replaced a trip to the graveyard. A spell whose own instructions exile it
+         * (or shuffle it away) was never headed for a graveyard, so nothing follows.
+         */
+        val exiledRiderFollows: Boolean,
     )
 
     /**
@@ -473,18 +466,28 @@ internal class NonPermanentSpellResolver(
         cardDef: com.wingedsheep.sdk.model.CardDefinition?,
         resolvedScript: com.wingedsheep.sdk.model.CardScript?
     ): SpellDestination {
+        // Cipher (CR 702.99a): the spell's own last instruction exiles the card. That is not a
+        // replacement of "put it into its owner's graveyard", so the graveyard riders below
+        // (rebound, an AfterResolveDestination rider) have nothing to replace, and flashback's
+        // "exile it instead" agrees with it.
+        val cipherExile = newState.getEntity(spellId)?.has<CipherEncodeChoiceComponent>() == true
         val selfExile = resolvedScript?.selfExileOnResolve == true
-        // Flashback (printed or granted — Archmage's Newt) or Harmonize (printed or granted —
-        // Songcrafter Mage): a graveyard cast exiles on resolution instead of returning to the
-        // graveyard. A spell cast *with* flashback is exiled even if a conditional flashback's
-        // condition has since lapsed (Viral Spawning), so the recorded alternative cost counts too.
-        val flashbackExile = spellComponent.castFromZone == Zone.GRAVEYARD &&
-            (spellComponent.alternativeCost == AlternativeCostType.FLASHBACK ||
-                FlashbackGrants.effectiveFlashback(
+        // A graveyard cast paid with flashback or beam me up (the recorded cost — see
+        // StackExitRider), or one with flashback (printed or granted — Archmage's Newt) or Harmonize
+        // (printed or granted — Songcrafter Mage), exiles on resolution instead of returning to the
+        // graveyard.
+        val flashbackExile = StackExitRider.paidGraveyardExileCost(spellComponent) ||
+            spellComponent.castFromZone == Zone.GRAVEYARD &&
+            (FlashbackGrants.effectiveFlashback(
                 state, spellId, cardDef, spellComponent.casterId, cardRegistry, predicateEvaluator
             ) != null ||
                 HarmonizeGrants.effectiveHarmonize(state, spellId, cardDef) != null)
+        // "Exile <name> with N time counters on it." is the spell's own last instruction, like
+        // cipher's: a resolving spell that suspends itself is never put into a graveyard, so a
+        // graveyard-worded rider (Quistis Trepe, Kylox's Voltstrider) has nothing to replace.
+        val selfSuspendCounters = if (selfExile) resolvedScript.selfExileTimeCounters ?: 0 else 0
         val exileAfterResolveComp = newState.getEntity(spellId)?.get<AfterResolveDestinationComponent>()
+            ?.takeUnless { cipherExile || selfSuspendCounters > 0 }
         // Adventure face (CR 715.3d): when an Adventure resolves, exile it instead of putting
         // it in its owner's graveyard, and grant the caster permission to cast it as the
         // creature spell while it remains exiled.
@@ -494,13 +497,19 @@ internal class NonPermanentSpellResolver(
         // library instead of putting it in the graveyard. No cast-from-exile linkage.
         val omenFaceShuffle = cardDef?.layout == com.wingedsheep.sdk.model.CardLayout.OMEN &&
             spellComponent.faceIndex != null
-        // "Shuffle <name> into its owner's library." printed on the card itself (the Mirrodin
-        // Besieged Zenith cycle). Same seam as selfExile — it replaces the CR 608.2n destination —
-        // but lands in the library shuffled rather than in exile.
-        val selfShuffleIntoLibrary = resolvedScript?.selfShuffleIntoLibraryOnResolve == true
+        // "Shuffle <name> into its owner's library." (the Mirrodin Besieged Zenith cycle) or "Put
+        // <name> on the bottom of its owner's library." (Sanguine Sacrament) printed on the card
+        // itself. Same seam as selfExile — it replaces the CR 608.2n destination — but lands in the
+        // library rather than in exile. The card is added to the bottom; only the shuffle clause
+        // then shuffles.
+        val selfLibraryPlacement = resolvedScript?.selfLibraryPlacementOnResolve
+        val selfToLibrary = selfLibraryPlacement != null
+        val selfShuffleIntoLibrary = selfLibraryPlacement == ZonePlacement.Shuffled
         // Rebound (CR 702.88): a spell cast from hand that has rebound (printed or granted) exiles
         // on resolution instead of going to the graveyard, and arms a next-upkeep free recast.
-        val reboundExile = spellComponent.castFromZone == Zone.HAND &&
+        // Rebound replaces "put it into its owner's graveyard" too, so a spell that exiles itself
+        // (plainly, or suspended with time counters) gives it nothing to replace.
+        val reboundExile = !cipherExile && !selfExile && spellComponent.castFromZone == Zone.HAND &&
             spellHasRebound(newState, spellId, cardDef)
         // Not a plain priority order, because the underlying replacements aren't totally ordered:
         // the rider loses to the printed self-shuffle clause, the self-shuffle clause loses to
@@ -515,17 +524,32 @@ internal class NonPermanentSpellResolver(
         //
         // Countered and fizzled spells really are put into a graveyard, and those paths don't read
         // the self-shuffle flag at all, so every clause here applies to them as usual.
+        //
+        // Buyback (CR 702.27a) replaces "into that player's graveyard" with its owner's hand. Against
+        // another graveyard-worded replacement (a rider, rebound) CR 616.1 lets the spell's controller
+        // choose; the engine doesn't ask and always applies buyback, the choice buyback was paid for
+        // (a rare pairing — e.g. a buyback spell cast through Kylox's Voltstrider). Flashback's "anywhere else" still applies
+        // after buyback has, so a flashed-back spell is exiled either way.
+        val boughtBack = spellComponent.declaredCostSlot == ChoiceSlot.BOUGHT_BACK && !flashbackExile &&
+            !cipherExile && !selfExile && !selfToLibrary
         val intendedDestination = when {
+            cipherExile -> Zone.EXILE
+            boughtBack -> Zone.HAND
             // The rider is the most specific instruction on this one spell, so it outranks the
             // card-intrinsic exile reasons below rather than being OR'd into them — it is the only
             // one that can send the card somewhere other than exile (Kylox's Voltstrider — "put it
-            // on the bottom of its owner's library instead"). The guard is the graveyard wording.
-            exileAfterResolveComp != null && !selfShuffleIntoLibrary -> exileAfterResolveComp.zone
+            // on the bottom of its owner's library instead", Soulfire Grand Master — "into your hand
+            // instead"). The guard is the graveyard wording: a spell whose own instructions exile it
+            // or put it into its library was never headed for a graveyard (Soulfire ruling on
+            // Temporal Trespass), so the rider has nothing to replace. Against another
+            // graveyard-worded replacement (an Adventure's exile, rebound) CR 616.1 lets the
+            // controller choose; like buyback above, the engine doesn't ask and applies the rider.
+            exileAfterResolveComp != null && !selfToLibrary && !selfExile -> exileAfterResolveComp.zone
             // Flashback (CR 702.34a) / harmonize (CR 702.180a) — "anywhere else". Above the printed
             // clause, below the rider, which leaves the pre-existing rider-vs-flashback precedence
             // exactly as it was.
             flashbackExile -> Zone.EXILE
-            selfShuffleIntoLibrary -> Zone.LIBRARY
+            selfToLibrary -> Zone.LIBRARY
             selfExile || adventureFaceExile || reboundExile -> Zone.EXILE
             omenFaceShuffle -> Zone.LIBRARY
             else -> Zone.GRAVEYARD
@@ -537,6 +561,8 @@ internal class NonPermanentSpellResolver(
             omenFaceShuffle = omenFaceShuffle,
             selfShuffleIntoLibrary = selfShuffleIntoLibrary,
             reboundExile = reboundExile,
+            selfSuspendCounters = if (intendedDestination == Zone.EXILE && !cipherExile) selfSuspendCounters else 0,
+            exiledRiderFollows = exileAfterResolveComp != null && !selfExile && !selfToLibrary,
         )
     }
 
@@ -570,6 +596,30 @@ internal class NonPermanentSpellResolver(
             }
         }
 
+        // "Exile <name> with N time counters on it." (Arc Blade, Suspended Sentence): the card's own
+        // exile carries the counters, and since it has suspend it lands suspended (CR 702.62b) —
+        // its owner, the only player who may play it (CR 702.62a), gets the countdown. Flashback's
+        // "exile it instead" agrees with the clause; a RedirectZoneChange that sent it elsewhere
+        // leaves nothing to put counters on.
+        val exileTimeCounters = destination.selfSuspendCounters
+        if (exileTimeCounters > 0 && destinationZone == Zone.EXILE) {
+            newState = newState.updateEntity(spellId) { c ->
+                val counters = c.get<CountersComponent>() ?: CountersComponent()
+                c.with(counters.withAdded(CounterType.TIME, exileTimeCounters))
+            }
+            events.add(
+                CountersAddedEvent(
+                    entityId = spellId,
+                    counterType = CounterType.TIME,
+                    amount = exileTimeCounters,
+                    entityName = cardComponent?.name ?: "Unknown",
+                    firstThisTurn = false,
+                    placedBy = spellComponent.casterId
+                )
+            )
+            newState = newState.markSuspended(spellId, EffectContext(sourceId = spellId, controllerId = ownerId))
+        }
+
         // Rebound (CR 702.88a): arm the caster's next-upkeep free recast of the just-exiled card.
         if (reboundExile && destinationZone == Zone.EXILE) {
             newState = scheduleReboundRecast(
@@ -589,6 +639,7 @@ internal class NonPermanentSpellResolver(
                     cardIds = setOf(spellId),
                     controllerId = spellComponent.casterId,
                     permanent = true,
+                    primaryFaceOnly = true,
                     timestamp = state.timestamp,
                 )
             )
@@ -596,6 +647,8 @@ internal class NonPermanentSpellResolver(
 
         // Omen (Tarkir: Dragonstorm), and the Zenith cycle's printed "Shuffle <name> into its
         // owner's library.": the card was just added to the bottom of its owner's library above —
+        // which is all "Put <name> on the bottom of its owner's library." asks for, so that clause
+        // stops there —
         // now shuffle that library and announce it. Gated on the *final* destination so a
         // RedirectZoneChange that sent the card elsewhere doesn't shuffle for nothing, and so
         // AfterResolveDestination.BOTTOM_OF_LIBRARY (which also lands in Zone.LIBRARY, but must
@@ -628,10 +681,24 @@ internal class NonPermanentSpellResolver(
             newState = applyExileCounters(newState, spellId, exileAfterResolveComp.withCounters, events)
         }
 
-        // Make the exiled card plotted (Lilah, Undefeated Slickshot): "exile that spell instead of
-        // putting it into your graveyard as it resolves. If you do, it becomes plotted."
-        if (destinationZone == Zone.EXILE && exileAfterResolveComp?.makePlotted == true) {
-            newState = SpellZoneMoves.applyPlottedToExiledCard(newState, spellId, ownerId, cardComponent?.name ?: "Unknown", events)
+        // "Exile that spell instead of putting it into your graveyard as it resolves. If you do, …"
+        // (MarkSpellExileOnResolveEffect): the follow-up applies only once the card is in exile.
+        if (destinationZone == Zone.EXILE && destination.exiledRiderFollows) {
+            when (exileAfterResolveComp?.exiledRider) {
+                // Lilah, Undefeated Slickshot: "If you do, it becomes plotted."
+                com.wingedsheep.sdk.scripting.effects.ExiledSpellRider.BECOMES_PLOTTED ->
+                    newState = SpellZoneMoves.applyPlottedToExiledCard(
+                        newState, spellId, ownerId, cardComponent?.name ?: "Unknown", events
+                    )
+                // Feather, the Redeemed: "If you do, return it to your hand at the beginning of the
+                // next end step."
+                com.wingedsheep.sdk.scripting.effects.ExiledSpellRider.RETURN_TO_HAND_AT_NEXT_END_STEP ->
+                    newState = scheduleEndStepReturnToHand(
+                        newState, spellId, ownerId,
+                        cardComponent?.name ?: "Unknown"
+                    )
+                null -> Unit
+            }
         }
 
         // Link the exiled spell back to the source permanent (Goliath Daydreamer)
@@ -655,6 +722,16 @@ internal class NonPermanentSpellResolver(
                 .linkExiledToSource(newState, spellId, redirect.linkSourceId)
         }
 
+        // A card-intrinsic "shuffle it into its owner's library instead" redirect (Nexus of Fate —
+        // the Progenitus shape on a non-permanent card) shuffles the resolved card in, as the countered and fizzled paths already
+        // do. Skipped when the card's own Omen / self-shuffle clause already shuffled above.
+        if (destinationZone == Zone.LIBRARY && redirect.shuffleIntoLibrary &&
+            !destination.omenFaceShuffle && !destination.selfShuffleIntoLibrary
+        ) {
+            newState = SpellZoneMoves.shuffleOwnerLibrary(newState, ownerId)
+            events.add(LibraryShuffledEvent(ownerId))
+        }
+
         redirect.additionalEffect?.let { extra ->
             val (updatedState, extraEvents) = com.wingedsheep.engine.handlers.effects.ZoneMovementUtils.applyReplacementAdditionalEffect(
                 zones,
@@ -666,6 +743,61 @@ internal class NonPermanentSpellResolver(
             events.addAll(extraEvents)
         }
         return newState
+    }
+
+    /**
+     * Cipher (CR 702.99a): a resolving cipher spell represented by a card runs
+     * [com.wingedsheep.sdk.scripting.Cipher.encodeStep] just after its other effects. A copy of a
+     * cipher spell has the keyword too, but isn't represented by a card, so it encodes nothing.
+     */
+    private fun withCipherEncodeStep(
+        state: GameState,
+        spellId: EntityId,
+        cardDef: com.wingedsheep.sdk.model.CardDefinition?,
+        spellEffect: Effect
+    ): Effect {
+        if (cardDef?.keywords?.contains(com.wingedsheep.sdk.core.Keyword.CIPHER) != true) return spellEffect
+        if (state.getEntity(spellId)?.has<CopyOfComponent>() == true) return spellEffect
+        return com.wingedsheep.sdk.scripting.effects.CompositeEffect(
+            listOf(spellEffect, com.wingedsheep.sdk.scripting.Cipher.encodeStep)
+        )
+    }
+
+    /**
+     * Encode the just-exiled cipher card on [creatureId] (CR 702.99b): mark the card with the
+     * creature and its own exile object, and grant the creature the cipher trigger for as long as
+     * that holds (CR 702.99c). The grant carries a fresh timestamp — it is the effect of the card's
+     * static ability, which starts now — so a "loses all abilities" effect from later strips it and
+     * one from earlier doesn't (CR 613.7). Nothing is encoded if the creature has left the
+     * battlefield in the meantime.
+     */
+    private fun encodeOnCreature(
+        state: GameState,
+        cardId: EntityId,
+        creatureId: EntityId,
+        cardName: String
+    ): GameState {
+        if (creatureId !in state.getBattlefield()) return state
+        val cardObject = state.objectRef(cardId) ?: return state
+        // Stamp with the current timestamp, then tick, so an effect created later sorts after
+        // this one (the LayerTimestamps convention).
+        return state
+            .updateEntity(cardId) {
+                it.with(
+                    com.wingedsheep.engine.state.components.battlefield.EncodedOnComponent(creatureId, cardObject)
+                )
+            }
+            .copy(
+                grantedTriggeredAbilities = state.grantedTriggeredAbilities +
+                    com.wingedsheep.engine.event.GrantedTriggeredAbility(
+                        entityId = creatureId,
+                        ability = com.wingedsheep.sdk.scripting.Cipher.encodedCardTrigger(cardId, cardName),
+                        duration = com.wingedsheep.sdk.scripting.Duration.WhileSourceEncodedOnAffected,
+                        sourceId = cardId,
+                        timestamp = state.timestamp
+                    )
+            )
+            .tick()
     }
 
     /**
@@ -732,6 +864,44 @@ internal class NonPermanentSpellResolver(
     }
 
     /**
+     * Schedule [com.wingedsheep.sdk.scripting.effects.ExiledSpellRider.RETURN_TO_HAND_AT_NEXT_END_STEP]'s
+     * delayed triggered ability: at the beginning of the next end step (this turn's, unless this
+     * turn's end step has already begun), return the just-exiled card to its owner's hand. The trigger captures the
+     * card's exile object, so if the card leaves exile before then it is a new object (CR 400.7) and
+     * stays where it is. It is consumed the first time it fires.
+     */
+    private fun scheduleEndStepReturnToHand(
+        state: GameState,
+        exiledCardId: EntityId,
+        controllerId: EntityId,
+        sourceName: String
+    ): GameState {
+        val (triggerId, allocatedState) = state.newRoutingId()
+        return allocatedState.addDelayedTrigger(
+            com.wingedsheep.engine.event.DelayedTriggeredAbility(
+                id = triggerId,
+                effect = com.wingedsheep.sdk.dsl.Effects.Move(
+                    com.wingedsheep.sdk.scripting.targets.EffectTarget.Self, Zone.HAND, fromZone = Zone.EXILE
+                ),
+                fireAtStep = com.wingedsheep.sdk.core.Step.END,
+                // Resolved during an end step (or cleanup): this turn's end step has already
+                // begun, so "the next end step" is next turn's.
+                notBeforeTurn = if (state.step == com.wingedsheep.sdk.core.Step.END ||
+                    state.step == com.wingedsheep.sdk.core.Step.CLEANUP
+                ) state.turnNumber + 1 else null,
+                sourceId = exiledCardId,
+                objectReferences = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(
+                    captured = true,
+                    origin = state.objectRef(exiledCardId),
+                    source = state.objectRef(exiledCardId),
+                ),
+                sourceName = sourceName,
+                controllerId = controllerId,
+            )
+        )
+    }
+
+    /**
      * Resolution destination for [com.wingedsheep.sdk.model.CardScript.returnTransformedFromGraveyardOnResolve]
      * (Esper Origins): a spell cast from a graveyard is put onto the battlefield **transformed**
      * (its back face up) under its owner's control, entering with [counters], instead of going to
@@ -768,6 +938,7 @@ internal class NonPermanentSpellResolver(
                 .without<TargetsComponent>()
                 .without<PlayWithoutPayingCostComponent>()
                 .without<com.wingedsheep.engine.state.components.identity.PlayWithCostIncreaseComponent>()
+                .without<com.wingedsheep.engine.state.components.identity.PlayWithCostReductionComponent>()
                 .without<com.wingedsheep.engine.state.components.identity.PlayWithFixedAlternativeManaCostComponent>()
                 .without<AfterResolveDestinationComponent>()
         }
@@ -828,6 +999,23 @@ internal class NonPermanentSpellResolver(
 }
 
 /**
+ * Awaken (CR 702.113a): a spell whose awaken cost was paid runs the awaken spell ability — counters
+ * on its land target, then the animate — after its own effect. A copy keeps the alternative cost it
+ * copies (CR 707.10), so it awakens too. Any other spell resolves with [effect] unchanged.
+ */
+internal fun withAwakenAbility(
+    spellComponent: SpellOnStackComponent,
+    cardDef: com.wingedsheep.sdk.model.CardDefinition?,
+    effect: Effect?,
+): Effect? {
+    if (spellComponent.alternativeCost != com.wingedsheep.engine.core.AlternativeCostType.AWAKEN) return effect
+    val awaken = cardDef?.keywordAbilities
+        ?.filterIsInstance<com.wingedsheep.sdk.scripting.KeywordAbility.Awaken>()?.firstOrNull() ?: return effect
+    return if (effect == null) awaken.spellAbility
+    else com.wingedsheep.sdk.scripting.effects.CompositeEffect(listOf(effect, awaken.spellAbility))
+}
+
+/**
  * The effect the spell resolves with: the cast face's (Adventure / split, CR 715 / 709), the
  * kicked or cleaved variant, or the card's own — with any text-changing effect applied. Shared
  * with [com.wingedsheep.sdk.scripting.predicates.CardPredicate.WouldDestroy], which previews it.
@@ -861,7 +1049,7 @@ internal fun resolvingSpellEffect(
             resolvedCardDef?.script?.overloadSpellEffect ?: cardComponent.spellEffect
         else -> cardComponent?.spellEffect
     }
-    val rawSpellEffect = baseSpellEffect
+    val rawSpellEffect = withAwakenAbility(spellComponent, resolvedCardDef, baseSpellEffect)
     val textReplacement = TextChanges.forSpell(state, spellId)
     return if (rawSpellEffect != null && textReplacement != null) {
         rawSpellEffect.applyTextReplacement(textReplacement)

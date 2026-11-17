@@ -16,7 +16,7 @@ plugins {
 
 kotlin {
     // Use a specific Java version to make it easier to work in different environments.
-    jvmToolchain(21)
+    jvmToolchain(25)
 }
 
 // Bound concurrent Kotlin compilations build-wide — they all share one compile-daemon heap, so
@@ -58,6 +58,7 @@ tasks.withType<Test>().configureEach {
     // is what relaxes TestHangGuard for a run that legitimately takes half an hour.
     for (prop in listOf(
         "arena", "arenaGauntlet", "arenaPod", "arenaBudgetScaling", "arenaTable", "arenaA", "arenaB",
+        "arenaSynergyDecks",
         "argentum.ai.apprentice.dir",
         "eclCollect", "eclCollectGames", "eclCollectSeed", "eclCollectOutput", "eclCollectBaseDir",
         "eclCollectRunId", "eclCollectStartIndex",
@@ -66,6 +67,13 @@ tasks.withType<Test>().configureEach {
         "gameLog", "gameLogGames", "gameLogSeed", "gameLogAgent", "gameLogSeats", "gameLogAttackMode", "gameLogDir",
         // game-server's ReplayLogExport (`just ai-replay-logs`): server replays → AI-review logs.
         "replayLog", "replayLogDir",
+        // `just ai-reading-audit`: the AI card-reading audit (ai/.../audit/AiReadingAuditBenchmark);
+        // `just ai-reading-baseline`: re-bless the ratchet's baseline (AiReadingRatchetTest).
+        "aiReadingAudit", "aiReadingAuditDir", "aiReadingBaseline",
+        // `just ai-card`: one card's AI reading and rating (ai/.../audit/AiCardReport).
+        "aiCard", "aiCardOut",
+        // `just deck-colours`: colour counts of the AI's limited builds (ai/.../engine/DeckColourBenchmark).
+        "deckColours", "deckColourPods", "deckColourSet", "deckColourSeed",
     )) {
         System.getProperty(prop)?.let { systemProperty(prop, it) }
     }

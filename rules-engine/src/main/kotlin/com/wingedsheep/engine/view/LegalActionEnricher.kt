@@ -60,8 +60,7 @@ class LegalActionEnricher(
                     isFromHand = action.sourceZone == null || action.sourceZone == "HAND"
                 )
             } else state.getEntity(gameAction.cardId)?.get<CardComponent>()?.let { card ->
-                spellPaymentContextFor(
-                    card,
+                spellPaymentContextFor(card, colors = state.projectedState.colorSetOf(gameAction.cardId),
                     isKicked = gameAction.declaredCostSlot == ChoiceSlot.KICKED,
                     isFromExile = action.sourceZone == "EXILE",
                     // Null sourceZone means the standard hand cast.
@@ -114,9 +113,12 @@ class LegalActionEnricher(
             xConstrainsTargetCountExactly = action.xConstrainsTargetCountExactly,
             validAttackers = action.validAttackers,
             mandatoryAttackers = action.mandatoryAttackers,
+            loneAttackers = action.loneAttackers,
             validAttackTargets = action.validAttackTargets,
             attackTargetsByAttacker = action.attackTargetsByAttacker,
             validBlockers = action.validBlockers,
+            proposedBlockerAssignments = action.proposedBlockerAssignments,
+            blockableAttackers = action.blockableAttackers,
             blockerMaxBlockCounts = action.blockerMaxBlockCounts,
             mandatoryBlockerAssignments = action.mandatoryBlockerAssignments,
             hasXCost = action.hasXCost,
@@ -143,6 +145,7 @@ class LegalActionEnricher(
             minimumManaCostString = minimumManaCostString(action),
             requiresDamageDistribution = action.requiresDamageDistribution,
             totalDamageToDistribute = action.totalDamageToDistribute,
+            totalDamageByX = action.totalDamageByX,
             minDamagePerTarget = action.minDamagePerTarget,
             distributionUnit = action.distributionUnit,
             distributionTargetGroup = action.distributionTargetGroup,
@@ -297,12 +300,14 @@ class LegalActionEnricher(
         validSacrificeTargets = validSacrificeTargets,
         sacrificeCount = sacrificeCount,
         sacrificeMinPowerIsX = sacrificeMinPowerIsX,
+        countIsX = countIsX,
         costAfterSacrifice = costAfterSacrifice,
         validTapTargets = validTapTargets,
         tapCount = tapCount,
         tapBatchMaxActivations = tapBatchMaxActivations,
         validDiscardTargets = validDiscardTargets,
         discardCount = discardCount,
+        discardMaxCount = discardMaxCount,
         validBounceTargets = validBounceTargets,
         bounceCount = bounceCount,
         validExileTargets = validExileTargets,
@@ -319,6 +324,7 @@ class LegalActionEnricher(
         revealCount = revealCount,
         counterRemovalCreatures = counterRemovalCreatures.map { it.toDto() },
         validBlightTargets = validBlightTargets,
+        validCounterPlacementTargets = validCounterPlacementTargets,
         blightAmount = blightAmount,
         blightVariableMaxX = blightVariableMaxX,
         payXLifeMaxX = payXLifeMaxX,

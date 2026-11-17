@@ -2,6 +2,8 @@ package com.wingedsheep.engine.handlers.effects.player
 
 import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.PredicateContext
+import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
 import com.wingedsheep.engine.state.GameState
@@ -11,11 +13,11 @@ import kotlin.reflect.KClass
 
 /**
  * Executor for SkipUntapEffect.
- * "Creatures and lands [that player] controls don't untap during their next untap step."
+ * "[Permanents] [that player] controls don't untap during their next untap step."
  *
- * This adds a SkipUntapComponent to the affected player. When that player's
- * next untap step occurs, the specified permanent types (creatures and/or lands)
- * are skipped and the component is removed.
+ * Adds the effect's filter to the affected player's SkipUntapComponent (alongside any filter an
+ * earlier effect left there). At that player's next untap step every permanent they then control
+ * matching one of the filters stays tapped, and the component is removed.
  *
  * The affected player comes from the effect's own [SkipUntapEffect.target], resolved through the
  * shared player resolver. That matters for the cards whose clause names a player it never
@@ -24,8 +26,14 @@ import kotlin.reflect.KClass
  * in `context.targets` to find them in. The resolver still routes the default
  * `PlayerRef(TargetPlayer)` back to the first chosen target, so the targeted cards (Exhaustion,
  * Mana Vapors, Blinding Beam) are unchanged.
+ *
+ * A [SkipUntapEffect.lockedAtResolution] effect (Sleep) adds no filter: it snapshots the matching
+ * permanents the player controls now (projected) into the component's object set instead, as
+ * [com.wingedsheep.engine.state.ObjectRef]s so a flickered permanent is a new object it doesn't hold.
  */
-class SkipUntapExecutor : EffectExecutor<SkipUntapEffect> {
+class SkipUntapExecutor(
+    private val predicateEvaluator: PredicateEvaluator
+) : EffectExecutor<SkipUntapEffect> {
 
     override val effectType: KClass<SkipUntapEffect> = SkipUntapEffect::class
 
@@ -37,13 +45,20 @@ class SkipUntapExecutor : EffectExecutor<SkipUntapEffect> {
         val targetPlayerId = TargetResolutionUtils.resolvePlayerTarget(effect.target, context, state)
             ?: return EffectResult.error(state, "No valid player target for SkipUntapEffect")
 
-        // Add the SkipUntapComponent to the affected player
         val newState = state.updateEntity(targetPlayerId) { container ->
+            val pending = container.get<SkipUntapComponent>() ?: SkipUntapComponent()
             container.with(
-                SkipUntapComponent(
-                    affectsCreatures = effect.affectsCreatures,
-                    affectsLands = effect.affectsLands
-                )
+                if (!effect.lockedAtResolution) pending.copy(permanents = pending.permanents + effect.permanents)
+                else {
+                    val projected = state.projectedState
+                    val locked = projected.getBattlefieldControlledBy(targetPlayerId).filter { id ->
+                        predicateEvaluator.matches(
+                            state, projected, id, effect.permanents,
+                            PredicateContext(controllerId = targetPlayerId)
+                        )
+                    }.mapNotNull(state::objectRef)
+                    pending.copy(objects = pending.objects + locked)
+                }
             )
         }
 

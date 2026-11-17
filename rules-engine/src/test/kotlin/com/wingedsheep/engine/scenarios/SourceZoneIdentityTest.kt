@@ -157,7 +157,7 @@ class SourceZoneIdentityTest : FunSpec({
             val gathered = d.services.effectExecutorRegistry.execute(d.state,
                 com.wingedsheep.sdk.scripting.effects.GatherCardsEffect(cardSource, "stale"),
                 current.copy(sourceId = source, objectReferences = current.objectReferences.copy(source = ref)))
-            gathered.updatedCollections?.get("stale") shouldBe emptyList()
+            gathered.updatedCollections["stale"] shouldBe emptyList()
         }
     }
 

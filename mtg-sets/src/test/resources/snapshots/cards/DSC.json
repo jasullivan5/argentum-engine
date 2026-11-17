@@ -1,0 +1,569 @@
+// Gleeful Arsonist
+{
+    "name": "Gleeful Arsonist",
+    "manaCost": "{2}{R}",
+    "typeLine": "Creature — Human Wizard",
+    "oracleText": "Whenever an opponent casts a noncreature spell, this creature deals damage equal to its power to that player.\nUndying (When this creature dies, if it had no +1/+1 counters on it, return it to the battlefield under its owner's control with a +1/+1 counter on it.)",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 2
+    },
+    "keywords": [
+        "UNDYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Gleeful Arsonist:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "spellFilter": {
+                        "cardPredicates": [
+                            "IsNoncreature"
+                        ]
+                    },
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "EntityProperty",
+                        "entity": "Self",
+                        "numericProperty": "Power"
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "27",
+        "rarity": "RARE",
+        "artist": "Nereida",
+        "flavorText": "\"Let the world burn!\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/b/bbb2956c-ef76-4e80-81d4-7f1ce6841d37.jpg?1783909657",
+        "rulings": [
+            {
+                "date": "2024-09-20",
+                "text": "Gleeful Arsonist's first ability resolves before the spell that caused it to trigger. It resolves even if that spell is countered."
+            },
+            {
+                "date": "2024-09-20",
+                "text": "If Gleeful Arsonist is no longer on the battlefield when its first ability resolves, use its power as it last existed on the battlefield to determine how much damage it deals."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Persistent Constrictor
+{
+    "name": "Persistent Constrictor",
+    "manaCost": "{4}{B}",
+    "typeLine": "Creature — Zombie Snake",
+    "oracleText": "At the beginning of each opponent's upkeep, they lose 1 life and you put a -1/-1 counter on up to one target creature they control.\nPersist (When this creature dies, if it had no -1/-1 counters on it, return it to the battlefield under its owner's control with a -1/-1 counter on it.)",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 3
+    },
+    "keywords": [
+        "PERSIST"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Persistent Constrictor:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "LoseLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 1
+                            },
+                            "target": {
+                                "type": "PlayerRef",
+                                "player": "TriggeringPlayer"
+                            }
+                        },
+                        {
+                            "type": "AddCounters",
+                            "counterType": "MINUS_ONE_MINUS_ONE",
+                            "count": 1,
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "creature ctrl:triggering-player"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "At the beginning of each opponent's upkeep, they lose 1 life and you put a -1/-1 counter on up to one target creature they control."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "22",
+        "rarity": "RARE",
+        "artist": "Steve Ellis",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/a/0a25d478-84fd-4e4b-abb7-f5f6becf6eb0.jpg?1783909658",
+        "rulings": [
+            {
+                "date": "2024-09-20",
+                "text": "If the target creature is an illegal target as Persistent Constrictor's first ability tries to resolve, it won't resolve and none of its effects will happen. No player will lose life."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Sadistic Shell Game
+{
+    "name": "Sadistic Shell Game",
+    "manaCost": "{4}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Starting with the next opponent in turn order, each player chooses a creature you don't control. Destroy the chosen creatures.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": "EachStartingWithNextOpponent"
+                    },
+                    "body": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "BattlefieldMatching",
+                                    "filter": {
+                                        "cardPredicates": [
+                                            "IsCreature"
+                                        ],
+                                        "controllerPredicate": {
+                                            "type": "ControllerNot",
+                                            "predicate": {
+                                                "type": "ControlledByReferencedPlayer",
+                                                "target": {
+                                                    "type": "PlayerRef",
+                                                    "player": "ControllerOfSource"
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "storeAs": "gathered1"
+                            },
+                            {
+                                "type": "SelectFromCollection",
+                                "from": "gathered1",
+                                "selection": {
+                                    "type": "ChooseExactly",
+                                    "count": {
+                                        "type": "Fixed",
+                                        "amount": 1
+                                    }
+                                },
+                                "storeSelected": "selected2",
+                                "prompt": "Choose a creature the caster doesn't control",
+                                "useTargetingUI": true
+                            }
+                        ]
+                    },
+                    "collectCollections": {
+                        "selected2": "collected3"
+                    }
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "collected3",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    },
+                    "moveType": "Destroy"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "24",
+        "rarity": "RARE",
+        "artist": "Karl Kopinski",
+        "flavorText": "\"Shame about your friends. Wanna see what's inside yours?\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/c/4c5c8eb3-c866-4974-90eb-be99c07af1a1.jpg?1783909657"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Spiked Corridor // Torture Pit
+{
+    "name": "Spiked Corridor // Torture Pit",
+    "manaCost": "",
+    "typeLine": "Enchantment — Room",
+    "oracleText": "When you unlock this door, create three 1/1 red Devil creature tokens with \"When this token dies, it deals 1 damage to any target.\"\n//\nIf a source you control would deal noncombat damage to an opponent, it deals that much damage plus 2 instead.",
+    "metadata": {
+        "collectorNumber": "28",
+        "rarity": "RARE",
+        "artist": "Arthur Yuan",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/9/b90164a1-8b0a-4445-a0ad-43e4c3324925.jpg?1783909656",
+        "rulings": [
+            {
+                "date": "2024-09-20",
+                "text": "The additional 2 damage is dealt by the same source as the original source of damage. The additional damage isn't dealt by Torture Pit unless Torture Pit is the original source of damage."
+            },
+            {
+                "date": "2024-09-20",
+                "text": "If another effect modifies how much noncombat damage the source would deal, including preventing some of it, the player being dealt damage chooses an order in which to apply those effects. If all of the damage is prevented, Torture Pit's effect no longer applies."
+            },
+            {
+                "date": "2024-09-20",
+                "text": "If noncombat damage dealt by a source you control is being divided or assigned among multiple players, divide the original amount before adding 2."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ],
+    "layout": "SPLIT",
+    "cardFaces": [
+        {
+            "name": "Spiked Corridor",
+            "manaCost": "{3}{R}",
+            "typeLine": "Enchantment — Room",
+            "oracleText": "When you unlock this door, create three 1/1 red Devil creature tokens with \"When this token dies, it deals 1 damage to any target.\"",
+            "script": {
+                "triggeredAbilities": [
+                    {
+                        "id": "Spiked Corridor // Torture Pit:2",
+                        "trigger": "DoorUnlockedEvent",
+                        "effect": {
+                            "type": "CreateToken",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 3
+                            },
+                            "power": 1,
+                            "toughness": 1,
+                            "colors": [
+                                "RED"
+                            ],
+                            "creatureTypes": [
+                                "Devil"
+                            ],
+                            "triggeredAbilities": [
+                                {
+                                    "id": "Spiked Corridor // Torture Pit:1",
+                                    "trigger": {
+                                        "type": "ZoneChangeEvent",
+                                        "from": "Battlefield",
+                                        "to": "Graveyard"
+                                    },
+                                    "effect": {
+                                        "type": "DealDamage",
+                                        "amount": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        },
+                                        "target": {
+                                            "type": "BoundVariable",
+                                            "name": "t0"
+                                        }
+                                    },
+                                    "targetRequirement": {
+                                        "type": "AnyTarget",
+                                        "id": "t0"
+                                    },
+                                    "descriptionOverride": "When this token dies, it deals 1 damage to any target."
+                                }
+                            ]
+                        },
+                        "descriptionOverride": "When you unlock this door, create three 1/1 red Devil creature tokens with \"When this token dies, it deals 1 damage to any target.\""
+                    }
+                ]
+            }
+        },
+        {
+            "name": "Torture Pit",
+            "manaCost": "{3}{R}",
+            "typeLine": "Enchantment — Room",
+            "oracleText": "If a source you control would deal noncombat damage to an opponent, it deals that much damage plus 2 instead.",
+            "script": {
+                "replacementEffects": [
+                    {
+                        "type": "ModifyDamageAmount",
+                        "modifier": 2,
+                        "appliesTo": {
+                            "type": "DamageEvent",
+                            "recipient": {
+                                "type": "RecipientPlayer",
+                                "player": "EachOpponent"
+                            },
+                            "source": {
+                                "controllerPredicate": "ControlledByYou"
+                            },
+                            "damageType": "DamageNonCombat"
+                        }
+                    }
+                ]
+            }
+        }
+    ],
+    "hasNoManaCost": true
+}
+
+// Suspended Sentence
+{
+    "name": "Suspended Sentence",
+    "manaCost": "{3}{B}",
+    "typeLine": "Instant",
+    "oracleText": "Destroy target creature an opponent controls. That player loses 3 life. Exile Suspended Sentence with three time counters on it.\nSuspend 3—{1}{B} (Rather than cast this card from your hand, you may pay {1}{B} and exile it with three time counters on it. At the beginning of your upkeep, remove a time counter. When the last is removed, you may cast it without paying its mana cost.)",
+    "keywords": [
+        "SUSPEND"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Suspend",
+            "cost": "{1}{B}",
+            "timeCounters": 3
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 3
+                    },
+                    "target": "TargetController"
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature ctrl:opponent"
+                },
+                "id": "t0"
+            }
+        ],
+        "selfExileOnResolve": true,
+        "selfExileTimeCounters": 3
+    },
+    "metadata": {
+        "collectorNumber": "25",
+        "rarity": "RARE",
+        "artist": "L.A. Draws",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/8/38c98aa0-bfa1-42f4-b035-a48dac86f0ce.jpg?1783909657"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// The Lord of Pain
+{
+    "name": "The Lord of Pain",
+    "manaCost": "{3}{B}{R}",
+    "typeLine": "Legendary Creature — Human Assassin",
+    "oracleText": "Menace\nYour opponents can't gain life.\nWhenever a player casts their first spell each turn, choose another target player. The Lord of Pain deals damage equal to that spell's mana value to the chosen player.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "MENACE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "The Lord of Pain:1",
+                "trigger": {
+                    "type": "NthSpellCastEvent",
+                    "nthSpell": 1
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGERING_SPELL_MANA_VALUE"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0",
+                    "restriction": {
+                        "type": "Not",
+                        "condition": {
+                            "type": "PlayerIs",
+                            "subject": "Candidate",
+                            "player": "TriggeringPlayer"
+                        }
+                    },
+                    "descriptionOverride": "another target player"
+                },
+                "descriptionOverride": "Whenever a player casts their first spell each turn, choose another target player. The Lord of Pain deals damage equal to that spell's mana value to the chosen player."
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "PreventLifeGain",
+                "appliesTo": {
+                    "type": "LifeGainEvent",
+                    "player": "EachOpponent"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "3",
+        "rarity": "MYTHIC",
+        "artist": "Greg Staples",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/9/494c244e-dcdc-4169-9743-8a61f58e8763.jpg?1783909663",
+        "rulings": [
+            {
+                "date": "2024-09-20",
+                "text": "Spells and abilities that cause opponents to gain life still resolve while The Lord of Pain is on the battlefield. They won't gain life, but any other effects of that spell or ability will still happen."
+            },
+            {
+                "date": "2024-09-20",
+                "text": "If an effect says to set an opponent's life total to a number that's higher than their current life total, that player's life total won't change."
+            },
+            {
+                "date": "2024-09-20",
+                "text": "The Lord of Pain's last ability must target a player other than the one who cast the spell that caused the ability to trigger. That means that if it's just you and one other player in the game, you'll have to target yourself when that player casts their first spell each turn. (What did you expect? You summoned The Lord of Pain!)"
+            },
+            {
+                "date": "2024-09-20",
+                "text": "If a spell has {X} in its mana cost, use the value chosen for X when determining that spell's mana value."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
+// Valgavoth, Harrower of Souls
+{
+    "name": "Valgavoth, Harrower of Souls",
+    "manaCost": "{2}{B}{R}",
+    "typeLine": "Legendary Creature — Elder Demon",
+    "oracleText": "Flying\nWard—Pay 2 life.\nWhenever an opponent loses life for the first time during each of their turns, put a +1/+1 counter on Valgavoth and draw a card.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING",
+        "WARD"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Ward",
+            "cost": {
+                "type": "WardCost.Life",
+                "amount": 2
+            }
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Valgavoth, Harrower of Souls:1",
+                "trigger": {
+                    "type": "LifeLossEvent",
+                    "player": "EachOpponent",
+                    "firstTimeEachTurn": true
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "AddCounters",
+                            "counterType": "PLUS_ONE_PLUS_ONE",
+                            "count": 1,
+                            "target": "Self"
+                        },
+                        {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 1
+                            }
+                        }
+                    ]
+                },
+                "triggerRestriction": {
+                    "type": "IsPlayersTurn",
+                    "player": "TriggeringPlayer"
+                },
+                "descriptionOverride": "Whenever an opponent loses life for the first time during each of their turns, put a +1/+1 counter on Valgavoth and draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "6",
+        "rarity": "MYTHIC",
+        "artist": "Chris Cold",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/d/8d7c1f6c-af45-4449-8cf8-e13830b3df8a.jpg?1783909662",
+        "rulings": [
+            {
+                "date": "2024-09-20",
+                "text": "If Valgavoth somehow enters the battlefield during an opponent's turn and that opponent had lost life earlier in the turn, its last ability won't trigger if that opponent loses life later in the turn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}

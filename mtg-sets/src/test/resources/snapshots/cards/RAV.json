@@ -116,7 +116,8 @@
                                     ]
                                 }
                             },
-                            "storeAs": "gathered0"
+                            "storeAs": "gathered0",
+                            "search": true
                         },
                         {
                             "type": "SelectFromCollection",
@@ -3173,7 +3174,8 @@
                                 }
                             },
                             "body": {
-                                "type": "GrantProtectionsSharedByGroup",
+                                "type": "GrantKeywordVariantsSharedByGroup",
+                                "keyword": "PROTECTION",
                                 "group": {
                                     "baseFilter": "creature ctrl:you"
                                 },
@@ -4953,7 +4955,7 @@
         "replacementEffects": [
             "MultiplyTokenCreation",
             {
-                "type": "DoubleCounterPlacement",
+                "type": "ScaleCounterPlacement",
                 "appliesTo": {
                     "type": "CounterPlacementEvent",
                     "recipient": {
@@ -5929,7 +5931,7 @@
                         "IsAttachedToBySource"
                     ]
                 },
-                "nonManaAbilitiesOnly": true
+                "abilities": "NON_MANA"
             }
         ],
         "auraTarget": {
@@ -9809,46 +9811,54 @@
                             }
                         },
                         {
-                            "type": "ForEach",
-                            "space": {
-                                "type": "IterationSpace.Players",
-                                "players": "ActivePlayerFirst"
-                            },
-                            "body": {
-                                "type": "Composite",
-                                "effects": [
-                                    {
-                                        "type": "GatherCards",
-                                        "source": {
-                                            "type": "FromZone",
-                                            "zone": "Hand"
-                                        },
-                                        "storeAs": "hand"
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "ForEach",
+                                    "space": {
+                                        "type": "IterationSpace.Players",
+                                        "players": "ActivePlayerFirst"
                                     },
-                                    {
-                                        "type": "SelectFromCollection",
-                                        "from": "hand",
-                                        "selection": {
-                                            "type": "ChooseExactly",
-                                            "count": {
-                                                "type": "Fixed",
-                                                "amount": 1
+                                    "body": {
+                                        "type": "Composite",
+                                        "effects": [
+                                            {
+                                                "type": "GatherCards",
+                                                "source": {
+                                                    "type": "FromZone",
+                                                    "zone": "Hand"
+                                                },
+                                                "storeAs": "hand"
+                                            },
+                                            {
+                                                "type": "SelectFromCollection",
+                                                "from": "hand",
+                                                "selection": {
+                                                    "type": "ChooseExactly",
+                                                    "count": {
+                                                        "type": "Fixed",
+                                                        "amount": 1
+                                                    }
+                                                },
+                                                "storeSelected": "chosenToDiscard",
+                                                "prompt": "Choose a card to discard"
                                             }
-                                        },
-                                        "storeSelected": "discarded",
-                                        "prompt": "Choose a card to discard"
+                                        ]
                                     },
-                                    {
-                                        "type": "MoveCollection",
-                                        "from": "discarded",
-                                        "destination": {
-                                            "type": "ToZone",
-                                            "zone": "Graveyard"
-                                        },
-                                        "moveType": "Discard"
+                                    "collectCollections": {
+                                        "chosenToDiscard": "discarded_by_each_player"
                                     }
-                                ]
-                            }
+                                },
+                                {
+                                    "type": "MoveCollection",
+                                    "from": "discarded_by_each_player",
+                                    "destination": {
+                                        "type": "ToZone",
+                                        "zone": "Graveyard"
+                                    },
+                                    "moveType": "Discard"
+                                }
+                            ]
                         }
                     ]
                 }
@@ -12844,6 +12854,9 @@
                     "baseFilter": {
                         "cardPredicates": [
                             "IsActivatedAbility"
+                        ],
+                        "statePredicates": [
+                            "HasSingleTarget"
                         ]
                     },
                     "zone": "Stack"
@@ -15225,7 +15238,8 @@
                                 "zone": "Library",
                                 "filter": "instant red|white mv<=4"
                             },
-                            "storeAs": "gathered0"
+                            "storeAs": "gathered0",
+                            "search": true
                         },
                         {
                             "type": "SelectFromCollection",
@@ -15241,6 +15255,7 @@
                             "prompt": "Search for a red or white instant card with mana value 4 or less to cast without paying its mana cost"
                         },
                         "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent",
                         {
                             "type": "CastFromCollectionWithoutPayingCost",
                             "from": "selected1"

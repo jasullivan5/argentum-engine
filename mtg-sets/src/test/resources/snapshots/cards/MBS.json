@@ -20,7 +20,7 @@
                 "target": "IterationEntity"
             }
         },
-        "selfShuffleIntoLibraryOnResolve": true
+        "selfLibraryPlacementOnResolve": "Shuffled"
     },
     "metadata": {
         "collectorNumber": "39",
@@ -61,7 +61,7 @@
                 "id": "t0"
             }
         ],
-        "selfShuffleIntoLibraryOnResolve": true
+        "selfLibraryPlacementOnResolve": "Shuffled"
     },
     "metadata": {
         "collectorNumber": "20",
@@ -142,6 +142,48 @@
             }
         ]
     }
+}
+
+// Creeping Corrosion
+{
+    "name": "Creeping Corrosion",
+    "manaCost": "{2}{G}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy all artifacts.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "BattlefieldMatching",
+                        "filter": "artifact"
+                    },
+                    "storeAs": "destroyAll_gathered"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "destroyAll_gathered",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    },
+                    "moveType": "Destroy"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "78",
+        "rarity": "RARE",
+        "artist": "Ryan Pancoast",
+        "flavorText": "\"We will reveal the futility of their heresy by showing them how fragile their relics are.\"\n—Vorinclex, Voice of Hunger",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/5/05d5a7b3-18b6-4b1d-85cc-2253e605390c.jpg?1783941377"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
 }
 
 // Go for the Throat
@@ -242,7 +284,7 @@
                 "EmitLibrarySearchedEvent"
             ]
         },
-        "selfShuffleIntoLibraryOnResolve": true
+        "selfLibraryPlacementOnResolve": "Shuffled"
     },
     "metadata": {
         "collectorNumber": "81",
@@ -274,6 +316,95 @@
     ]
 }
 
+// Hero of Bladehold
+{
+    "name": "Hero of Bladehold",
+    "manaCost": "{2}{W}{W}",
+    "typeLine": "Creature — Human Knight",
+    "oracleText": "Battle cry (Whenever this creature attacks, each other attacking creature gets +1/+0 until end of turn.)\nWhenever this creature attacks, create two 1/1 white Soldier creature tokens that are tapped and attacking.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Hero of Bladehold:1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature attacking",
+                            "excludeSelf": true
+                        }
+                    },
+                    "body": {
+                        "type": "ModifyStats",
+                        "powerModifier": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "toughnessModifier": {
+                            "type": "Fixed",
+                            "amount": 0
+                        },
+                        "target": "IterationEntity"
+                    }
+                },
+                "descriptionOverride": "Battle cry (Whenever this creature attacks, each other attacking creature gets +1/+0 until end of turn.)"
+            },
+            {
+                "id": "Hero of Bladehold:2",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "WHITE"
+                    ],
+                    "creatureTypes": [
+                        "Soldier"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/7/a/7a563df7-7b9d-4692-ab1b-578be1887b62.jpg?1783941682",
+                    "tapped": true,
+                    "attacking": true,
+                    "attackDefender": "CONTROLLER_CHOOSES"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "8",
+        "rarity": "MYTHIC",
+        "artist": "Austin Hsu",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/a/8a3853ec-e307-46e0-96d7-0706b5c45c5e.jpg?1783941393",
+        "rulings": [
+            {
+                "date": "2011-06-01",
+                "text": "Whenever Hero of Bladehold attacks, both abilities will trigger. You can put them onto the stack in any order. If the token-creating ability resolves first, the tokens each get +1/+0 until end of turn from the battle cry ability."
+            },
+            {
+                "date": "2011-06-01",
+                "text": "You choose which opponent or planeswalker an opponent controls that each token is attacking when it is put onto the battlefield."
+            },
+            {
+                "date": "2011-06-01",
+                "text": "Although the tokens are attacking, they never were declared as attacking creatures (for purposes of abilities that trigger whenever a creature attacks, for example)."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Hexplate Golem
 {
     "name": "Hexplate Golem",
@@ -288,6 +419,62 @@
         "artist": "Matt Cavotta",
         "flavorText": "\"Use everything. Iron, rust, scrap . . . even the ground must join our cause.\"\n—Ezuri, renegade leader",
         "imageUri": "https://cards.scryfall.io/normal/front/4/9/49b913f3-6581-45ae-9cdb-274c2ccd8899.jpg?1783941369"
+    },
+    "colorIdentityOverride": []
+}
+
+// Ichor Wellspring
+{
+    "name": "Ichor Wellspring",
+    "manaCost": "{2}",
+    "typeLine": "Artifact",
+    "oracleText": "When this artifact enters or is put into a graveyard from the battlefield, draw a card.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Ichor Wellspring:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "When this artifact enters, draw a card."
+            },
+            {
+                "id": "Ichor Wellspring:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "When this artifact is put into a graveyard from the battlefield, draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "110",
+        "artist": "Steven Belledin",
+        "flavorText": "\"Our glorious infection has taken hold.\"\n—Elesh Norn, Grand Cenobite",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/d/2d1ea522-a0f6-45a8-8985-6fcca95d60cc.jpg?1783941368",
+        "rulings": [
+            {
+                "date": "2011-06-01",
+                "text": "The ability will trigger when Ichor Wellspring is put into a graveyard from the battlefield, even if the ability that triggered when it entered hasn't resolved yet."
+            }
+        ]
     },
     "colorIdentityOverride": []
 }
@@ -345,6 +532,70 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Lead the Stampede
+{
+    "name": "Lead the Stampede",
+    "manaCost": "{2}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Look at the top five cards of your library. You may reveal any number of creature cards from among them and put the revealed cards into your hand. Put the rest on the bottom of your library in any order.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "TopOfLibrary",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 5
+                        }
+                    },
+                    "storeAs": "looked"
+                },
+                {
+                    "type": "SelectFromCollection",
+                    "from": "looked",
+                    "selection": "ChooseAnyNumber",
+                    "filter": "creature",
+                    "storeSelected": "kept",
+                    "storeRemainder": "rest",
+                    "prompt": "You may reveal any number of creature cards and put them into your hand",
+                    "showAllCards": true
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "kept",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Hand"
+                    },
+                    "revealed": true
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "rest",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Library",
+                        "placement": "Bottom"
+                    },
+                    "order": "ControllerChooses"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "82",
+        "rarity": "UNCOMMON",
+        "artist": "Efrem Palacios",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/6/66ed14c8-38c6-4da5-a6ee-f814478161d2.jpg?1783941375"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -697,7 +948,7 @@
                 "id": "t0"
             }
         ],
-        "selfShuffleIntoLibraryOnResolve": true
+        "selfLibraryPlacementOnResolve": "Shuffled"
     },
     "metadata": {
         "collectorNumber": "74",
@@ -714,6 +965,126 @@
     "colorIdentityOverride": [
         "RED"
     ]
+}
+
+// Sangromancer
+{
+    "name": "Sangromancer",
+    "manaCost": "{2}{B}{B}",
+    "typeLine": "Creature — Vampire Shaman",
+    "oracleText": "Flying\nWhenever a creature an opponent controls dies, you may gain 3 life.\nWhenever an opponent discards a card, you may gain 3 life.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Sangromancer:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:opponent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "GainLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 3
+                        }
+                    },
+                    "descriptionOverride": "Whenever a creature an opponent controls dies, you may gain 3 life."
+                },
+                "descriptionOverride": "Whenever a creature an opponent controls dies, you may gain 3 life."
+            },
+            {
+                "id": "Sangromancer:2",
+                "trigger": {
+                    "type": "DiscardEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "GainLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 3
+                        }
+                    },
+                    "descriptionOverride": "Whenever an opponent discards a card, you may gain 3 life."
+                },
+                "descriptionOverride": "Whenever an opponent discards a card, you may gain 3 life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "53",
+        "rarity": "RARE",
+        "artist": "Igor Kieryluk",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/c/9c374193-4ebb-4f33-a24d-e567aea57b01.jpg?1783941382",
+        "rulings": [
+            {
+                "date": "2011-06-01",
+                "text": "If one or more creatures an opponent controls are put into the graveyard at the same time as Sangromancer, Sangromancer's first ability will trigger that many times."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Shimmer Myr
+{
+    "name": "Shimmer Myr",
+    "manaCost": "{3}",
+    "typeLine": "Artifact Creature — Myr",
+    "oracleText": "Flash\nYou may cast artifact spells as though they had flash.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantFlashToSpellType",
+                "filter": "artifact",
+                "controllerOnly": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "129",
+        "rarity": "RARE",
+        "artist": "Jana Schirmer & Johannes Voss",
+        "flavorText": "It evades Phyrexians by hiding in the spaces between seconds.",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/7/478c1a5b-237b-4ecb-be73-3c6dafd5ae53.jpg?1783941364",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "Once you announce that you're casting a spell, players can't attempt to remove Shimmer Myr from the battlefield to make that casting illegal. Removing Shimmer Myr after you've cast a spell won't affect that spell."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "Shimmer Myr has no effect on artifact lands because they aren't cast as spells."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
 }
 
 // Slagstorm
@@ -895,7 +1266,7 @@
             ],
             "imageUri": "https://cards.scryfall.io/normal/front/7/d/7d400b41-813d-4a63-848f-5eb4db4bf3bb.jpg?1783903575"
         },
-        "selfShuffleIntoLibraryOnResolve": true
+        "selfLibraryPlacementOnResolve": "Shuffled"
     },
     "metadata": {
         "collectorNumber": "19",

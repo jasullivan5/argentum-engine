@@ -163,6 +163,21 @@ sealed interface Duration {
     }
 
     /**
+     * Effect lasts for as long as the effect's source *card* stays encoded on the affected
+     * creature (cipher, CR 702.99c): the card remains in exile as the same object and the creature
+     * remains on the battlefield. A control change, or the creature ceasing to be a creature, does
+     * not end it. The source is the exiled cipher card; the affected object is the creature.
+     *
+     * Engine-made only — the cipher resolution grants [com.wingedsheep.sdk.scripting.Cipher
+     * .encodedCardTrigger] with it; no card authors it.
+     */
+    @SerialName("WhileSourceEncodedOnAffected")
+    @Serializable
+    data object WhileSourceEncodedOnAffected : Duration {
+        override val description = "for as long as the card stays encoded on it"
+    }
+
+    /**
      * Effect lasts for as long as the effect's source (an Aura/Equipment) remains attached to the
      * affected permanent (CR 611.2b "for as long as …"). The effect drops the instant the source
      * leaves the battlefield, becomes unattached, or re-attaches to a different permanent. The
@@ -178,6 +193,26 @@ sealed interface Duration {
     @Serializable
     data object WhileSourceAttachedToAffected : Duration {
         override val description = "for as long as it remains attached"
+    }
+
+    /**
+     * Effect lasts for as long as the effect's source (an Aura/Equipment) is attached to *a*
+     * permanent, and applies to whichever permanent that is — the duration of an Aura's own
+     * "enchanted creature is …" static (CR 611.3a: a static ability's effect applies to what it
+     * currently describes). Moving the source to another permanent takes the effect off the old
+     * host and puts it on the new one; the source leaving or becoming unattached ends it.
+     *
+     * Used by Metamorphic Alteration ("enchanted creature is a copy of the chosen creature"): the
+     * copy is locked in as the creature is chosen and follows the Aura. Closest existing durations:
+     * [WhileSourceAttachedToAffected] latches off per affected entity and never moves (Assimilation
+     * Aegis' "for as long as this Equipment remains attached to it"), and [WhileSourceOnBattlefield]
+     * doesn't end when the source becomes unattached. Supported by
+     * `EachPermanentBecomesCopyOfTargetEffect`.
+     */
+    @SerialName("WhileSourceAttached")
+    @Serializable
+    data object WhileSourceAttached : Duration {
+        override val description = "for as long as it's attached"
     }
 
     /**
@@ -285,6 +320,25 @@ sealed interface Duration {
     }
 
     /**
+     * Effect applies only **during** the affected player's next turn — "each opponent can't cast
+     * instant or sorcery spells during that player's next turn" (Sphinx's Decree, Azor, the
+     * Lawbringer). Unlike the "until …" durations it doesn't start at once: it lies dormant through
+     * the rest of the current turn and every other player's turn, binds from the start of the
+     * affected player's next turn, and ends at that turn's cleanup (CR 514.2). The current turn
+     * never counts, even when it is the affected player's own.
+     *
+     * Keyed per affected player, so "each opponent … during that player's next turn" gives every
+     * opponent their own window. Honoured by
+     * [com.wingedsheep.sdk.scripting.effects.CantCastSpellsEffect], whose per-player ban records a
+     * `turnNumber + 1` floor and binds only while its holder is the active player at or after it.
+     */
+    @SerialName("DuringAffectedPlayersNextTurn")
+    @Serializable
+    data object DuringAffectedPlayersNextTurn : Duration {
+        override val description = "during that player's next turn"
+    }
+
+    /**
      * Effect lasts until the beginning of the affected card's **owner's** next turn — "until that
      * player's next turn" where "that player" is the player whose hand the card went to (Firestorm
      * Phoenix). The affected-object mirror of [UntilYourNextTurn], which is keyed to the effect's
@@ -307,7 +361,9 @@ sealed interface Duration {
     /**
      * Effect lasts while the source permanent remains tapped. One-way (CR 611.2b): once the
      * source untaps or leaves the battlefield the effect ends for good — `EndedDurationExpiryCheck`
-     * removes it, so a later re-tap does not restart it.
+     * removes it, so a later re-tap does not restart it. Created by an activated ability, the
+     * duration counts from activation: a source that untaps before the ability resolves (even if
+     * tapped again by then) has already ended it, so the effect does nothing (Entrancing Lyre ruling).
      * Example: Everglove Courier "for as long as Everglove Courier remains tapped"
      */
     @SerialName("WhileSourceTapped")
@@ -406,7 +462,7 @@ sealed interface Duration {
      * ends for good — `EndedDurationExpiryCheck` removes it, so regaining control does not
      * restart it.
      *
-     * Example: Suspend (CR 702.62g) — a creature played via suspend "gains haste until you
+     * Example: Suspend (CR 702.62a) — a creature played via suspend "gains haste until you
      * lose control of the spell or the permanent it becomes."
      */
     @SerialName("WhileControlledByController")
@@ -431,11 +487,16 @@ sealed interface Duration {
      * of control-changing effect (one-shot steals, Threaten, static control Auras). One-way
      * (CR 611.2b): once the source's controller changes (or the source leaves the battlefield)
      * the effect ends for good — `EndedDurationExpiryCheck` physically removes it, so
-     * regaining control does not restart it.
+     * regaining control does not restart it. A source already gone or no longer yours when the
+     * effect would begin has ended the duration first, so the effect does nothing (Dragonlord
+     * Silumgar's enters-trigger steal).
      *
      * Examples: Aladdin (ARN) — "Gain control of target artifact for as long as you control
      * this creature."  Scroll of Isildur (LTR) — "Gain control of up to one target artifact
      * for as long as you control this Saga."
+     * Also honoured by the activated-ability grant, which records its controller: Quicksmith Spy
+     * (AER) — "target artifact you control gains '{T}: Draw a card' for as long as you control
+     * this creature."
      */
     @SerialName("WhileYouControlSource")
     @Serializable
@@ -468,8 +529,10 @@ sealed interface Duration {
     }
 
     /**
-     * Effect is consumed the first time its replacement effect is applied
-     * or end of turn if not consumed.
+     * Effect is consumed the first time it is used, or ends at end of turn if not consumed: the
+     * first time its replacement effect is applied, or — on a granted `MayCastFromGraveyard` — the
+     * first graveyard cast it authorizes ("you may cast a creature spell from your graveyard this
+     * turn", Chainer, Nightmare Adept).
      */
     @SerialName("NextUse")
     @Serializable

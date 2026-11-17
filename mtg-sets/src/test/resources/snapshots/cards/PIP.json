@@ -1934,7 +1934,14 @@
         "triggeredAbilities": [
             {
                 "id": "C.A.M.P.:1",
-                "trigger": "LandTappedForMana",
+                "trigger": {
+                    "type": "PermanentTappedForMana",
+                    "permanentFilter": {
+                        "cardPredicates": [
+                            "IsLand"
+                        ]
+                    }
+                },
                 "binding": "ATTACHED",
                 "effect": {
                     "type": "Composite",
@@ -6170,31 +6177,25 @@
                     "to": "Battlefield"
                 },
                 "effect": {
-                    "type": "ForEach",
-                    "space": {
-                        "type": "IterationSpace.Players",
-                        "players": "EachOpponent"
+                    "type": "ForceSacrifice",
+                    "filter": "creature",
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "EachOpponent"
                     },
-                    "body": {
-                        "type": "ForceSacrifice",
-                        "filter": "creature",
-                        "target": {
-                            "type": "PlayerRef",
-                            "player": "You"
+                    "dynamicCount": {
+                        "type": "Divide",
+                        "numerator": {
+                            "type": "AggregateBattlefield",
+                            "player": "You",
+                            "filter": "creature"
                         },
-                        "dynamicCount": {
-                            "type": "Divide",
-                            "numerator": {
-                                "type": "AggregateBattlefield",
-                                "player": "You",
-                                "filter": "creature"
-                            },
-                            "denominator": {
-                                "type": "Fixed",
-                                "amount": 10
-                            }
+                        "denominator": {
+                            "type": "Fixed",
+                            "amount": 10
                         }
-                    }
+                    },
+                    "countPerPlayer": true
                 }
             },
             {
@@ -6654,19 +6655,8 @@
                 },
                 "binding": "ANY",
                 "effect": {
-                    "type": "GrantStaticAbility",
-                    "ability": {
-                        "type": "CantBeBlockedBy",
-                        "blockerFilter": {
-                            "cardPredicates": [
-                                "IsCreature",
-                                {
-                                    "type": "PowerGreaterThanEntity",
-                                    "reference": "Self"
-                                }
-                            ]
-                        }
-                    },
+                    "type": "GrantKeyword",
+                    "keyword": "SKULK",
                     "target": "TriggeringEntity"
                 },
                 "descriptionOverride": "Whenever a creature you control with power 2 or less attacks, it gains skulk until end of turn."
@@ -9340,7 +9330,10 @@
                     "filter": {
                         "baseFilter": "artifact|enchantment"
                     },
-                    "totalManaValueAtMost": "CastX"
+                    "totalAtMost": {
+                        "property": "MANA_VALUE",
+                        "amount": "CastX"
+                    }
                 }
             }
         ],

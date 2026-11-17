@@ -6,7 +6,8 @@ import type { EntityId, ChooseTargetsDecision, ClientCard } from '@/types'
 import { calculateFittingCardWidth, type ResponsiveSizes } from '@/hooks/useResponsive.ts'
 import { ZoneSelectionUI, type ZoneCardInfo } from './ZoneSelectionUI'
 import { getCardImageUrl } from '@/utils/cardImages.ts'
-import { derivePileAction } from '@/utils/targeting.ts'
+import { derivePileAction, totalCapSum, totalCapsFor, wouldExceedTotalCaps } from '@/utils/targeting.ts'
+import type { SelectionTotalCap } from '@/store/slices/types'
 import styles from './DecisionUI.module.css'
 
 /**
@@ -196,6 +197,7 @@ export function GraveyardTargetingUI({
         selectionGroups={targetReq?.selectionGroups ?? null}
         exclusiveGroups={targetReq?.exclusiveGroups ?? null}
         distinctCategories={targetReq?.distinctCategories ?? null}
+        totalCaps={totalCapsFor(targetReq)}
         responsive={responsive}
         onConfirm={handleConfirm}
         confirmText={isOptionalTarget ? optionalConfirmText : 'Confirm Target'}
@@ -285,7 +287,7 @@ export function GraveyardTargetingUI({
         onSelectedCardsChange={setSelectedCards}
         minSelections={minTargets}
         maxSelections={maxTargets}
-        totalManaValueAtMost={targetReq?.totalManaValueAtMost ?? null}
+        totalCaps={totalCapsFor(targetReq)}
         selectionGroups={targetReq?.selectionGroups ?? null}
         exclusiveGroups={targetReq?.exclusiveGroups ?? null}
         distinctCategories={targetReq?.distinctCategories ?? null}
@@ -315,7 +317,7 @@ function GraveyardCardSelection({
   onSelectedCardsChange,
   minSelections,
   maxSelections,
-  totalManaValueAtMost,
+  totalCaps,
   responsive,
   onConfirm,
   onMinimize,
@@ -330,7 +332,8 @@ function GraveyardCardSelection({
   onSelectedCardsChange: (cards: EntityId[]) => void
   minSelections: number
   maxSelections: number
-  totalManaValueAtMost?: number | null
+  /** "… with total power / mana value N or less" — see [totalCapsFor]. */
+  totalCaps: readonly SelectionTotalCap[]
   selectionGroups?: readonly (readonly EntityId[])[] | null
   exclusiveGroups?: readonly (readonly EntityId[])[] | null
   /** Each candidate's claimable categories; picks must each claim a different one ("of each color"). */
@@ -381,11 +384,8 @@ function GraveyardCardSelection({
     60
   )
 
-  // Running "total mana value ≤ cap" limit (Fire Lord Sozin). Selecting a card that would push the
-  // summed mana value over the cap is blocked, mirroring the server-side aggregate target rule.
-  const manaValueOf = (id: EntityId) => cards.find((c) => c.id === id)?.manaValue ?? 0
-  const selectedManaValue = selectedCards.reduce((sum, id) => sum + manaValueOf(id), 0)
-
+  // Running "total mana value / power ≤ cap" limit (Fire Lord Sozin, Nethroi). Selecting a card
+  // that would push the sum over the cap is blocked, mirroring the server-side aggregate target rule.
   const toggleCard = (cardId: EntityId) => {
     if (selectedCards.includes(cardId)) {
       onSelectedCardsChange(selectedCards.filter((id) => id !== cardId))
@@ -398,22 +398,12 @@ function GraveyardCardSelection({
       // `battlefield ∪ pile` requirement — the pick carried in from the board fills the only slot
       // and isn't in this ribbon, so without replacement no graveyard card could ever be clicked.
       if (maxSelections === 1) {
-        if (
-          totalManaValueAtMost != null &&
-          manaValueOf(cardId) > totalManaValueAtMost
-        ) {
-          return
-        }
+        if (wouldExceedTotalCaps(totalCaps, [], cardId)) return
         onSelectedCardsChange([cardId])
       }
       return
     }
-    if (
-      totalManaValueAtMost != null &&
-      selectedManaValue + manaValueOf(cardId) > totalManaValueAtMost
-    ) {
-      return
-    }
+    if (wouldExceedTotalCaps(totalCaps, selectedCards, cardId)) return
     onSelectedCardsChange([...selectedCards, cardId])
   }
 
@@ -451,14 +441,14 @@ function GraveyardCardSelection({
           {' / '}
           {maxSelections}
         </span>
-        {totalManaValueAtMost != null && (
-          <span>
-            {' · '}Total mana value:{' '}
-            <span className={styles.selectionCount}>{selectedManaValue}</span>
+        {totalCaps.map((c) => (
+          <span key={c.label}>
+            {' · '}Total {c.label}:{' '}
+            <span className={styles.selectionCount}>{totalCapSum(c, selectedCards)}</span>
             {' / '}
-            {totalManaValueAtMost}
+            {c.cap}
           </span>
-        )}
+        ))}
       </div>
 
       {/* Card ribbon */}

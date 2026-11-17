@@ -79,14 +79,25 @@ sealed interface ManaColorSet {
      * costs are ignored; colorless production is ignored. Used by Fellwar Stone
      * (OPPONENTS), Exotic Orchard (OPPONENTS), Reflecting Pool (YOU). "Any *type*" adds a
      * second `{C}` ability gated on `CardPredicate.CouldProduceColorlessMana` (Naga Vitalist).
+     *
+     * [landFilter] narrows the lands in [scope] to those it matches (read from projected state):
+     * Plaza of Harmony's "a Gate you control" is `LandsCouldProduce(YOU, Land.withSubtype("Gate"))`.
+     * Null means every land in [scope]. [scope] owns the controller, so the filter names only what
+     * the land is (no controller predicate).
      */
     @SerialName("ManaColorSet.LandsCouldProduce")
     @Serializable
-    data class LandsCouldProduce(val scope: LandControllerScope) : ManaColorSet {
-        override val description: String = when (scope) {
-            LandControllerScope.OPPONENTS -> "any color a land an opponent controls could produce"
-            LandControllerScope.YOU -> "any color a land you control could produce"
-            LandControllerScope.ANY -> "any color a land could produce"
+    data class LandsCouldProduce(
+        val scope: LandControllerScope,
+        val landFilter: GameObjectFilter? = null,
+    ) : ManaColorSet {
+        override val description: String = run {
+            val land = landFilter?.let { "${it.indefiniteArticle} ${it.description}" } ?: "a land"
+            when (scope) {
+                LandControllerScope.OPPONENTS -> "any color $land an opponent controls could produce"
+                LandControllerScope.YOU -> "any color $land you control could produce"
+                LandControllerScope.ANY -> "any color $land could produce"
+            }
         }
     }
 
@@ -146,6 +157,24 @@ sealed interface ManaColorSet {
         }
 
         override val description: String = members.joinToString(" or ") { it.description }
+    }
+
+    /**
+     * [base] minus the color chosen earlier in this resolution (`ChooseColorThenEffect`'s
+     * chosen-color context) — "any **other** color". "Add two mana of any one color and two mana
+     * of any other color" (Open the Omenpaths) is
+     * `ChooseColorThen(AddManaOfChoice(AnyColor, 2) then AddManaOfChoice(ExceptChosenColor(), 2))`:
+     * the first add takes the chosen color, the second offers the four others.
+     *
+     * Unlike [SourceChosenColor] (a color stored on the source permanent) this reads the
+     * resolution's own choice, so it only narrows inside a `ChooseColorThen`; with no color
+     * chosen it is [base] unchanged. [Union] adds pools; this is its subtraction.
+     */
+    @SerialName("ManaColorSet.ExceptChosenColor")
+    @Serializable
+    data class ExceptChosenColor(val base: ManaColorSet = AnyColor) : ManaColorSet {
+        override val description: String =
+            if (base == AnyColor) "any other color" else "${base.description} other than the chosen color"
     }
 }
 

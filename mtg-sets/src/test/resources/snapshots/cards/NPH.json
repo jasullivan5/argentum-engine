@@ -137,6 +137,33 @@
     ]
 }
 
+// Blighted Agent
+{
+    "name": "Blighted Agent",
+    "manaCost": "{1}{U}",
+    "typeLine": "Creature — Phyrexian Human Rogue",
+    "oracleText": "Infect (This creature deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.)\nThis creature can't be blocked.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "INFECT"
+    ],
+    "flags": [
+        "CANT_BE_BLOCKED"
+    ],
+    "metadata": {
+        "collectorNumber": "29",
+        "artist": "Anthony Francisco",
+        "flavorText": "\"Urabrask may suspect our surveillance, but he cannot stop it.\"\n—Avaricta, Gitaxian sective",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/d/cddaebde-a060-4510-8c97-68432d931987.jpg?1783941323"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Deceiver Exarch
 {
     "name": "Deceiver Exarch",
@@ -332,6 +359,179 @@
     }
 }
 
+// Elesh Norn, Grand Cenobite
+{
+    "name": "Elesh Norn, Grand Cenobite",
+    "manaCost": "{5}{W}{W}",
+    "typeLine": "Legendary Creature — Phyrexian Praetor",
+    "oracleText": "Vigilance\nOther creatures you control get +2/+2.\nCreatures your opponents control get -2/-2.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 7
+    },
+    "keywords": [
+        "VIGILANCE"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 2,
+                "toughnessBonus": 2,
+                "filter": {
+                    "baseFilter": "creature ctrl:you",
+                    "excludeSelf": true
+                }
+            },
+            {
+                "type": "ModifyStats",
+                "powerBonus": -2,
+                "toughnessBonus": -2,
+                "filter": {
+                    "baseFilter": "creature ctrl:opponent"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "9",
+        "rarity": "MYTHIC",
+        "artist": "Igor Kieryluk",
+        "flavorText": "\"The Gitaxians whisper among themselves of other worlds. If they exist, we must bring Phyrexia's magnificence to them.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/6/b66390d6-1649-4bfa-92d3-77664650d552.jpg?1783941327",
+        "rulings": [
+            {
+                "date": "2017-11-17",
+                "text": "If a second Elesh Norn, Grand Cenobite comes under your control, you'll put one into its owner's graveyard due to the \"legend rule\" at the same time that any of your opponents' creatures getting -4/-4 are put into their owner's graveyard for having 0 or less toughness."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Entomber Exarch
+{
+    "name": "Entomber Exarch",
+    "manaCost": "{2}{B}{B}",
+    "typeLine": "Creature — Phyrexian Cleric",
+    "oracleText": "When this creature enters, choose one —\n• Return target creature card from your graveyard to your hand.\n• Target opponent reveals their hand. You choose a noncreature card from it. That player discards that card.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Entomber Exarch:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Modal",
+                    "modes": [
+                        {
+                            "effect": {
+                                "type": "MoveToZone",
+                                "target": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                },
+                                "destination": "Hand"
+                            },
+                            "targetRequirements": [
+                                {
+                                    "type": "TargetObject",
+                                    "filter": {
+                                        "baseFilter": "creature own:you",
+                                        "zone": "Graveyard"
+                                    },
+                                    "id": "t0"
+                                }
+                            ],
+                            "description": "Return target creature card from your graveyard to your hand."
+                        },
+                        {
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "RevealHand",
+                                        "target": {
+                                            "type": "BoundVariable",
+                                            "name": "t1"
+                                        }
+                                    },
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "FromZone",
+                                            "zone": "Hand",
+                                            "player": {
+                                                "type": "BoundVariable",
+                                                "name": "t1"
+                                            }
+                                        },
+                                        "storeAs": "gathered1"
+                                    },
+                                    {
+                                        "type": "SelectFromCollection",
+                                        "from": "gathered1",
+                                        "selection": {
+                                            "type": "ChooseExactly",
+                                            "count": {
+                                                "type": "Fixed",
+                                                "amount": 1
+                                            }
+                                        },
+                                        "filter": "noncreature",
+                                        "storeSelected": "selected2",
+                                        "prompt": "Choose a noncreature card to discard",
+                                        "showAllCards": true,
+                                        "alwaysPrompt": true
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "selected2",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Graveyard",
+                                            "player": {
+                                                "type": "BoundVariable",
+                                                "name": "t1"
+                                            }
+                                        },
+                                        "moveType": "Discard"
+                                    }
+                                ]
+                            },
+                            "targetRequirements": [
+                                {
+                                    "type": "TargetOpponent",
+                                    "id": "t1"
+                                }
+                            ],
+                            "description": "Target opponent reveals their hand. You choose a noncreature card from it. That player discards that card."
+                        }
+                    ]
+                },
+                "descriptionOverride": "When this creature enters, choose one — Return target creature card from your graveyard to your hand; or target opponent reveals their hand, you choose a noncreature card from it, and that player discards that card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "59",
+        "rarity": "UNCOMMON",
+        "artist": "Svetlin Velinov",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/f/7f58020e-6d4d-474d-8d4b-cfb7d5a5e9a8.jpg"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Flameborn Viron
 {
     "name": "Flameborn Viron",
@@ -462,6 +662,111 @@
                 "text": "The targeted player may have no cards in their hand. You'll still draw a card."
             }
         ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Gut Shot
+{
+    "name": "Gut Shot",
+    "manaCost": "{R/P}",
+    "typeLine": "Instant",
+    "oracleText": "Gut Shot deals 1 damage to any target.",
+    "script": {
+        "spellEffect": {
+            "type": "DealDamage",
+            "amount": {
+                "type": "Fixed",
+                "amount": 1
+            },
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "AnyTarget",
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "86",
+        "rarity": "UNCOMMON",
+        "artist": "Greg Staples",
+        "flavorText": "\"Down here, we have a more pointed version of the scriptures.\"\n—Urabrask's enforcer",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/5/a54a2a30-b96a-49c7-9151-1f4b0d4a4413.jpg?1783941308",
+        "rulings": [
+            {
+                "date": "2011-06-01",
+                "text": "A card with Phyrexian mana symbols in its mana cost is each color that appears in that mana cost, regardless of how that cost may have been paid."
+            },
+            {
+                "date": "2011-06-01",
+                "text": "To calculate the mana value of a card with Phyrexian mana symbols in its cost, count each Phyrexian mana symbol as 1."
+            },
+            {
+                "date": "2011-06-01",
+                "text": "If you're at 1 life or less, you can't pay 2 life."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Jin-Gitaxias, Core Augur
+{
+    "name": "Jin-Gitaxias, Core Augur",
+    "manaCost": "{8}{U}{U}",
+    "typeLine": "Legendary Creature — Phyrexian Praetor",
+    "oracleText": "Flash\nAt the beginning of your end step, draw seven cards.\nEach opponent's maximum hand size is reduced by seven.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Jin-Gitaxias, Core Augur:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 7
+                    }
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyMaximumHandSize",
+                "player": "EachOpponent",
+                "amount": {
+                    "type": "Fixed",
+                    "amount": -7
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "37",
+        "rarity": "MYTHIC",
+        "artist": "Eric Deschamps",
+        "flavorText": "\"It is not a goal, but a process—the process of creating the perfect Phyrexia.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/d/bd46fc9f-5b92-44d7-8940-2f39b0962b8f.jpg?1783941319"
     },
     "colorIdentityOverride": [
         "BLUE"
@@ -667,6 +972,166 @@
     "colorIdentityOverride": [
         "WHITE"
     ]
+}
+
+// Master Splicer
+{
+    "name": "Master Splicer",
+    "manaCost": "{3}{W}",
+    "typeLine": "Creature — Phyrexian Human Artificer",
+    "oracleText": "When this creature enters, create a 3/3 colorless Phyrexian Golem artifact creature token.\nGolems you control get +1/+1.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Master Splicer:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 3,
+                    "toughness": 3,
+                    "colors": [],
+                    "creatureTypes": [
+                        "Phyrexian",
+                        "Golem"
+                    ],
+                    "artifactToken": true
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "permanent Golem ctrl:you"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "16",
+        "rarity": "UNCOMMON",
+        "artist": "Chippy",
+        "flavorText": "With Phyrexia's victory at hand, each sect began perfecting its vision.",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/5/859d2b91-63af-4700-8ca5-b1756aa6639b.jpg"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Mental Misstep
+{
+    "name": "Mental Misstep",
+    "manaCost": "{U/P}",
+    "typeLine": "Instant",
+    "oracleText": "Counter target spell with mana value 1.",
+    "script": {
+        "spellEffect": "Counter",
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "mv=1",
+                    "zone": "Stack"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "38",
+        "rarity": "UNCOMMON",
+        "artist": "Erica Yang",
+        "flavorText": "\"Your first mistake was thinking I would let you live long enough to make a second.\"\n—Sarnvax, Gitaxian sective",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/1/61e9c6df-1c84-4eab-9076-a4feb6347c10.jpg?1783941319",
+        "rulings": [
+            {
+                "date": "2011-06-01",
+                "text": "Each Phyrexian mana symbol in a spell's mana cost contributes 1 to that spell's mana value. For example, Mental Misstep's mana value is 1, regardless of how its cost was paid."
+            },
+            {
+                "date": "2011-06-01",
+                "text": "If you're at 1 life or less, you can't pay 2 life."
+            },
+            {
+                "date": "2011-06-01",
+                "text": "If a spell has {X} in its mana cost, X is considered to be the value chosen for it while that spell is on the stack."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Mindcrank
+{
+    "name": "Mindcrank",
+    "manaCost": "{2}",
+    "typeLine": "Artifact",
+    "oracleText": "Whenever an opponent loses life, that player mills that many cards. (Damage causes loss of life.)",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Mindcrank:1",
+                "trigger": {
+                    "type": "LifeLossEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "ContextProperty",
+                                    "key": "TRIGGER_LIFE_LOST"
+                                },
+                                "player": "TriggeringPlayer",
+                                "isMill": true
+                            },
+                            "storeAs": "milled"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "milled",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard",
+                                "player": "TriggeringPlayer"
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever an opponent loses life, that player mills that many cards."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "144",
+        "rarity": "UNCOMMON",
+        "artist": "Chris Rahn",
+        "flavorText": "\"Let go of your memories and be reborn.\"\n—Argent Etchings, plate 106, passage 27",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/1/d13a5ae0-d76a-4430-98c1-47a19e615e2c.jpg?1783941294",
+        "rulings": [
+            {
+                "date": "2017-11-17",
+                "text": "Damage dealt to an opponent usually causes that opponent to lose life. An opponent paying life also causes loss of life."
+            }
+        ]
+    }
 }
 
 // Noxious Revival
@@ -989,6 +1454,82 @@
     ]
 }
 
+// Sheoldred, Whispering One
+{
+    "name": "Sheoldred, Whispering One",
+    "manaCost": "{5}{B}{B}",
+    "typeLine": "Legendary Creature — Phyrexian Praetor",
+    "oracleText": "Swampwalk (This creature can't be blocked as long as defending player controls a Swamp.)\nAt the beginning of your upkeep, return target creature card from your graveyard to the battlefield.\nAt the beginning of each opponent's upkeep, that player sacrifices a creature of their choice.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "keywords": [
+        "SWAMPWALK"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Sheoldred, Whispering One:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Battlefield",
+                    "fromZone": "Graveyard"
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature own:you",
+                        "zone": "Graveyard"
+                    },
+                    "id": "t0"
+                }
+            },
+            {
+                "id": "Sheoldred, Whispering One:2",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ForceSacrifice",
+                    "filter": "creature",
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "73",
+        "rarity": "MYTHIC",
+        "artist": "Jana Schirmer & Johannes Voss",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/b/3bb8347b-8663-40b8-bdfb-411236d2efc8.jpg?1783941310",
+        "rulings": [
+            {
+                "date": "2017-11-17",
+                "text": "The opponent whose upkeep it is chooses a creature to sacrifice when Sheoldred's second triggered ability resolves."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Spellskite
 {
     "name": "Spellskite",
@@ -1074,6 +1615,117 @@
     ]
 }
 
+// Suture Priest
+{
+    "name": "Suture Priest",
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature — Phyrexian Cleric",
+    "oracleText": "Whenever another creature you control enters, you may gain 1 life.\nWhenever a creature an opponent controls enters, you may have that player lose 1 life.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Suture Priest:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "GainLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    },
+                    "descriptionOverride": "Whenever another creature you control enters, you may gain 1 life."
+                },
+                "descriptionOverride": "Whenever another creature you control enters, you may gain 1 life."
+            },
+            {
+                "id": "Suture Priest:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:opponent",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "LoseLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "target": "ControllerOfTriggeringEntity"
+                    },
+                    "descriptionOverride": "Whenever a creature an opponent controls enters, you may have that player lose 1 life."
+                },
+                "descriptionOverride": "Whenever a creature an opponent controls enters, you may have that player lose 1 life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "25",
+        "artist": "Igor Kieryluk",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/1/31432e98-86cd-42ea-ad37-eb4383dc6a81.jpg?1783941323"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Tezzeret's Gambit
+{
+    "name": "Tezzeret's Gambit",
+    "manaCost": "{3}{U/P}",
+    "typeLine": "Sorcery",
+    "oracleText": "({U/P} can be paid with either {U} or 2 life.)\nDraw two cards, then proliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                "Proliferate"
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "47",
+        "rarity": "UNCOMMON",
+        "artist": "Karl Kopinski",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/f/fff5a09e-9276-44b8-b374-4b84aebd47cc.jpg?1783941318",
+        "rulings": [
+            {
+                "date": "2011-06-01",
+                "text": "To calculate the mana value of a card with Phyrexian mana symbols in its cost, count each Phyrexian mana symbol as 1."
+            },
+            {
+                "date": "2011-06-01",
+                "text": "If you're at 1 life or less, you can't pay 2 life."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Torpor Orb
 {
     "name": "Torpor Orb",
@@ -1082,7 +1734,7 @@
     "oracleText": "Creatures entering don't cause abilities to trigger.",
     "script": {
         "staticAbilities": [
-            "SuppressEntersTriggers"
+            "SuppressZoneChangeTriggers"
         ]
     },
     "metadata": {
@@ -1092,6 +1744,91 @@
         "flavorText": "\"Phyrexia is certainly dangerous, but I have to admire some of its innovations.\"\n—Tezzeret",
         "imageUri": "https://cards.scryfall.io/normal/front/9/5/953610f6-ea96-4e71-969f-50ecac09c091.jpg?1722108794"
     }
+}
+
+// Triumph of the Hordes
+{
+    "name": "Triumph of the Hordes",
+    "manaCost": "{2}{G}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Until end of turn, creatures you control get +1/+1 and gain trample and infect. (Creatures with infect deal damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.)",
+    "script": {
+        "spellEffect": {
+            "type": "ForEach",
+            "space": {
+                "type": "IterationSpace.Group",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                }
+            },
+            "body": {
+                "type": "Composite",
+                "effects": [
+                    {
+                        "type": "ModifyStats",
+                        "powerModifier": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "toughnessModifier": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "target": "IterationEntity"
+                    },
+                    {
+                        "type": "GrantKeyword",
+                        "keyword": "TRAMPLE",
+                        "target": "IterationEntity"
+                    },
+                    {
+                        "type": "GrantKeyword",
+                        "keyword": "INFECT",
+                        "target": "IterationEntity"
+                    }
+                ]
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "123",
+        "rarity": "UNCOMMON",
+        "artist": "Izzy",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/1/c16b90ff-d256-4ac6-b687-3430b8c80dd7.jpg?1783941300",
+        "rulings": [
+            {
+                "date": "2011-06-01",
+                "text": "Multiple instances of infect are redundant."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Unwinding Clock
+{
+    "name": "Unwinding Clock",
+    "manaCost": "{4}",
+    "typeLine": "Artifact",
+    "oracleText": "Untap all artifacts you control during each other player's untap step.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "UntapFilteredDuringOtherUntapSteps",
+                "filter": "artifact"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "164",
+        "rarity": "RARE",
+        "artist": "Mike Bierek",
+        "flavorText": "\"The partisans have unearthed a strange artifact. None know its origin, but it gives them hope of a life beyond.\"\n—Elspeth's journal",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/9/495d520b-7560-4ecb-ae62-143eeec5682f.jpg?1783941289"
+    },
+    "colorIdentityOverride": []
 }
 
 // Volt Charge
@@ -1138,5 +1875,46 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// War Report
+{
+    "name": "War Report",
+    "manaCost": "{3}{W}",
+    "typeLine": "Instant",
+    "oracleText": "You gain life equal to the number of creatures on the battlefield plus the number of artifacts on the battlefield.",
+    "script": {
+        "spellEffect": {
+            "type": "GainLife",
+            "amount": {
+                "type": "Add",
+                "left": {
+                    "type": "AggregateBattlefield",
+                    "player": "Each",
+                    "filter": "creature"
+                },
+                "right": {
+                    "type": "AggregateBattlefield",
+                    "player": "Each",
+                    "filter": "artifact"
+                }
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "26",
+        "artist": "Mike Bierek",
+        "flavorText": "Underling Ethu's 263rd report read simply \"Yes, my lord. Overwhelmingly, my lord.\" This marked the end of the Mirran-Phyrexian War.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/d/6d837262-cd5d-4fc9-96dd-39ed04166883.jpg?1783941322",
+        "rulings": [
+            {
+                "date": "2011-06-01",
+                "text": "Each artifact creature on the battlefield is counted twice."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }

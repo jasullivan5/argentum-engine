@@ -41,6 +41,49 @@
     "colorIdentityOverride": []
 }
 
+// Atraxa, Praetors' Voice
+{
+    "name": "Atraxa, Praetors' Voice",
+    "manaCost": "{G}{W}{U}{B}",
+    "typeLine": "Legendary Creature — Phyrexian Angel Horror",
+    "oracleText": "Flying, vigilance, deathtouch, lifelink\nAt the beginning of your end step, proliferate. (Choose any number of permanents and/or players, then give each another counter of each kind already there.)",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING",
+        "VIGILANCE",
+        "DEATHTOUCH",
+        "LIFELINK"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Atraxa, Praetors' Voice:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END"
+                },
+                "binding": "ANY",
+                "effect": "Proliferate"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "28",
+        "rarity": "MYTHIC",
+        "artist": "Victor Adame Minguez",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/3/c34ae834-775e-447a-a330-0270c227c667.jpg?1783937085"
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLUE",
+        "BLACK",
+        "GREEN"
+    ]
+}
+
 // Breya, Etherium Shaper
 {
     "name": "Breya, Etherium Shaper",
@@ -185,6 +228,66 @@
     ]
 }
 
+// Deepglow Skate
+{
+    "name": "Deepglow Skate",
+    "manaCost": "{4}{U}",
+    "typeLine": "Creature — Fish",
+    "oracleText": "When this creature enters, double the number of each kind of counter on any number of target permanents.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Deepglow Skate:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": "IterationSpace.Targets",
+                    "body": {
+                        "type": "DoubleCounters",
+                        "counterType": null
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "unlimited": true,
+                    "filter": {
+                        "baseFilter": "permanent"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "When this creature enters, double the number of each kind of counter on any number of target permanents."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "7",
+        "rarity": "RARE",
+        "artist": "Jason Kang",
+        "flavorText": "Its graceful glide paints the ocean floor with strokes of luminescence.",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/f/0f7c787f-2134-4cfd-901f-d5e45e62de1e.jpg?1783937090",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "To double the number of each kind of counter on a permanent, put another counter on it for each counter it already has. Effects that interact with counters being put onto permanents apply as appropriate."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "You can choose no targets if you don't want to double the counters on any permanents."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Entrapment Maneuver
 {
     "name": "Entrapment Maneuver",
@@ -295,5 +398,227 @@
     "colorIdentityOverride": [
         "WHITE",
         "BLUE"
+    ]
+}
+
+// Thrasios, Triton Hero
+{
+    "name": "Thrasios, Triton Hero",
+    "manaCost": "{G}{U}",
+    "typeLine": "Legendary Creature — Merfolk Wizard",
+    "oracleText": "{4}: Scry 1, then reveal the top card of your library. If it's a land card, put it onto the battlefield tapped. Otherwise, draw a card.\nPartner (You can have two commanders if both have partner.)",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 3
+    },
+    "keywordAbilities": [
+        "Partner"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Thrasios, Triton Hero:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{4}"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "Scry",
+                            "count": 1
+                        },
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeAs": "gathered1"
+                        },
+                        {
+                            "type": "RevealCollection",
+                            "from": "gathered1",
+                            "fromZone": "Library"
+                        },
+                        {
+                            "type": "ConditionalOnCollection",
+                            "collection": "gathered1",
+                            "ifNotEmpty": {
+                                "type": "MoveCollection",
+                                "from": "gathered1",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Battlefield",
+                                    "placement": "Tapped"
+                                }
+                            },
+                            "ifEmpty": {
+                                "type": "DrawCards",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "filter": "land"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "46",
+        "rarity": "RARE",
+        "artist": "Josu Hernaiz",
+        "flavorText": "Beneath crashing waves lies an ocean of secrets waiting to be explored.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/1/21e27b91-c7f1-4709-aa0d-8b5d81b22a0a.jpg?1783937081",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "The nonland card you reveal will be the card you draw."
+            },
+            {
+                "date": "2016-11-08",
+                "text": "No player may take another action while you're resolving the activated ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "BLUE"
+    ]
+}
+
+// Vial Smasher the Fierce
+{
+    "name": "Vial Smasher the Fierce",
+    "manaCost": "{1}{B}{R}",
+    "typeLine": "Legendary Creature — Goblin Berserker",
+    "oracleText": "Whenever you cast your first spell each turn, choose an opponent at random. Vial Smasher deals damage equal to that spell's mana value to that player or a planeswalker that player controls.\nPartner (You can have two commanders if both have partner.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "keywordAbilities": [
+        "Partner"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Vial Smasher the Fierce:1",
+                "trigger": {
+                    "type": "NthSpellCastEvent",
+                    "nthSpell": 1,
+                    "player": "You"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "SelectTarget",
+                            "requirement": {
+                                "type": "TargetOpponent",
+                                "descriptionOverride": "an opponent"
+                            },
+                            "storeAs": "target0",
+                            "nonTargeting": true,
+                            "atRandom": true
+                        },
+                        {
+                            "type": "SelectTarget",
+                            "requirement": {
+                                "type": "TargetObject",
+                                "optional": true,
+                                "filter": {
+                                    "baseFilter": {
+                                        "cardPredicates": [
+                                            "IsPlaneswalker"
+                                        ],
+                                        "controllerPredicate": {
+                                            "type": "ControlledByReferencedPlayer",
+                                            "target": {
+                                                "type": "PipelineTarget",
+                                                "collectionName": "target0"
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            "storeAs": "target1",
+                            "nonTargeting": true,
+                            "prompt": "Choose a planeswalker that player controls to deal the damage to, or none to deal it to the player"
+                        },
+                        {
+                            "type": "ConditionalOnCollection",
+                            "collection": "target1",
+                            "ifNotEmpty": {
+                                "type": "DealDamage",
+                                "amount": {
+                                    "type": "ContextProperty",
+                                    "key": "TRIGGERING_SPELL_MANA_VALUE"
+                                },
+                                "target": {
+                                    "type": "PipelineTarget",
+                                    "collectionName": "target1"
+                                }
+                            },
+                            "ifEmpty": {
+                                "type": "DealDamage",
+                                "amount": {
+                                    "type": "ContextProperty",
+                                    "key": "TRIGGERING_SPELL_MANA_VALUE"
+                                },
+                                "target": {
+                                    "type": "PipelineTarget",
+                                    "collectionName": "target0"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever you cast your first spell each turn, choose an opponent at random. Vial Smasher deals damage equal to that spell's mana value to that player or a planeswalker that player controls."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "49",
+        "rarity": "MYTHIC",
+        "artist": "Deruchenko Alexander",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/2/722b1e02-2268-4e02-8d09-9b337da2a844.jpg?1783937082",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "Vial Smasher's triggered ability triggers when you cast your first spell each turn, regardless of whose turn it is."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "Vial Smasher has to be on the battlefield at the moment you cast your first spell. If that spell causes Vial Smasher to leave the battlefield as an additional cost to cast it, Vial Smasher's ability can't trigger. If that spell is Vial Smasher itself, Vial Smasher's ability can't trigger."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "For spells with {X} in their mana costs, use the value chosen for X to determine the spell's mana value."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "Vial Smasher's triggered ability resolves before the spell that caused it to trigger. If Vial Smasher's ability resolves and the spell that caused it to trigger has been countered, use that spell's mana value as it last existed on the stack to determine how much damage is dealt."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "The opponent to be dealt damage is chosen at random while the triggered ability is resolving. After that opponent is chosen, you choose whether damage will be dealt to that player or to a planeswalker they control, and if so, which planeswalker. No player may take any actions between the damage recipient being chosen and the damage being dealt."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
     ]
 }

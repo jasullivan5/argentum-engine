@@ -72,6 +72,214 @@
     ]
 }
 
+// Angelic Accord
+{
+    "name": "Angelic Accord",
+    "manaCost": "{3}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "At the beginning of each end step, if you gained 4 or more life this turn, create a 4/4 white Angel creature token with flying.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Angelic Accord:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END",
+                    "player": "Each"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 4,
+                    "toughness": 4,
+                    "colors": [
+                        "WHITE"
+                    ],
+                    "creatureTypes": [
+                        "Angel"
+                    ],
+                    "keywords": [
+                        "FLYING"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/8/2/826320b7-4ccf-4ace-8c2c-15052b6bad73.jpg?1783939887"
+                },
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "TurnTracking",
+                        "player": "You",
+                        "tracker": "LIFE_GAINED"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 4
+                    }
+                },
+                "descriptionOverride": "At the beginning of each end step, if you gained 4 or more life this turn, create a 4/4 white Angel creature token with flying."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "3",
+        "rarity": "UNCOMMON",
+        "artist": "Michael C. Hayes",
+        "flavorText": "As demons are drawn to suffering, angels are drawn to acts of benevolence.",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/3/03f26bc2-53d7-4448-8021-de35aa82fcc6.jpg?1783939947",
+        "rulings": [
+            {
+                "date": "2017-11-17",
+                "text": "Angelic Accord's ability checks how much life you've gained during the turn, not what your life total is compared to what it was when the turn began. For example, if you start the turn at 10 life, gain 6 life during the turn, then lose 6 life later that turn, the ability will trigger."
+            },
+            {
+                "date": "2017-11-17",
+                "text": "If you haven't gained 4 or more life during the turn when the end step begins, the ability won't trigger at all. Gaining life during the end step won't cause the ability to trigger."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Archangel of Thune
+{
+    "name": "Archangel of Thune",
+    "manaCost": "{3}{W}{W}",
+    "typeLine": "Creature — Angel",
+    "oracleText": "Flying\nLifelink (Damage dealt by this creature also causes you to gain that much life.)\nWhenever you gain life, put a +1/+1 counter on each creature you control.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING",
+        "LIFELINK"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Archangel of Thune:1",
+                "trigger": "LifeGainEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "AddCounters",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
+                        "count": 1,
+                        "target": "IterationEntity"
+                    }
+                },
+                "descriptionOverride": "Whenever you gain life, put a +1/+1 counter on each creature you control."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "5",
+        "rarity": "MYTHIC",
+        "artist": "James Ryman",
+        "flavorText": "Even the wicked have nightmares.",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/3/531cba81-afd7-4be4-adec-87edb77ba2a9.jpg?1783939946",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "If a creature you control is dealt lethal damage at the same time that you gain life, it won't receive a counter from Archangel of Thune's ability in time to save it."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "Each creature with lifelink dealing combat damage causes a separate life-gaining event. For example, if two creatures you control with lifelink deal combat damage at the same time, the ability will trigger twice. However, if a single creature you control with lifelink deals combat damage to multiple creatures, players, and/or planeswalkers at the same time (perhaps because it has trample or was blocked by more than one creature), the ability will trigger only once."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "If you gain an amount of life \"for each\" of something, that life is gained as one event and the ability triggers only once."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Banisher Priest
+{
+    "name": "Banisher Priest",
+    "manaCost": "{1}{W}{W}",
+    "typeLine": "Creature — Human Cleric",
+    "oracleText": "When this creature enters, exile target creature an opponent controls until this creature leaves the battlefield.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Banisher Priest:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ExileUntilLeaves",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature ctrl:opponent"
+                    },
+                    "id": "t0"
+                }
+            },
+            {
+                "id": "Banisher Priest:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": "FromLinkedExile",
+                            "storeAs": "linked_return"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "linked_return",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Battlefield"
+                            },
+                            "underOwnersControl": true
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "7",
+        "rarity": "UNCOMMON",
+        "artist": "Willian Murai",
+        "flavorText": "\"Oathbreaker, I cast you out!\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/6/06823bf8-2fca-49e1-ba40-9b61c9ae55b3.jpg?1783939945"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Barrage of Expendables
 {
     "name": "Barrage of Expendables",
@@ -784,6 +992,209 @@
     ]
 }
 
+// Garruk, Caller of Beasts
+{
+    "name": "Garruk, Caller of Beasts",
+    "manaCost": "{4}{G}{G}",
+    "typeLine": "Legendary Planeswalker — Garruk",
+    "oracleText": "+1: Reveal the top five cards of your library. Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order.\n−3: You may put a green creature card from your hand onto the battlefield.\n−7: You get an emblem with \"Whenever you cast a creature spell, you may search your library for a creature card, put it onto the battlefield, then shuffle.\"",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Garruk, Caller of Beasts:1",
+                "cost": {
+                    "type": "CostLoyalty",
+                    "change": 1
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 5
+                                }
+                            },
+                            "storeAs": "looked"
+                        },
+                        {
+                            "type": "RevealCollection",
+                            "from": "looked"
+                        },
+                        {
+                            "type": "FilterCollection",
+                            "from": "looked",
+                            "filter": "creature",
+                            "storeMatching": "kept",
+                            "storeNonMatching": "rest"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "kept",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Hand"
+                            }
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "rest",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Library",
+                                "placement": "Bottom"
+                            },
+                            "order": "ControllerChooses"
+                        }
+                    ]
+                },
+                "timing": "SorcerySpeed",
+                "isPlaneswalkerAbility": true,
+                "descriptionOverride": "Reveal the top five cards of your library. Put all creature cards revealed this way into your hand and the rest on the bottom of your library in any order."
+            },
+            {
+                "id": "Garruk, Caller of Beasts:2",
+                "cost": {
+                    "type": "CostLoyalty",
+                    "change": -3
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Hand",
+                                "filter": "creature green"
+                            },
+                            "storeAs": "put_candidates"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "put_candidates",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "putting",
+                            "prompt": "You may put a green creature card from your hand onto the battlefield."
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "putting",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Battlefield"
+                            }
+                        }
+                    ]
+                },
+                "timing": "SorcerySpeed",
+                "isPlaneswalkerAbility": true,
+                "descriptionOverride": "You may put a green creature card from your hand onto the battlefield."
+            },
+            {
+                "id": "Garruk, Caller of Beasts:4",
+                "cost": {
+                    "type": "CostLoyalty",
+                    "change": -7
+                },
+                "effect": {
+                    "type": "CreateGlobalTriggeredAbility",
+                    "ability": {
+                        "id": "Garruk, Caller of Beasts:3",
+                        "trigger": {
+                            "type": "SpellCastEvent",
+                            "spellFilter": {
+                                "cardPredicates": [
+                                    "IsCreature"
+                                ]
+                            }
+                        },
+                        "binding": "ANY",
+                        "effect": {
+                            "type": "Gated",
+                            "gate": "Gate.MayDecide",
+                            "then": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "FromZone",
+                                            "zone": "Library",
+                                            "filter": "creature"
+                                        },
+                                        "storeAs": "searchable",
+                                        "search": true
+                                    },
+                                    {
+                                        "type": "SelectFromCollection",
+                                        "from": "searchable",
+                                        "selection": {
+                                            "type": "ChooseUpTo",
+                                            "count": {
+                                                "type": "Fixed",
+                                                "amount": 1
+                                            }
+                                        },
+                                        "storeSelected": "found",
+                                        "prompt": "Search your library for a creature card to put onto the battlefield",
+                                        "selectedLabel": "Put onto the battlefield"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "found",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Battlefield"
+                                        }
+                                    },
+                                    "ShuffleLibrary",
+                                    "EmitLibrarySearchedEvent"
+                                ]
+                            }
+                        },
+                        "descriptionOverride": "Whenever you cast a creature spell, you may search your library for a creature card, put it onto the battlefield, then shuffle."
+                    },
+                    "descriptionOverride": "Whenever you cast a creature spell, you may search your library for a creature card, put it onto the battlefield, then shuffle.",
+                    "emblem": true
+                },
+                "timing": "SorcerySpeed",
+                "isPlaneswalkerAbility": true,
+                "descriptionOverride": "You get an emblem with \"Whenever you cast a creature spell, you may search your library for a creature card, put it onto the battlefield, then shuffle.\""
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "172",
+        "rarity": "MYTHIC",
+        "artist": "Karl Kopinski",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/9/a96d0c67-e9f4-46d9-bd74-13a8606fdfe3.jpg?1783939906",
+        "rulings": [
+            {
+                "date": "2013-07-01",
+                "text": "You choose what green creature card to put onto the battlefield, if any, when the second ability resolves."
+            },
+            {
+                "date": "2013-07-01",
+                "text": "If you have Garruk's emblem, the creature card you search for will be put onto the battlefield before the creature spell you cast resolves. The creature card you put onto the battlefield isn't cast, so the ability of the emblem won't retrigger."
+            }
+        ]
+    },
+    "startingLoyalty": 4,
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Glimpse the Future
 {
     "name": "Glimpse the Future",
@@ -988,6 +1399,88 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Hunt the Weak
+{
+    "name": "Hunt the Weak",
+    "manaCost": "{3}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Put a +1/+1 counter on target creature you control. Then that creature fights target creature you don't control. (Each deals damage equal to its power to the other.)",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "Fight",
+                    "target1": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "target2": {
+                        "type": "BoundVariable",
+                        "name": "t1"
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                },
+                "id": "t0"
+            },
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "controllerPredicate": {
+                            "type": "ControllerNot",
+                            "predicate": "ControlledByYou"
+                        }
+                    }
+                },
+                "id": "t1"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "179",
+        "artist": "Raoul Vitale",
+        "flavorText": "He who hesitates is lunch.",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/f/8f7a6df7-acfc-4047-b119-505f4277225c.jpg?1783939904",
+        "rulings": [
+            {
+                "date": "2018-01-19",
+                "text": "You can't cast Hunt the Weak unless you choose both a creature you control and a creature you don't control as targets."
+            },
+            {
+                "date": "2018-01-19",
+                "text": "If either target is an illegal target as Hunt the Weak resolves, neither creature will deal or be dealt damage."
+            },
+            {
+                "date": "2018-01-19",
+                "text": "If the creature you control is an illegal target as Hunt the Weak tries to resolve, you won't put a +1/+1 counter on it. If that creature is a legal target but the other creature isn't, you'll still put the counter on the creature you control."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -1382,6 +1875,64 @@
     ]
 }
 
+// Ogre Battledriver
+{
+    "name": "Ogre Battledriver",
+    "manaCost": "{2}{R}{R}",
+    "typeLine": "Creature — Ogre Warrior",
+    "oracleText": "Whenever another creature you control enters, that creature gets +2/+0 and gains haste until end of turn. (It can attack and {T} this turn.)",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Ogre Battledriver:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "ModifyStats",
+                            "powerModifier": {
+                                "type": "Fixed",
+                                "amount": 2
+                            },
+                            "toughnessModifier": {
+                                "type": "Fixed",
+                                "amount": 0
+                            },
+                            "target": "TriggeringEntity"
+                        },
+                        {
+                            "type": "GrantKeyword",
+                            "keyword": "HASTE",
+                            "target": "TriggeringEntity"
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever another creature you control enters, that creature gets +2/+0 and gains haste until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "148",
+        "rarity": "RARE",
+        "artist": "Greg Staples",
+        "flavorText": "Ogres are driven by passion, rage, and another ogre standing behind them with a whip.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/f/bff2d740-22cc-4719-ac58-28621951e68d.jpg?1783939911"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Predatory Sliver
 {
     "name": "Predatory Sliver",
@@ -1590,6 +2141,94 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Scourge of Valkas
+{
+    "name": "Scourge of Valkas",
+    "manaCost": "{2}{R}{R}{R}",
+    "typeLine": "Creature — Dragon",
+    "oracleText": "Flying\nWhenever this creature or another Dragon you control enters, it deals X damage to any target, where X is the number of Dragons you control.\n{R}: This creature gets +1/+0 until end of turn.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Scourge of Valkas:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "permanent Dragon ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "permanent Dragon"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "damageSource": "TriggeringEntity"
+                },
+                "targetRequirement": {
+                    "type": "AnyTarget",
+                    "id": "t0"
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Scourge of Valkas:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{R}"
+                    }
+                },
+                "effect": {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": 0
+                    },
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "151",
+        "rarity": "MYTHIC",
+        "artist": "Lucas Graciano",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/7/27ce2b55-45bf-4852-a74a-d0b17c6c9c3f.jpg?1783939910",
+        "rulings": [
+            {
+                "date": "2017-11-17",
+                "text": "The amount of damage dealt by the Dragon that entered the battlefield is based on the number of Dragons you control when the ability resolves."
+            },
+            {
+                "date": "2017-11-17",
+                "text": "If a Dragon entering the battlefield causes Scourge of Valkas's ability to trigger but leaves the battlefield before that ability resolves, that Dragon still deals damage."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 
@@ -2111,6 +2750,118 @@
         "imageUri": "https://cards.scryfall.io/normal/front/7/7/7769159b-5a6a-45e5-b69b-8db2a6ef5418.jpg"
     },
     "colorIdentityOverride": []
+}
+
+// Warden of Evos Isle
+{
+    "name": "Warden of Evos Isle",
+    "manaCost": "{2}{U}",
+    "typeLine": "Creature — Bird Wizard",
+    "oracleText": "Flying\nCreature spells with flying you cast cost {1} less to cast.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifySpellCost",
+                "target": {
+                    "type": "YouCast",
+                    "filter": "creature kw:flying"
+                },
+                "modification": {
+                    "type": "ReduceGeneric",
+                    "amount": 1
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "79",
+        "rarity": "UNCOMMON",
+        "artist": "Nils Hamm",
+        "flavorText": "On Evos Isle, the swift and formidable aven enforce the will of the ruling sphinxes.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/3/2316d281-21a4-460d-9062-f0737249484e.jpg?1783939929",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "A creature spell that doesn't have flying won't cost less even if an effect will cause the creature to have flying once on the battlefield. This is also true if the creature spell itself has an ability that gives it flying once on the battlefield under certain conditions, even if those conditions are true."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "The last ability of Warden of Evos Isle can't reduce the colored mana requirement of a creature spell with flying."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Windreader Sphinx
+{
+    "name": "Windreader Sphinx",
+    "manaCost": "{5}{U}{U}",
+    "typeLine": "Creature — Sphinx",
+    "oracleText": "Flying\nWhenever a creature with flying attacks, you may draw a card.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 7
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Windreader Sphinx:1",
+                "trigger": {
+                    "type": "AttackEvent",
+                    "filter": "creature kw:flying"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "DrawCards",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "81",
+        "rarity": "MYTHIC",
+        "artist": "Min Yum",
+        "flavorText": "\"Your mind is too filled with foolish concerns to hear the subtle whispers that the breeze brings.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/5/f566741d-a847-4f24-b6fc-7873f0797d59.jpg?1783939928",
+        "rulings": [
+            {
+                "date": "2018-07-13",
+                "text": "It doesn't matter who controls the creature with flying or which player or planeswalker that creature is attacking. Windreader Sphinx's controller is the player who may draw a card."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "Windreader Sphinx's ability will trigger when it itself attacks."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "The creature must have flying immediately after being declared as an attacking creature in order for Windreader Sphinx's ability to trigger. For example, attacking with Kitesail Corsair will cause the ability to trigger, and attacking with Pegasus Courser and a creature without flying will cause the ability to trigger only once."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
 }
 
 // Woodborn Behemoth

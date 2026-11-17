@@ -10,7 +10,7 @@
 
 ## Creatures (27)
 
-- [ ] 1 Archfiend of Ifnir
+- [x] 1 Archfiend of Ifnir
 - [ ] 1 Carnifex Demon
 - [ ] 1 Channeler Initiate
 - [ ] 1 Devoted Druid
@@ -98,7 +98,7 @@
 - [ ] 6 Forest
 - [ ] 1 Golgari Rot Farm
 - [ ] 1 Gruul Turf
-- [ ] 1 Ifnir Deadlands
+- [x] 1 Ifnir Deadlands
 - [ ] 4 Mountain
 - [ ] 1 Nesting Grounds
 - [x] 1 Path of Ancestry

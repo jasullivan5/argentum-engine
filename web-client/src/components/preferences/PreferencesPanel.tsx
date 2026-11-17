@@ -11,6 +11,7 @@ import {
   STACK_LIMITS,
   STOPPABLE_STEPS,
   usePreferences,
+  type ForcedChoiceMode,
   type MotionPreference,
   type StackingRule,
 } from '@/store/preferencesStore'
@@ -23,6 +24,29 @@ const MODE_OPTIONS: { value: PriorityModeValue; label: string; hint: string }[] 
   { value: 'auto', label: 'Auto', hint: 'Passes whenever you have nothing meaningful to do, and stops when you can respond.' },
   { value: 'stops', label: 'Stops', hint: "Also stops on every opponent spell and ability, and on combat damage — even when you can't respond." },
   { value: 'fullControl', label: 'Full control', hint: 'Never passes for you: you get every priority window.' },
+]
+
+/**
+ * `gameplay.forcedChoices`. Each hint names its trade-off: the faster the forced answer, the more
+ * its timing can tell an opponent the question was forced. All three answer at once a question
+ * everyone can see is forced, since a pause there hides nothing.
+ */
+const FORCED_CHOICE_OPTIONS: { value: ForcedChoiceMode; label: string; hint: string }[] = [
+  {
+    value: 'instant',
+    label: 'Answer instantly',
+    hint: 'When a question has only one legal answer — “you may reveal a Dragon card” with none in hand, a search with nothing to find, a trigger whose only legal target is itself — the game answers it at once and shows a notice. Fastest, but an observant opponent can tell from the speed that you had no choice, and so that you had no Dragon in hand.',
+  },
+  {
+    value: 'delayed',
+    label: 'Answer for me',
+    hint: 'The game answers a question with only one legal answer after a short, human-like pause, and shows a notice. Nearly as quick, and the pause makes it hard to tell from a real choice — though an opponent watching closely may still read something into the timing. When everyone can see the answer was forced (a trigger whose only target is the creature itself), there is no pause.',
+  },
+  {
+    value: 'ask',
+    label: 'Ask me every time',
+    hint: 'Every question waits for you, even one with a single legal answer. Slowest, but you click through it like any other choice, so your timing gives nothing away.',
+  },
 ]
 
 const MOTION_OPTIONS: { value: MotionPreference; label: string }[] = [
@@ -179,10 +203,21 @@ export function PreferencesPanel({ compact = false }: { compact?: boolean }) {
         />
         <Toggle
           label="Order my triggers automatically"
-          hint="When several of your abilities trigger at once, they go on the stack in the order they triggered — except that one checking this turn (“if you gained life this turn”) resolves after the rest. Off: you choose the order whenever it can matter — scry before you draw, make the token before the counters."
+          hint="When several of your abilities trigger at once, they go on the stack in the order they triggered — except that one checking this turn (“if you gained life this turn”) resolves after the rest. Off: you choose the order whenever it can matter — scry before you draw, make the token before the counters. In Full Control you always choose it."
           checked={gameplay.autoOrderTriggers}
           onChange={(autoOrderTriggers) => update('gameplay', { autoOrderTriggers })}
         />
+        <Field
+          label="Choices with only one answer"
+          hint={FORCED_CHOICE_OPTIONS.find((o) => o.value === gameplay.forcedChoices)?.hint}
+        >
+          <Segmented
+            value={gameplay.forcedChoices}
+            options={FORCED_CHOICE_OPTIONS}
+            onChange={(forcedChoices) => update('gameplay', { forcedChoices })}
+            label="Choices with only one answer"
+          />
+        </Field>
         <Toggle
           label="Follow the action"
           hint="In games with three or more players, move the camera to the board where something is happening."

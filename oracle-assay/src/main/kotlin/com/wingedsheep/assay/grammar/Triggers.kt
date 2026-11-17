@@ -591,14 +591,18 @@ object Triggers {
      * **Attacks.** "Whenever one or more Merfolk you control attack" is `YouAttackEvent`, and the
      * family is left out rather than half-read for two reasons that would each cost more than the
      * rows are worth: 8 of its lines print "attack **a player**", a per-attacked-player narrowing
-     * (`YouAttackEvent.perAttackedPlayer`, `Triggers.you.attacksAPlayer`) that a reading must keep
+     * (`YouAttackEvent.attackedPlayer`, `Triggers.you.attacksAPlayer`) that a reading must keep
      * apart from the once-per-declaration form — so the two English sentences don't collapse — and the
      * corpus writes the attacker filter's card type three different ways. A probe over the family's
      * declined lines puts the payoff at 6 readable lines out of 48; the rest are blocked on "that
      * many" and "them" regardless.
      *
      * `OneOrMoreDealCombatDamageToPlayerEvent` carries two readings, "to a player" and "to a
-     * player or battle" (its `orBattle` flag); each row reads back only its own.
+     * player or battle" (its `orBattle` flag); each row reads back only its own. Its
+     * `toOneOrMorePlayers` axis ("to one or more players"), its `toOpponents` axis ("to an opponent")
+     * and `OneOrMoreDealCombatDamageToYouEvent`'s
+     * `perSourceController` axis have no row yet, so the readers refuse them rather than print the
+     * once-per-player / once-per-batch sentence over a model that means something else.
      */
     private data class Scope(val words: String, val predicate: ControllerPredicate?)
 
@@ -726,7 +730,7 @@ object Triggers {
                 "whenever one or more {filter} you control deal combat damage to a player or battle",
                 "whenever one or more creatures you control deal combat damage to a player or battle",
                 Filters.pluralSubject,
-                { (it as? EventPattern.OneOrMoreDealCombatDamageToPlayerEvent)?.takeIf { e -> e.orBattle }?.sourceFilter },
+                { (it as? EventPattern.OneOrMoreDealCombatDamageToPlayerEvent)?.takeIf { e -> e.orBattle && !e.toOneOrMorePlayers }?.sourceFilter },
             ) {
                 SdkTriggers.oneOrMore(it).dealCombatDamageToAPlayerOrBattle()
             },
@@ -734,7 +738,7 @@ object Triggers {
                 "whenever one or more {filter} you control deal combat damage to a player",
                 "whenever one or more creatures you control deal combat damage to a player",
                 Filters.pluralSubject,
-                { (it as? EventPattern.OneOrMoreDealCombatDamageToPlayerEvent)?.takeUnless { e -> e.orBattle }?.sourceFilter },
+                { (it as? EventPattern.OneOrMoreDealCombatDamageToPlayerEvent)?.takeUnless { e -> e.orBattle || e.toOneOrMorePlayers || e.toOpponents }?.sourceFilter },
             ) {
                 SdkTriggers.oneOrMore(it).dealCombatDamageToAPlayer()
             },
@@ -742,7 +746,7 @@ object Triggers {
                 "whenever one or more {filter} deal combat damage to you",
                 "whenever one or more creatures deal combat damage to you",
                 Filters.pluralSubject,
-                { (it as? EventPattern.OneOrMoreDealCombatDamageToYouEvent)?.sourceFilter },
+                { (it as? EventPattern.OneOrMoreDealCombatDamageToYouEvent)?.takeUnless { e -> e.perSourceController }?.sourceFilter },
             ) { SdkTriggers.oneOrMore(it).dealCombatDamageToYou() },
             batchRule(
                 "whenever one or more {filter} leave your graveyard",

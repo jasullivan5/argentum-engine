@@ -61,11 +61,15 @@ internal class StackTextRenderer(
     ): String? {
         // An overloaded or cleaved spell resolves with its variant text (CR 702.96a / 702.148a),
         // so that is what opponents read on the stack.
-        val effect = when {
-            spellOnStack.wasOverloaded -> cardDef.script.overloadSpellEffect
-            spellOnStack.wasCleaved -> cardDef.script.cleaveSpellEffect
-            else -> null
-        } ?: cardDef.script.spellEffect ?: return null
+        // An awakened spell reads its awaken ability after its own text (CR 702.113a).
+        val effect = com.wingedsheep.engine.mechanics.stack.withAwakenAbility(
+            spellOnStack, cardDef,
+            when {
+                spellOnStack.wasOverloaded -> cardDef.script.overloadSpellEffect
+                spellOnStack.wasCleaved -> cardDef.script.cleaveSpellEffect
+                else -> null
+            } ?: cardDef.script.spellEffect,
+        ) ?: return null
 
         // For modal spells with modes chosen at cast time, concatenate all chosen mode
         // descriptions (choose-N commands show every picked mode, in order, one per line).
@@ -82,18 +86,7 @@ internal class StackTextRenderer(
                 ?.get<TargetsComponent>()
                 ?.targets
                 ?: emptyList()
-            val context = EffectContext(
-                sourceId = spellEntityId,
-                controllerId = spellOnStack.casterId,
-                xValue = spellOnStack.xValue,
-                declaredCostSlot = spellOnStack.declaredCostSlot,
-                wasBlightPaid = spellOnStack.wasBlightPaid,
-                sacrificedPermanents = spellOnStack.sacrificedPermanents,
-                discardedAsCostCards = spellOnStack.discardedAsCostCards,
-                revealedAsCostSnapshots = spellOnStack.revealedAsCostSnapshots,
-                chosenEntitySnapshots = spellOnStack.chosenEntitySnapshots,
-                exiledCardCount = spellOnStack.exiledCardCount,
-                additionalCostBlightAmount = spellOnStack.additionalCostBlightAmount,
+            val context = EffectContext.forSpellOnStack(spellEntityId, spellOnStack).copy(
                 targets = chosenTargets,
                 pipeline = PipelineState(
                     storedCollections = buildBeheldStoredCollections(spellOnStack.beheldCards, cardDef)
@@ -152,17 +145,9 @@ internal class StackTextRenderer(
         modal: ModalEffect
     ): List<String> {
         if (spellOnStack.chosenModes.isEmpty()) return emptyList()
-        val context = EffectContext(
-            sourceId = spellEntityId,
-            controllerId = spellOnStack.casterId,
-            xValue = spellOnStack.xValue,
-            sacrificedPermanents = spellOnStack.sacrificedPermanents,
-            discardedAsCostCards = spellOnStack.discardedAsCostCards,
-            revealedAsCostSnapshots = spellOnStack.revealedAsCostSnapshots,
-            exiledCardCount = spellOnStack.exiledCardCount,
-            additionalCostBlightAmount = spellOnStack.additionalCostBlightAmount
+        return modeDescriptions(
+            state, modal, spellOnStack.chosenModes, EffectContext.forSpellOnStack(spellEntityId, spellOnStack)
         )
-        return modeDescriptions(state, modal, spellOnStack.chosenModes, context)
     }
 
     /**

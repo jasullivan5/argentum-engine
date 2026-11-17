@@ -12,7 +12,7 @@ needing to talk to Scryfall.
 
 For each set we've catalogued (a `definitions/<code>/` folder with a `*Set.kt`):
   - reads the set `code` and `displayName` from the Kotlin source
-  - loads the canonical card list from `~/.cache/scryfall/<code>.json`
+  - loads the canonical card list from `~/.cache/scryfall/set-<code>.json`
     (same cache `scripts/card-status` reads/writes)
   - partitions canonical front-face names into draft (some printing of the card
     in that set has Scryfall `booster: true`) and extras, deduping extras against
@@ -62,6 +62,7 @@ from pathlib import Path
 
 from card_exclusions import load_exclusions, load_reasons
 from set_dirs import iter_set_dirs
+from scryfall_cache import set_cache_path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OUTPUT = REPO_ROOT / "game-server/src/main/resources/coverage/set-totals.json"
@@ -153,8 +154,18 @@ def discover_sets() -> list[tuple[str, str]]:
     return out
 
 
+def load_published(path: Path, empty):
+    """The previously generated output at [path], or [empty] when there is none to read."""
+    if not path.is_file():
+        return empty
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return empty
+
+
 def load_cache(code: str) -> dict | None:
-    path = CACHE_ROOT / f"{code.lower()}.json"
+    path = set_cache_path(code, CACHE_ROOT)
     if not path.is_file():
         return None
     try:
@@ -226,7 +237,7 @@ def main() -> int:
 
     if args.refresh:
         missing = [code for code, _ in sets
-                   if not (CACHE_ROOT / f"{code.lower()}.json").is_file()
+                   if not set_cache_path(code, CACHE_ROOT).is_file()
                    or is_stale(load_cache(code) or {})]
         if missing:
             print(f"note: {len(missing)} set(s) missing/stale in cache: {' '.join(missing)}", file=sys.stderr)
@@ -236,13 +247,25 @@ def main() -> int:
     reasons = load_reasons()
     landscape = load_landscape_names()
 
+    # A set whose cache is missing keeps its previously published totals rather than vanishing
+    # from the Set Completion view: regenerating with a partial cache must never drop a set.
+    published = {e["code"]: e for e in load_published(OUTPUT, [])}
+    published_products = load_published(PRODUCTS_OUTPUT, {})
+
     entries = []
     product_entries: dict[str, dict[str, list[str]]] = {}
     skipped = []
+    kept = []
     for code, name in sets:
         payload = load_cache(code)
         if payload is None:
-            skipped.append(code)
+            if code in published:
+                kept.append(code)
+                entries.append(published[code])
+                if code in published_products:
+                    product_entries[code] = published_products[code]
+            else:
+                skipped.append(code)
             continue
         cards = payload.get("cards", {})
 
@@ -311,6 +334,9 @@ def main() -> int:
     not_planned = sum(1 for e in entries for c in (e["draft"] + e["extra"]) if c.get("notPlanned"))
     print(f"wrote {len(entries)} sets ({total_cards} canonical names, {with_img} with art, "
           f"{not_planned} flagged not planned) -> {OUTPUT.relative_to(REPO_ROOT)}")
+    if kept:
+        print(f"kept the published totals of {len(kept)} set(s) with no cache entry: {' '.join(sorted(kept))}",
+              file=sys.stderr)
     if skipped:
         print(f"skipped {len(skipped)} set(s) with no cache entry: {' '.join(sorted(skipped))}", file=sys.stderr)
         print("  run `scripts/card-status --refresh` to populate the cache, then re-run.", file=sys.stderr)

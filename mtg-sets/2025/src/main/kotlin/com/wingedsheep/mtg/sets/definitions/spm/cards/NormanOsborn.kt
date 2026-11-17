@@ -13,7 +13,8 @@ import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.ModifySpellCost
 import com.wingedsheep.sdk.scripting.SpellCostTarget
 import com.wingedsheep.sdk.scripting.TimingRule
-import com.wingedsheep.sdk.scripting.GraveyardCardsHaveMayhem
+import com.wingedsheep.sdk.scripting.GraveyardCardsHaveCastKeyword
+import com.wingedsheep.sdk.scripting.GraveyardCastKeyword
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.events.Recipient
 
@@ -107,7 +108,7 @@ private val GreenGoblinBack = card("Green Goblin") {
     // Goblin Formula — Each nonland card in your graveyard has mayhem. The mayhem cost is equal to
     // its mana cost.
     staticAbility {
-        ability = GraveyardCardsHaveMayhem(filter = GameObjectFilter.Nonland)
+        ability = GraveyardCardsHaveCastKeyword(GraveyardCastKeyword.Mayhem, GameObjectFilter.Nonland)
     }
 
     metadata {

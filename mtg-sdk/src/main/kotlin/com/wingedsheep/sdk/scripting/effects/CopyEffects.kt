@@ -29,7 +29,9 @@ import kotlinx.serialization.Serializable
  *   permanent, reverting via the attached-copy state-based check (Blade of Shared Souls — "for as
  *   long as this Equipment remains attached to it, you may have that creature become a copy of
  *   another target creature you control"); a permanent the source isn't attached to at resolution
- *   is left alone. Any other duration falls back to permanent.
+ *   is left alone. [Duration.WhileSourceAttached] is the same, except the copy follows the source
+ *   to a new host with the same locked-in values (Metamorphic Alteration — "enchanted creature is a
+ *   copy of the chosen creature"). Any other duration falls back to permanent.
  * @property excludeTarget When true, the copy source [target] itself is excluded from the set of
  *   permanents that become copies — for "each **other** creature you control becomes a copy of
  *   that creature" wordings, where the target keeps its own identity (and any counter just placed
@@ -83,9 +85,11 @@ data class EachPermanentBecomesCopyOfTargetEffect(
             Duration.UntilYourNextTurn -> " until your next turn"
             else -> ""
         }
-        val durationPrefix = if (duration == Duration.WhileSourceAttachedToAffected) {
-            "for as long as this remains attached to it, "
-        } else ""
+        val durationPrefix = when (duration) {
+            Duration.WhileSourceAttachedToAffected -> "for as long as this remains attached to it, "
+            Duration.WhileSourceAttached -> "for as long as this is attached, "
+            else -> ""
+        }
         val clauses = exceptions.clauses() +
             (if (retainActivatingAbility) listOf("it has this ability") else emptyList())
         val exceptSuffix =
@@ -200,4 +204,40 @@ data class BecomeCopyOfLinkedExileEffect(
     override val description: String =
         "${affected.description} becomes a copy of a creature card exiled with this, " +
             "for as long as this remains attached to it"
+}
+
+/**
+ * Exchange the text boxes of two permanents (CR 701.12h, 612.5): the rules text of each becomes
+ * the previous rules text of the other. A layer 3 text-changing effect (CR 613.1c) — names, mana
+ * costs, type lines, colors and power/toughness stay where they were; only the abilities move.
+ *
+ * Both objects must be face-up permanents on the battlefield as the exchange happens; if either isn't,
+ * nothing is exchanged (CR 701.12a for one that's gone; a face-down side is an engine limit — offer
+ * only face-up creatures). The exchange locks in: either permanent leaving the battlefield later
+ * leaves the other's new text alone, and a permanent that leaves takes back its own printed text
+ * (CR 400.7). Granted abilities (layer 6) aren't rules text and stay on the permanent they were
+ * granted to. Text-changing effects aren't copiable values (CR 707.2), so a copy of an exchanged
+ * permanent copies its printed text.
+ *
+ * The exchange lasts indefinitely — "As Deadpool enters, you may exchange his text box and another
+ * creature's" (Deadpool, Trading Card) runs it as the
+ * [com.wingedsheep.sdk.scripting.EntersWithChoice.then] of its as-enters creature choice, with
+ * [second] = [EffectTarget.ChosenCreature]. A
+ * duration-bounded exchange ("for as long as this enchantment remains on the battlefield") would
+ * need a duration axis; no card asks for one yet.
+ *
+ * Closest existing types: [ExchangeControlEffect] exchanges a layer 2 characteristic through two
+ * floating effects, which can't carry a whole set of abilities; the copy effects
+ * ([EachPermanentBecomesCopyOfTargetEffect], [BecomeCopyOfLinkedExileEffect]) install every
+ * copiable value of one object onto others in layer 1 and are one-directional, whereas this swaps
+ * only the rules text both ways and is not itself copiable.
+ */
+@SerialName("ExchangeTextBoxes")
+@Serializable
+data class ExchangeTextBoxesEffect(
+    val first: EffectTarget,
+    val second: EffectTarget
+) : Effect {
+    override val description: String =
+        "Exchange the text boxes of ${first.description} and ${second.description}"
 }

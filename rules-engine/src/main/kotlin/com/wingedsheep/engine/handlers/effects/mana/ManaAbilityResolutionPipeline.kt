@@ -2,9 +2,10 @@ package com.wingedsheep.engine.handlers.effects.mana
 
 import com.wingedsheep.engine.core.ExecutionResult
 import com.wingedsheep.engine.core.GameEvent
-import com.wingedsheep.engine.core.LandTappedForManaEvent
-import com.wingedsheep.engine.core.landTappedForManaEvent
+import com.wingedsheep.engine.core.PermanentTappedForManaEvent
+import com.wingedsheep.engine.core.permanentTappedForManaEvent
 import com.wingedsheep.engine.core.ManaAddedEvent
+import com.wingedsheep.engine.event.SourceTriggerDoublers
 import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.handlers.DynamicAmountEvaluator
 import com.wingedsheep.engine.handlers.EffectContext
@@ -14,20 +15,18 @@ import com.wingedsheep.engine.handlers.effects.EffectExecutorRegistry
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
-import com.wingedsheep.engine.state.components.battlefield.ClassLevelComponent
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.battlefield.chosenColor
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
-import com.wingedsheep.engine.state.components.identity.FaceDownComponent
 import com.wingedsheep.engine.state.components.player.ManaPoolComponent
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.AdditionalManaOnSourceTap
 import com.wingedsheep.sdk.scripting.AdditionalManaOnTap
-import com.wingedsheep.sdk.scripting.AdditionalSourceTriggers
 import com.wingedsheep.sdk.scripting.DampLandManaProduction
 import com.wingedsheep.sdk.scripting.TappedForManaType
+import com.wingedsheep.engine.state.components.identity.faceUpCardDefinition
 
 /**
  * Everything that happens *after* a mana ability's own effect has resolved: the Damping Sphere
@@ -53,6 +52,8 @@ class ManaAbilityResolutionPipeline(
 
     private val tappedForManaBonusResolver =
         TappedForManaBonusResolver(cardRegistry, dynamicAmountEvaluator)
+    private val sourceTriggerDoublers =
+        SourceTriggerDoublers(cardRegistry, predicateEvaluator, conditionEvaluator)
 
     /** The state after [applyLandManaDampening], and whether the replacement actually applied. */
     data class Dampening(val state: GameState, val dampened: Boolean)
@@ -105,14 +106,14 @@ class ManaAbilityResolutionPipeline(
      * The tap payoffs, in resolution order: aura bonuses attached to the source
      * ([AdditionalManaOnTap] — Elvish Guidance), global "whenever a matching source is tapped for
      * mana" statics ([AdditionalManaOnSourceTap] — Lavaleaper, Badgermole Cub, Overabundance), the
-     * [LandTappedForManaEvent] that non-mana "whenever you tap a land for mana" triggers watch
+     * [PermanentTappedForManaEvent] that non-mana "whenever you tap a [permanent] for mana" triggers watch
      * (Forbidden Orchard), and finally the any-color tap bonuses (Fertile Ground), which may pause
      * for a color decision.
      *
      * [manaEvent] describes what the ability itself produced; it gates the `whenProducing` clause
      * and supplies the color a mirror bonus copies. [producedColors] is every color the whole ability
      * added — a land adding {G}{U} through two effects reports both, which [manaEvent] (its first
-     * mana-producing part) cannot — and is what the [LandTappedForManaEvent] carries (C.A.M.P.). [carriedEvents] is the event list to append to
+     * mana-producing part) cannot — and is what the [PermanentTappedForManaEvent] carries (C.A.M.P.). [carriedEvents] is the event list to append to
      * — the caller has already put [manaEvent] (or its dampened replacement) into it.
      */
     fun finishTapBonuses(
@@ -135,7 +136,7 @@ class ManaAbilityResolutionPipeline(
         // its cost taps the land for mana — a tapped source is how that shows here, since the
         // color-choice resume path no longer holds the activation's TappedEvent.
         if (onSourceTap.state.getEntity(sourceId)?.has<TappedComponent>() == true) {
-            landTappedForManaEvent(onSourceTap.state, sourceId, tapperId, producedColors)
+            permanentTappedForManaEvent(onSourceTap.state, sourceId, tapperId, producedColors)
                 ?.let { allManaEvents = allManaEvents + it }
         }
 
@@ -195,10 +196,14 @@ class ManaAbilityResolutionPipeline(
                 val auraController = container.get<ControllerComponent>()?.playerId ?: landController
                 val extraFirings = countAdditionalSourceTriggerDoublers(currentState, entityId, auraController)
                 val firings = 1 + extraFirings
+                // The aura is the source of this mana (CR 106.3), so a snow aura's bonus is snow
+                // mana whatever the land is (Glittering Frost).
+                val snowAura = ManaProvenanceTracker.isSnowSource(currentState, entityId)
                 repeat(firings) {
                     currentState = currentState.updateEntity(landController) { c ->
                         val pool = c.get<ManaPoolComponent>() ?: ManaPoolComponent()
-                        c.with(pool.add(manaColor, amount))
+                        val added = pool.add(manaColor, amount)
+                        c.with(if (snowAura) added.markSnow(manaColor, amount) else added)
                     }
 
                     events.add(ManaAddedEvent(
@@ -262,9 +267,7 @@ class ManaAbilityResolutionPipeline(
         // on and grants it to its controller for the turn.
         val holders: List<Pair<EntityId, AdditionalManaOnSourceTap>> =
             currentState.getBattlefield().flatMap { entityId ->
-                val container = currentState.getEntity(entityId)
-                val card = container?.get<CardComponent>()
-                val cardDef = card?.let { cardRegistry.getCard(it.cardDefinitionId) }
+                val cardDef = currentState.faceUpCardDefinition(entityId, cardRegistry)
                 cardDef?.script?.staticAbilities.orEmpty()
                     .filterIsInstance<AdditionalManaOnSourceTap>()
                     .map { entityId to it }
@@ -315,12 +318,14 @@ class ManaAbilityResolutionPipeline(
                 // them just like any other trigger. firings = 1 (natural) + N (doublers).
                 val extraFirings = countAdditionalSourceTriggerDoublers(currentState, entityId, staticController)
                 val firings = 1 + extraFirings
+                // This static's permanent is the mana's source (CR 106.3): snow if it is snow.
+                val snowSource = ManaProvenanceTracker.isSnowSource(currentState, entityId)
                 repeat(firings) {
                     currentState = currentState.updateEntity(tappingPlayerId) { c ->
                         val pool = c.get<ManaPoolComponent>() ?: ManaPoolComponent()
                         val newPool = if (bonusColor != null) pool.add(bonusColor, bonusAmount)
                                       else pool.addColorless(bonusAmount)
-                        c.with(newPool)
+                        c.with(if (snowSource) newPool.markSnow(bonusColor, bonusAmount) else newPool)
                     }
 
                     events.add(ManaAddedEvent(
@@ -367,7 +372,7 @@ class ManaAbilityResolutionPipeline(
     }
 
     /**
-     * Count how many [AdditionalSourceTriggers] doublers on the battlefield apply to a
+     * Count how many [com.wingedsheep.sdk.scripting.AdditionalSourceTriggers] doublers (printed or granted) on the battlefield apply to a
      * triggered ability with source [triggerSourceId] controlled by [triggerControllerId].
      *
      * Triggered mana abilities ([AdditionalManaOnTap], [AdditionalManaOnSourceTap]) bypass
@@ -381,40 +386,8 @@ class ManaAbilityResolutionPipeline(
         state: GameState,
         triggerSourceId: EntityId,
         triggerControllerId: EntityId
-    ): Int {
-        val projected = state.projectedState
-        var count = 0
-        for (permanentId in state.getBattlefield()) {
-            val container = state.getEntity(permanentId) ?: continue
-            val card = container.get<CardComponent>() ?: continue
-            if (container.has<FaceDownComponent>()) continue
-            val controllerId = projected.getController(permanentId) ?: continue
-            if (controllerId != triggerControllerId) continue
-            val cardDef = cardRegistry.getCard(card.cardDefinitionId) ?: continue
-            val classLevel = container.get<ClassLevelComponent>()?.currentLevel
-            for (ability in cardDef.script.effectiveStaticAbilities(classLevel)) {
-                if (ability !is AdditionalSourceTriggers) continue
-                // Optional gate ("as long as ~ is equipped") — evaluated against the doubler source.
-                val gate = ability.condition
-                if (gate != null && !conditionEvaluator.evaluate(
-                        state, gate, EffectContext(sourceId = permanentId, controllerId = controllerId)
-                    )
-                ) continue
-                // `alsoSource` doubles the doubler's own triggers regardless of the filter.
-                if (ability.alsoSource && permanentId == triggerSourceId) {
-                    count++
-                    continue
-                }
-                if (ability.excludeSelf && permanentId == triggerSourceId) continue
-                if (!predicateEvaluator.matches(
-                        state, projected, triggerSourceId, ability.sourceFilter,
-                        PredicateContext(controllerId = controllerId, sourceId = permanentId)
-                    )
-                ) continue
-                count++
-            }
-        }
-        return count
+    ): Int = sourceTriggerDoublers.collect(state).count {
+        sourceTriggerDoublers.doubles(state, it, triggerSourceId, triggerControllerId)
     }
 
     /**
@@ -423,8 +396,7 @@ class ManaAbilityResolutionPipeline(
     private fun hasDampLandManaProduction(state: GameState): Boolean {
         for (playerId in state.turnOrder) {
             for (entityId in state.getBattlefield(playerId)) {
-                val card = state.getEntity(entityId)?.get<CardComponent>() ?: continue
-                val cardDef = cardRegistry.getCard(card.cardDefinitionId) ?: continue
+                val cardDef = state.getEntity(entityId)?.faceUpCardDefinition(cardRegistry) ?: continue
                 if (cardDef.script.staticAbilities.any { it is DampLandManaProduction }) {
                     return true
                 }

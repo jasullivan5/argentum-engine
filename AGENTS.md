@@ -25,7 +25,7 @@ The following upstream guidance describes the inherited implementation. Fork pri
 Argentum Engine — Magic: The Gathering rules engine + online play platform in Kotlin. Pure ECS,
 immutable `GameState`, pure functional `(GameState, GameAction) -> ExecutionResult(GameState, List<GameEvent>)`.
 
-**Stack:** Kotlin / JDK 21 / Gradle / Kotest / Spring Boot; React / TypeScript / Zustand / Vite. Exact
+**Stack:** Kotlin / JDK 25 / Gradle / Kotest / Spring Boot; React / TypeScript / Zustand / Vite. Exact
 versions live in `gradle/libs.versions.toml` and `web-client/package.json` — don't trust remembered ones.
 
 This file is a map plus the gotchas that aren't discoverable from the code. Depth lives in the skills and
@@ -67,6 +67,9 @@ docs it points at; load those when the work needs them.
     expresses (declines on hand-written cards; never new SDK vocabulary) → **`just assay-loop [model]
     [focus]`** (fresh headless session per step, like `just set-loop`), or the **`assay-loop`** skill for an
     in-session `/loop`.
+  - Teaching the engine AI to read the effect types the AI card-reading audit flags, one group per PR
+    → **`just ai-reading-loop [model] [focus]`** (fresh headless session per step), or the
+    **`ai-reading-loop`** skill, which holds the step prompt.
   - Implementing the cards popular Commander decks run, autonomously, one PR at a time →
     **`just commander-loop [model] [top]`** (fresh headless session per step, like `just set-loop`). It
     finishes EDHREC's top decks in the order `just commander-staples` ranks them: the most real decks made
@@ -108,12 +111,15 @@ docs it points at; load those when the work needs them.
   in the *same* PR. A set entry needs `setCode`, a `body` that pitches what the set is like to play, and
   `tryIf`; never change a shipped `id`. Card batches, fixes and UI polish don't go in. The file's header
   comment has the bar.
-- **Log engine AI behaviour changes in [`ai/CHANGELOG.md`](ai/CHANGELOG.md).** A PR that changes how
-  the engine AI plays or builds decks — a decision it makes, or the profile live players face — adds
-  a line at the top of its list in the *same* PR: `- #<pr> <what the AI now does differently>`. The
+- **Log engine AI behaviour changes in [`ai/changelog.d/`](ai/changelog.d/README.md).** A PR that
+  changes how the engine AI plays or builds decks — a decision it makes, or the profile live players
+  face — adds its own file `ai/changelog.d/<branch-name>.md` in the *same* PR, holding one line:
+  `- #<pr> <what the AI now does differently>`. Never prepend to `ai/CHANGELOG.md` (the archive): one
+  shared list made every two parallel AI PRs conflict. For the same reason a PR doesn't re-bless
+  `ai-reading-baseline.tsv` for a coverage gain; main re-blesses it after merge. The
   admin dashboard's **AI vs humans** screen marks each entry on its win-rate timeline and credits it
   to the first deployed build that carried it, so an unlogged change is an improvement nobody can see
-  paying off. Refactors, perf work, tooling, per-card advisors and archetype data stay out; the file's
+  paying off. Refactors, perf work, tooling, per-card advisors and archetype data stay out; `ai/CHANGELOG.md`'s
   header has the rules.
 - **Document user-facing features in the in-app Help wiki.** A new mode, screen, or change to how
   players use the site updates [`web-client/src/help/topics.ts`](web-client/src/help/topics.ts) — the
@@ -205,12 +211,31 @@ These are the ones that have actually caused bugs here.
   index: `Patterns.Library`, `.Hand`, `.Group`, `.Exile`, `.CreatureType`, `.Mechanic`, `.Sideboard`.
 - **Composition before new types** — a new `Effect` + executor is the last resort, and it's `add-feature`
   territory. The bar and the reusability rules: [`docs/sdk-design-principles.md`](docs/sdk-design-principles.md).
+- **Ask what the engine AI makes of a card** — `just ai-card "<Card>|<Card>"` prints, per card, which
+  abilities its readers understand (and the effect type behind each gap), its draft pick rating and
+  where that comes from (flagging a card nothing rates, so the AI guesses from a heuristic), its board
+  value in play, what it thinks the card is for, and which synergy axes it reads the card feeding or
+  rewarding. Before a card or feature PR (`add-card` / `add-feature` Step 10) it is a gate, not a
+  report: **close the understanding, rating and synergy gaps it shows in the same PR.** Naming a gap in
+  the PR body is not closing it, and "pre-existing", "other cards share the effect" or "belongs to the
+  AI reading loop" is never a reason to defer — you know the effect's semantics now, and one reader
+  entry fixes every card on it. Only a gap that needs a brand-new reader concept may be split out, as
+  its own `add-feature` PR opened next, and the PR body says why. Loops follow the same rule (their
+  shared `LOOP_PR_PROTOCOL` runs this check before review). Use it also
+  whenever you need to explain or predict an AI decision — a misplay in an
+  `ai-game-review` or `ai-playtest` log, a strange draft pick. The Assay Explorer's card page draws the
+  reading and rating for humans.
 - **Reprints** — only a card's *earliest real printing* gets a full `card(...)`; later sets get a
   `Printing(...)` row, never a duplicate canonical. `just check-card-printing "<Card>"` is the gate.
 
 ## Commands
 
 `just --list` is the self-documenting index (groups: build, dev, e2e, env, ai).
+
+**Native Windows:** see [`docs/windows-development.md`](docs/windows-development.md) for observed
+PowerShell/Git Bash launcher issues, sandbox access failures, the `test-class` workaround, and
+verification caveats. If `gradle-locked` reports missing `shlock`, its semaphore is inactive;
+coordinate builds manually and never overlap test runs in the same checkout.
 
 **Always run heavy builds through `just`, never raw `./gradlew`.** Parallel agents each spawn their own
 daemons and thrash the box into watchdog timeouts; the `just` recipes limit the machine to two concurrent
@@ -241,6 +266,7 @@ Set Completion view's Assay-ready badges; for a head start on a card use `just a
 | [`card-sdk-language-reference.md`](docs/card-sdk-language-reference.md) | Full card SDK / DSL catalog — update on any SDK change |
 | [`sdk-index.md`](docs/sdk-index.md) | Generated: every sealed SDK type, one line each, by family — grep it before adding a type |
 | [`api-guide.md`](docs/api-guide.md) | Adding cards/mechanics step-by-step |
+| [`limited-card-ratings.md`](docs/limited-card-ratings.md) | How the AI rates cards for drafting and deckbuilding: Draftsim tables, 17Lands, the effect heuristic, adding ratings |
 | [`continuous-effect-dependency-system.md`](docs/continuous-effect-dependency-system.md) | Rule 613.8 dependency resolution |
 | [`managing-complex-and-rare-abilities.md`](docs/managing-complex-and-rare-abilities.md) | Patterns for complex abilities |
 | [`engine-server-interface.md`](docs/engine-server-interface.md) | Engine ↔ API contract |

@@ -5,16 +5,14 @@ import com.wingedsheep.engine.state.LifePaymentPurpose
 import com.wingedsheep.engine.mechanics.mana.withSpendingColors
 import com.wingedsheep.engine.core.AlternativeCostType
 import com.wingedsheep.engine.core.CastSpell
-import com.wingedsheep.engine.core.LifeChangeReason
-import com.wingedsheep.engine.core.LifeChangedEvent
 import com.wingedsheep.engine.core.ManaSpentEvent
 import com.wingedsheep.engine.core.PaymentStrategy
 import com.wingedsheep.engine.core.tap
 import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.handlers.CostHandler
 import com.wingedsheep.engine.handlers.PredicateEvaluator
+import com.wingedsheep.engine.handlers.effects.ZoneEntryOptions
 import com.wingedsheep.engine.handlers.costs.ForageCostResolver
-import com.wingedsheep.engine.handlers.effects.DamageUtils
 import com.wingedsheep.engine.handlers.effects.ZoneTransitionService
 import com.wingedsheep.engine.handlers.effects.bend.BendEvents
 import com.wingedsheep.engine.handlers.effects.life.LifePaymentService
@@ -289,6 +287,7 @@ internal class CastCostPayer(
             ledger.state = result.newState
             ledger.events.addAll(result.events)
             ledger.convokedCreatures.putAll(result.convokedCreatures)
+            ledger.delvedCards.putAll(result.delvedCards)
         }
 
         // Waterbend (Avatar): tap the chosen artifacts/creatures, each paying {1} of the waterbend
@@ -350,7 +349,9 @@ internal class CastCostPayer(
         // gone (a sacrificed token leaves no entity to read a name off). The snapshot feeds "as it
         // last existed on the battlefield" reads (CR 608.2h) exactly like a scripted sacrifice cost.
         ledger.sacrificedSnapshots.addAll(captureEntitySnapshots(listOf(emergeSacrifice), ledger.state))
-        ledger.sacrifice(emergeSacrifice)
+        // Stamped so "when you sacrifice this while casting a spell with emerge" (Foul Emissary)
+        // can tell this sacrifice from any other.
+        ledger.sacrifice(emergeSacrifice, ZoneEntryOptions(emergeSacrifice = true))
     }
 
     /** Adds this cast's mana to the player's running total for the turn (Expend). */
@@ -390,16 +391,19 @@ internal class CastCostPayer(
         }
     }
 
-    /** The life a graveyard-cast permission charges (e.g., Festival of Embers). */
+    /**
+     * The life a graveyard-cast permission charges (e.g., Festival of Embers) — a life payment, so
+     * it goes through [LifePaymentService] like every other one: Ashiok can replace it and "whenever
+     * you pay life" sees it.
+     */
     private fun payGraveyardLifeCost(ledger: SpellCostLedger) {
         val lifeCost = ledger.action.graveyardLifeCost
         if (lifeCost <= 0) return
-        val currentLife = ledger.state.lifeTotal(ledger.playerId) // CR 810.9a — team's shared total
-        val (written, newLife) = DamageUtils.writeLifeReduction(ledger.state, ledger.playerId, currentLife, currentLife - lifeCost, predicateEvaluator)
-        ledger.state = written
-        if (newLife == currentLife) return
-        ledger.events.add(LifeChangedEvent(ledger.playerId, currentLife, newLife, LifeChangeReason.LIFE_LOSS))
-        ledger.state = DamageUtils.markLifeLostThisTurn(ledger.state, ledger.playerId, lifeCost)
+        LifePaymentService.pay(zones, ledger.state, ledger.playerId, lifeCost)
+            ?.let { (afterPayment, paymentEvents) ->
+                ledger.state = afterPayment
+                ledger.events.addAll(paymentEvents)
+            }
     }
 
     /**
@@ -477,28 +481,31 @@ internal class CastCostPayer(
         if (action.castFaceDown) {
             SpellPaymentContext.faceDownCast(isFromHand = isCastFrom(state, action.cardId, Zone.HAND))
         } else if (cardComponent != null) {
-            spellPaymentContextFor(
-                cardComponent,
+            spellPaymentContextFor(cardComponent, colors = state.projectedState.colorSetOf(action.cardId),
                 isKicked = action.declaredCostSlot == ChoiceSlot.KICKED,
                 isFromExile = isCastFrom(state, action.cardId, Zone.EXILE),
                 isFromHand = isCastFrom(state, action.cardId, Zone.HAND),
                 // "your graveyard" — the caster's own, not an opponent's (CastFromGraveyardOnly).
                 isFromGraveyard = action.cardId in state.getZone(ZoneKey(action.playerId, Zone.GRAVEYARD)),
                 isDisturbCast = action.useAlternativeCost && action.altAllows(AlternativeCostType.DISTURB),
-            ).copy(colorlessAsAnyColor = isCastWithColorlessAsAnyColor(state, action))
+            ).copy(spendAsAnyColor = castSpendAsAnyColor(state, action))
         } else null
 
     /**
-     * True if colorless mana may be spent as though it were mana of any color on this spell
-     * (CR 609.4b) — the cast permission that authorises it carries the rider ("you may spend
-     * colorless mana as though it were mana of any color to cast that spell", Abstruse
-     * Appropriation). Per-card like [isCastWithAnyManaType]'s permission half, so the card must
-     * be in a zone a may-play permission grants casting from.
+     * Which mana may be spent as though it were mana of any color on this spell (CR 609.4b), when
+     * the cast permission that authorises it carries the narrow rider — colorless mana ("you may
+     * spend colorless mana as though it were mana of any color to cast that spell", Abstruse
+     * Appropriation) or mana from snow sources (Draugr Necromancer). Per-card like
+     * [isCastWithAnyManaType]'s permission half, so the card must be in a zone a may-play
+     * permission grants casting from.
      */
-    fun isCastWithColorlessAsAnyColor(state: GameState, action: CastSpell): Boolean {
+    fun castSpendAsAnyColor(state: GameState, action: CastSpell): com.wingedsheep.sdk.scripting.effects.ManaSpentAsAnyColor? {
         val inGrantableZone = isCastFrom(state, action.cardId, Zone.EXILE) || isCastFrom(state, action.cardId, Zone.GRAVEYARD)
-        return inGrantableZone && state.activeMayPlayFor(action.cardId, action.playerId, conditionEvaluator, cardRegistry)
-            .any { it.colorlessAsAnyColor }
+        if (!inGrantableZone) return null
+        // Two overlapping narrow riders (colorless from one grant, snow from another) aren't
+        // modelled: no printed pair of them can cover the same card today, so the first one wins.
+        return state.activeMayPlayFor(action.cardId, action.playerId, conditionEvaluator, cardRegistry)
+            .firstNotNullOfOrNull { it.spendAsAnyColor }
     }
 
     /**
@@ -527,7 +534,9 @@ internal class CastCostPayer(
      *    gate open, and the `withAnyManaType` flag must be set on at least one of them.
      */
     fun isCastWithAnyManaType(state: GameState, action: CastSpell): Boolean {
-        if (castPermissionUtils.hasSpendAnyManaTypeStatic(state, action.playerId, action.cardId)) {
+        if (castPermissionUtils.staticSpellManaRelaxation(state, action.playerId, action.cardId) ==
+            com.wingedsheep.engine.legalactions.utils.SpellManaRelaxation.ANY_TYPE
+        ) {
             return true
         }
         val inGrantableZone = isCastFrom(state, action.cardId, Zone.EXILE) || isCastFrom(state, action.cardId, Zone.GRAVEYARD)
@@ -546,11 +555,19 @@ internal class CastCostPayer(
 
     /**
      * True if mana may be spent **as though it were mana of any color** on this spell (CR 609.4b):
-     * the may-play permission authorising the cast carries the rider (Stolen Strategy), or the
-     * library-top permission does (Xanathar, Guild Kingpin). Narrower
+     * a [com.wingedsheep.sdk.scripting.SpendAnyManaTypeForSpells] static with `asThoughAnyColor`
+     * matches it (Oath of Nissa), the may-play permission authorising the cast carries the rider
+     * (Stolen Strategy), or the library-top permission does (Xanathar, Guild Kingpin). Narrower
      * than [isCastWithAnyManaType] — a `{C}` pip still needs colorless mana.
      */
     fun isCastWithAnyManaColor(state: GameState, action: CastSpell): Boolean {
+        // A blanket static (Oath of Nissa: "you may spend mana as though it were mana of any color
+        // to cast planeswalker spells") — zone-agnostic, like the any-type one.
+        if (castPermissionUtils.staticSpellManaRelaxation(state, action.playerId, action.cardId) ==
+            com.wingedsheep.engine.legalactions.utils.SpellManaRelaxation.ANY_COLOR
+        ) {
+            return true
+        }
         // A library-top permission carrying the rider (Xanathar, Guild Kingpin: "you may spend mana
         // as though it were mana of any color to cast spells this way").
         if (zoneResolver.topOfLibraryAlternativeGrant(state, action.playerId, action.cardId)?.withAnyManaColor == true) {
@@ -584,13 +601,31 @@ internal class CastCostPayer(
         paymentXValue: Int,
         allowOneSpellRider: Boolean,
     ): Pair<ManaCost, PendingOneSpellAnyManaType?> {
-        if (isCastWithAnyManaType(state, action)) return cost.relaxColors() to null
-        if (isCastWithAnyManaColor(state, action)) return cost.relaxColoredRequirements() to null
-        if (!allowOneSpellRider) return cost to null
+        if (isCastWithAnyManaType(state, action)) return relaxKeepingLifePaidPips(action, cost, ManaCost::relaxColors) to null
+        // "As though any color" leaves a {C} pip demanding colorless, so a waiting any-type rider
+        // can still be what makes the spell payable: fall through to it when this alone can't.
+        val colorRelaxed = if (isCastWithAnyManaColor(state, action))
+            relaxKeepingLifePaidPips(action, cost, ManaCost::relaxColoredRequirements) else cost
+        if (!allowOneSpellRider) return colorRelaxed to null
         val rider = castPermissionUtils.oneSpellAnyManaTypeRider(state, action.playerId, action.cardId)
-            ?: return cost to null
-        if (validateManaPayment(state, action, cost, paymentXValue, allowOneSpellRider = false) == null) return cost to null
+            ?: return colorRelaxed to null
+        if (validateManaPayment(state, action, cost, paymentXValue, allowOneSpellRider = false) == null) return colorRelaxed to null
         return relaxManaCostPips(state, action, cost) to rider
+    }
+
+    /**
+     * [relax] applied to [cost] except for the Phyrexian pips the caster chose to pay with life
+     * (`PaymentStrategy.Explicit.phyrexianLifePayments`): spending mana as though it were another
+     * colour or type changes only how *mana* pays (CR 609.4b), so a `{U/P}` stays payable with 2
+     * life. Relaxing it to generic first would leave nothing for the life payment to remove.
+     */
+    private fun relaxKeepingLifePaidPips(action: CastSpell, cost: ManaCost, relax: (ManaCost) -> ManaCost): ManaCost {
+        val lifePayments = (action.paymentStrategy as? PaymentStrategy.Explicit)?.phyrexianLifePayments.orEmpty()
+        if (lifePayments.isEmpty()) return relax(cost)
+        val manaPart = cost.withPhyrexianPaidByLife(lifePayments) ?: return relax(cost)
+        val unclaimed = manaPart.symbols.toMutableList()
+        val lifePaidPips = cost.symbols.filterNot { unclaimed.remove(it) }
+        return ManaCost(relax(manaPart).symbols + lifePaidPips)
     }
 
     /**

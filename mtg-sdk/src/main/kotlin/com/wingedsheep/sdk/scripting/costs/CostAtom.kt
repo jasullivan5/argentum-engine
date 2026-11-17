@@ -243,6 +243,18 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
      * @property xMeasure how the chosen set is measured.
      * @property minMeasure minimum total the chosen set's [xMeasure] must reach (0 = no floor).
      * @property maxCount maximum number to choose, or `null` for no cap.
+     * @property exactly the whole count, fixed to an amount announced *before* the cost is paid —
+     *   "as an additional cost to cast this spell, sacrifice X creatures" (Eliminate the
+     *   Competition) is `exactly = DynamicAmount.XValue`. The caster announces X with the spell
+     *   (CR 601.2b) — there is no `{X}` in the mana cost, the cost itself defines it — so X is known
+     *   when targets are chosen (601.2c: "Destroy X target creatures" needs exactly X) and the
+     *   payment at 601.2h must then choose exactly X permanents, no more and no fewer. X may be 0.
+     *   Distinct from the free count of "you may sacrifice any number of …" (Devouring Greed),
+     *   where nothing is announced and the number chosen is only read back as "sacrificed this
+     *   way". Like a target's `exactly` it stands alone: it is the whole count, so [minCount],
+     *   [maxCount] and [minMeasure] stay at their open defaults. Only [DynamicAmount.XValue] is
+     *   accepted — a fixed number of permanents is the fixed-count [Sacrifice] atom. On an
+     *   activated ability the chosen count already *is* the X, so this axis is a spell-cost one.
      */
     @SerialName("AtomVariablePermanents")
     @Serializable
@@ -253,10 +265,15 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
         val action: PermanentCostAction = PermanentCostAction.EXILE,
         val xMeasure: VariableCostMeasure = VariableCostMeasure.TOTAL_MANA_VALUE,
         val minMeasure: Int = 0,
-        val maxCount: Int? = null
+        val maxCount: Int? = null,
+        val exactly: DynamicAmount? = null
     ) : CostAtom {
         init {
             require(maxCount == null || maxCount >= maxOf(minCount, 1)) { "maxCount must be at least minCount and 1" }
+            require(exactly == null || exactly == DynamicAmount.XValue) { "exactly supports only the announced X" }
+            require(exactly == null || (minCount <= 0 && maxCount == null && minMeasure == 0 && xMeasure == VariableCostMeasure.COUNT)) {
+                "exactly is the whole count: measure by COUNT and leave minCount, maxCount and minMeasure open"
+            }
         }
 
         // Variable count — the floor the payer must at least select. The picker's max is the number
@@ -281,6 +298,7 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
                 return@buildString
             }
             append(when {
+                exactly != null -> "X "
                 maxCount != null && maxCount == minCount -> "$minCount "
                 maxCount != null && minCount <= 0 -> "up to $maxCount "
                 maxCount != null -> "$minCount to $maxCount "
@@ -350,7 +368,20 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
         override fun applyTextReplacement(replacer: TextReplacer): CostAtom = this
     }
 
-    /** Exile [count] cards matching [filter] from [zone]. */
+    /**
+     * Exile [count] cards matching [filter] from [zone] — or, with [destination] set to
+     * [Zone.GRAVEYARD], put them into their owners' graveyards instead.
+     *
+     * The second shape is the BFZ *processor* cost, "put a card an opponent owns from exile into
+     * that player's graveyard" (Cryptic Cruiser's activated cost, Processor Assault's additional
+     * cost): `zone = EXILE`, `destination = GRAVEYARD`, `anyPlayersZone = true` and an
+     * `ownedByOpponent()` filter. It is the same payable thing as every other ExileFrom — choose
+     * [count] matching cards from a zone, move each out of its owner's copy of that zone — with only
+     * where the cards land differing, so it is an axis here rather than a sibling atom that would
+     * re-wire the selection, affordability and pause plumbing a second time. The neighbours that
+     * don't take it: [PutFromHandOnTopOfLibrary] is a fixed hand→library move with no pool
+     * widening, and [Sacrifice] moves permanents, not cards.
+     */
     @SerialName("AtomExileFrom")
     @Serializable
     data class ExileFrom(
@@ -383,20 +414,65 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
          * a selection that repeats a name is rejected.
          */
         val distinctNames: Boolean = false,
+        /**
+         * Where the chosen cards go: [Zone.EXILE] (the exile cost this type is named for) or
+         * [Zone.GRAVEYARD] — each card into its **owner's** graveyard, through the ordinary zone
+         * transition, so a graveyard replacement still applies (a Rest in Peace effect leaves the
+         * card in exile as a new object; the processor rulings say the cost is still paid). A card
+         * moved this way was not "exiled as a cost", so `CardSource.ExiledAsCost` doesn't name it.
+         * Wired for activated-ability costs and spell additional costs; the resolution-time
+         * "unless you pay" rails report a non-exile destination unpayable.
+         */
+        val destination: Zone = Zone.EXILE,
     ) : CostAtom {
+        init {
+            require(destination == Zone.EXILE || destination == Zone.GRAVEYARD) {
+                "ExileFrom destination must be EXILE or GRAVEYARD, was $destination"
+            }
+            require(destination != zone) { "ExileFrom can't move cards from $zone into $zone" }
+            // The one non-exile shape that is wired: the processor cost, exile → graveyard.
+            require(destination == Zone.EXILE || zone == Zone.EXILE) {
+                "ExileFrom into $destination is wired only from EXILE, was from $zone"
+            }
+        }
+
+        /** True when the cards really are exiled (the default), false for a processor-style move. */
+        val exiles: Boolean get() = destination == Zone.EXILE
+
         override val selectionCount: Int get() = count
         override val description: String get() {
+            if (!exiles) return movedDescription()
+            // A colour-only filter describes itself as "green"; off the battlefield it's a card.
+            val noun = filter.description.let {
+                if (zone != Zone.BATTLEFIELD && !CARD_NOUN.containsMatchIn(it)) "$it card" else it
+            }
             val what = when {
-                excludeSelf && count == 1 -> "another ${filter.description}"
+                excludeSelf && count == 1 -> "another $noun"
                 // "Exile five other cards from your graveyard" (escape, CR 702.138).
-                excludeSelf -> quantify(count, "other ${filter.description}")
-                else -> quantify(count, filter.description)
+                excludeSelf -> quantify(count, "other $noun")
+                else -> quantify(count, noun)
             } + if (distinctNames) " with different names" else ""
             return when {
                 anyPlayersZone && singleZone -> "exile $what from a single ${zone.name.lowercase()}"
                 anyPlayersZone -> "exile $what from a ${zone.name.lowercase()}"
                 else -> "exile $what from your ${zone.name.lowercase()}"
             }
+        }
+
+        // "put a card an opponent owns from exile into that player's graveyard" (Cryptic Cruiser);
+        // several cards may come from different opponents, so a plural names each owner.
+        private fun movedDescription(): String {
+            val filterText = filter.description
+            val noun = if (CARD_NOUN.containsMatchIn(filterText)) filterText else "card $filterText".trim()
+            val what = quantify(count, noun)
+            val from = if (anyPlayersZone || zone == Zone.EXILE) zone.name.lowercase() else "your ${zone.name.lowercase()}"
+            val into = when {
+                filter.description.contains("an opponent owns") && count == 1 -> "that player's"
+                count == 1 -> "its owner's"
+                else -> "their owners'"
+            }
+            val zoneWord = destination.name.lowercase() + if (count > 1) "s" else ""
+            return "put $what from $from into $into $zoneWord"
         }
 
         override fun applyTextReplacement(replacer: TextReplacer): CostAtom {
@@ -598,9 +674,12 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
      *
      * Self-scoped by design: every printed counter-adding cost puts the counters on the very
      * permanent whose ability is being activated, so there is nothing to select and nothing to
-     * choose ([selectionCount] stays 0). It is also **always payable** — unlike every other atom
-     * this one takes nothing away, which is exactly what makes the printed cards work (Mazemind
-     * Tome stays activatable right up to the counter that exiles it).
+     * choose ([selectionCount] stays 0). It takes nothing away, so it is payable even on the
+     * activation that finishes the permanent off (Mazemind Tome stays activatable right up to the
+     * counter that exiles it). The one exception is a permanent that can't have counters put on it
+     * (Solemnity): the event can't happen, so the cost can't be paid (CR 614.17b) — Devoted
+     * Druid's untap is then unactivatable. A replacement that merely shrinks the placement
+     * (Vizier of Remedies) leaves it payable.
      */
     @SerialName("AtomPutCountersOnSelf")
     @Serializable
@@ -622,8 +701,7 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
      * Fallen Empires' Chants print it as the way out of a punisher clause: Tourach's Chant deals 3
      * damage to a player "unless the player puts a -1/-1 counter on a creature they control". The
      * payer picks which of their creatures takes it, and a player controlling no matching permanent
-     * simply cannot pay — unlike [PutCountersOnSelf], which is always payable because it needs no
-     * selection.
+     * simply cannot pay — unlike [PutCountersOnSelf], which needs no selection.
      */
     @SerialName("AtomPutCountersOnPermanent")
     @Serializable
@@ -846,8 +924,8 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
     }
 
     /**
-     * Unattach the ability's source from the permanent it is attached to (CR 701.3d) — "Unattach
-     * this Equipment" (Sunforger). The cost twin of
+     * Unattach the ability's source — or, with [ofGrantingPermanent], the permanent that granted the
+     * ability — from what it is attached to (CR 701.3d) — "Unattach this Equipment" (Sunforger). The cost twin of
      * [com.wingedsheep.sdk.scripting.effects.UnattachEquipmentEffect]: the *effect* has existed for
      * a while (Stolen Uniform's rider), the *cost* had not.
      *
@@ -859,11 +937,19 @@ sealed interface CostAtom : TextReplaceable<CostAtom> {
      *
      * Ability-scoped: a spell on the stack is not attached to anything, so this is never a spell
      * additional cost or a "unless you …" [com.wingedsheep.sdk.scripting.PayCost].
+     *
+     * [ofGrantingPermanent] moves the cost from the ability's source to the permanent whose static
+     * ability *granted* it — Toralf's Hammer gives the equipped creature "{1}{R}, {T}, Unattach
+     * Toralf's Hammer: …", where `{T}` taps the creature and the unattach detaches the Equipment.
+     * Per CR 201.5a the name refers only to that specific granter (resolved at activation, like
+     * [com.wingedsheep.sdk.scripting.AbilityCost.TapGrantingPermanent]), and the same ruling-backed
+     * gate applies to it: the ability isn't offered unless the granter is attached to something.
      */
     @SerialName("AtomUnattach")
     @Serializable
-    data object Unattach : CostAtom {
-        override val description: String get() = "unattach this Equipment"
+    data class Unattach(val ofGrantingPermanent: Boolean = false) : CostAtom {
+        override val description: String
+            get() = if (ofGrantingPermanent) "unattach the granting Equipment" else "unattach this Equipment"
     }
 
     /**
@@ -952,7 +1038,10 @@ enum class PermanentCostAction {
 
 /**
  * How a [CostAtom.VariablePermanents] choice is measured — both as the ability's X (CR 601.2b) and
- * as the quantity a [CostAtom.VariablePermanents.minMeasure] floor is compared against.
+ * as the quantity a [CostAtom.VariablePermanents.minMeasure] floor is compared against — and how an
+ * [com.wingedsheep.sdk.scripting.AbilityCost.DiscardX] reads X off its discards: COUNT for "discard X
+ * cards", TOTAL_MANA_VALUE for "discard a card with mana value X" (Kozilek, the Great Distortion).
+ * TOTAL_POWER measures permanents only.
  */
 @Serializable
 enum class VariableCostMeasure {
@@ -1066,3 +1155,6 @@ sealed interface CardMeasure {
         override val unitLabel: String get() = "card types"
     }
 }
+
+/** Whether an exile-cost filter description already names its head noun ("creature card"). */
+private val CARD_NOUN = Regex("""\bcards?\b""")

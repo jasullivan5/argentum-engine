@@ -4,7 +4,8 @@ import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.GrantCantBeCountered
-import com.wingedsheep.sdk.scripting.GraveyardCardsHaveFlashback
+import com.wingedsheep.sdk.scripting.GraveyardCardsHaveCastKeyword
+import com.wingedsheep.sdk.scripting.GraveyardCastKeyword
 
 /**
  * Lier, Disciple of the Drowned
@@ -16,7 +17,7 @@ import com.wingedsheep.sdk.scripting.GraveyardCardsHaveFlashback
  *   that card's mana cost.
  *
  * "Spells can't be countered" is a global [GrantCantBeCountered] over every spell, whoever controls
- * it. The flashback clause is a whole-graveyard [GraveyardCardsHaveFlashback] grant; a null cost
+ * it. The flashback clause is a whole-graveyard [GraveyardCardsHaveCastKeyword] grant; a null cost
  * means "equal to that card's mana cost" (current Oracle has no your-turn restriction).
  */
 val LierDiscipleOfTheDrowned = card("Lier, Disciple of the Drowned") {
@@ -34,7 +35,7 @@ val LierDiscipleOfTheDrowned = card("Lier, Disciple of the Drowned") {
     }
 
     staticAbility {
-        ability = GraveyardCardsHaveFlashback(filter = GameObjectFilter.InstantOrSorcery)
+        ability = GraveyardCardsHaveCastKeyword(GraveyardCastKeyword.Flashback, GameObjectFilter.InstantOrSorcery)
     }
 
     metadata {

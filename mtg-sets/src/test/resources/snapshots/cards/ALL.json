@@ -104,6 +104,44 @@
     ]
 }
 
+// Elvish Spirit Guide
+{
+    "name": "Elvish Spirit Guide",
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature — Elf Spirit",
+    "oracleText": "Exile this card from your hand: Add {G}.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Elvish Spirit Guide:1",
+                "cost": "CostExileSelf",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "GREEN"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true,
+                "activateFromZone": "Hand",
+                "descriptionOverride": "Exile this card from your hand: Add {G}."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "89",
+        "rarity": "UNCOMMON",
+        "artist": "Julie Baroh",
+        "flavorText": "\"We are never without guidance, if we but seek it.\"\n—Taaveti of Kelsinko, Elvish Hunter",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/b/5b94f37f-ebdf-4b79-a615-58331d27cf4e.jpg?1783947172"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Force of Will
 {
     "name": "Force of Will",
@@ -160,6 +198,129 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Lim-Dûl's Vault
+{
+    "name": "Lim-Dûl's Vault",
+    "manaCost": "{U}{B}",
+    "typeLine": "Instant",
+    "oracleText": "Look at the top five cards of your library. As many times as you choose, you may pay 1 life, put those cards on the bottom of your library in any order, then look at the top five cards of your library. Then shuffle and put the last cards you looked at this way on top in any order.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "RepeatWhile",
+                    "body": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "TopOfLibrary",
+                                    "count": {
+                                        "type": "Fixed",
+                                        "amount": 5
+                                    }
+                                },
+                                "storeAs": "gathered1"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "gathered1",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Library",
+                                    "placement": "Top"
+                                },
+                                "order": "ControllerChooses"
+                            },
+                            {
+                                "type": "Gated",
+                                "gate": {
+                                    "type": "Gate.MayPay",
+                                    "cost": {
+                                        "type": "PayLife",
+                                        "amount": 1
+                                    }
+                                },
+                                "then": {
+                                    "type": "Composite",
+                                    "effects": [
+                                        {
+                                            "type": "MoveCollection",
+                                            "from": "gathered1",
+                                            "destination": {
+                                                "type": "ToZone",
+                                                "zone": "Library",
+                                                "placement": "Bottom"
+                                            },
+                                            "order": "ControllerChooses",
+                                            "storeMovedAs": "moved3"
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    },
+                    "repeatCondition": {
+                        "type": "WhileCondition",
+                        "condition": {
+                            "type": "CollectionContainsMatch",
+                            "collection": "moved3"
+                        }
+                    }
+                },
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "TopOfLibrary",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 5
+                        }
+                    },
+                    "storeAs": "gathered5"
+                },
+                "ShuffleLibrary",
+                {
+                    "type": "MoveCollection",
+                    "from": "gathered5",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Library",
+                        "placement": "Top"
+                    },
+                    "order": "ControllerChooses"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "107",
+        "rarity": "UNCOMMON",
+        "artist": "Rob Alexander",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/9/f9b0164c-2d4e-48ab-addd-322d9b504739.jpg?1783947166",
+        "rulings": [
+            {
+                "date": "2007-09-16",
+                "text": "In other words: — Step 1: Look at the top five cards of your library. — Step 2: If you like them, proceed to step 3a. If you don't like them, proceed to step 3b. — Step 3a: Shuffle the rest of your library, then put those five cards back on top of your library in the order you want. The spell has finished resolving. — Step 3b: Put those five cards on the bottom of your library in the order you want. Pay 1 life. Return to step 1."
+            },
+            {
+                "date": "2007-09-16",
+                "text": "If you pay no life, you shuffle the rest of your library and then put the top five cards back on top in any order."
+            },
+            {
+                "date": "2007-09-16",
+                "text": "If you have five or fewer cards in your library, you can pay 1 life as many times as you like, but you'll keep seeing the same cards."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "BLACK"
     ]
 }
 

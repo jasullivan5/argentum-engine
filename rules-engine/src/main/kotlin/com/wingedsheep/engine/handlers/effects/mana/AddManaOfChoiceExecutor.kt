@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.handlers.effects.mana
 
+import com.wingedsheep.engine.mechanics.mana.ChosenTypeManaRestriction
 import com.wingedsheep.engine.core.ChooseManaColorContinuation
 import com.wingedsheep.engine.core.DecisionPhase
 import com.wingedsheep.engine.core.EffectResult
@@ -60,7 +61,8 @@ class AddManaOfChoiceExecutor(
             controllerId = context.controllerId,
             cardRegistry = cardRegistry,
             predicateEvaluator = amountEvaluator.predicates,
-            resolveEntity = { context.resolveTarget(it, state) }
+            resolveEntity = { context.resolveTarget(it, state) },
+            chosenColor = context.chosenColor,
         )
         if (availableColors.isEmpty()) return EffectResult.success(state)
 
@@ -133,13 +135,16 @@ class AddManaOfChoiceExecutor(
         if (color !in availableColors) return EffectResult.success(state)
         val recipientId = if (effect.recipient == EffectTarget.Controller) context.controllerId
             else context.resolvePlayerTarget(effect.recipient, state) ?: return EffectResult.success(state)
-        val amount = amountEvaluator.evaluate(state, effect.amount, context)
+        // The amount is sized for the color just picked: "add an amount of mana of that color
+        // equal to your devotion to that color" (Nykthos) reads it as the context's chosen color.
+        // The mana color takes precedence over a color an outer ChooseColorThen chose.
+        val amount = amountEvaluator.evaluate(state, effect.amount, context.copy(chosenColor = color))
         if (amount <= 0) return EffectResult.success(state)
 
         // When riders are attached but no restriction is specified, store the mana as
         // restricted entries under [ManaRestriction.AnySpend] so riders are preserved
         // through the pool while the mana itself remains spendable on anything.
-        val effectiveRestriction: ManaRestriction? = effect.restriction
+        val effectiveRestriction: ManaRestriction? = ChosenTypeManaRestriction.bind(effect.restriction, state, context.sourceId)
             ?: if (effect.riders.isNotEmpty()) ManaRestriction.AnySpend else null
 
         var newState = state.updateEntity(recipientId) { container ->

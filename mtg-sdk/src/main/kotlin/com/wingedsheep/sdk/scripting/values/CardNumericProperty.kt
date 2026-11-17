@@ -78,6 +78,14 @@ enum class Aggregation {
      */
     DISTINCT_PLANESWALKER_SUBTYPES,
     /**
+     * Count distinct creature types (CR 205.3m) across all matched entities — "the number of
+     * creature types among non-Borg creatures you control" (Star Trek's Federation ability word).
+     * A Human Officer and a Human Scientist count three; non-creature subtypes (Equipment, Forest,
+     * Jace) never count. Reads projected subtypes on the battlefield, so a type-changing effect
+     * is honoured and a changeling contributes every creature type (CR 702.73a).
+     */
+    DISTINCT_CREATURE_TYPES,
+    /**
      * Count distinct kinds of counters across all matched entities — i.e. the number of
      * different [com.wingedsheep.sdk.core.CounterType]s present on at least one matched
      * permanent. A permanent with both +1/+1 and finality counters contributes two kinds;
@@ -92,6 +100,18 @@ enum class Aggregation {
      * the same power count once.
      */
     DISTINCT_VALUES,
+    /**
+     * Count distinct *mana costs* (CR 202.1) across all matched entities — the printed symbols,
+     * not the mana value: {2}{B} and {1}{B}{B} are two costs, {X} and {0} are two costs, and a
+     * hybrid {B/R} is its own symbol, neither {B} nor {R}. Symbol order doesn't matter, so
+     * {1}{B} and {B}{1} are one cost. An object with no mana cost (CR 202.1b — a land, a card
+     * with no mana symbols, a token, a face-down permanent) contributes nothing, while a printed
+     * {0} counts. A split card off the battlefield has its halves' costs combined (CR 709.4b), so
+     * Fire // Ice is {2}{U}{R}; a Room on the battlefield has only its unlocked halves' costs
+     * (CR 709.5). Used for "for each different mana cost among nonland cards in your graveyard"
+     * (Embodiment of Agonies).
+     */
+    DISTINCT_MANA_COSTS,
     /**
      * The size of the largest group of matched entities that share one name — "<N> or more
      * artifacts with the same name as one another" (Mechanized Production). Group the matched

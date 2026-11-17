@@ -3541,7 +3541,7 @@ So the quantifier is a **row**, a rule that uses it is a *family* of rules, and
 The rows are exhaustive over the *printed* forms rather than over the SDK's fields. "One or two target
 creatures" is a `minCount` below its `count` and is a seventh row nobody has needed yet
 (`Combat.returnOneOrTwoTargets` still spells it whole); "target creature an opponent controls" is a
-filter, not a quantifier; a `sameController` or a `totalManaValueAtMost` is a rider on the noun phrase
+filter, not a quantifier; a `sameController` or a `totalAtMost` is a rider on the noun phrase
 and belongs to a layer above the list, exactly as `Filters`' controller clause does.
 
 ### `plural` is one column with two consequences
@@ -5075,9 +5075,9 @@ the corpus's 205 restriction sentences**. What blocks the rest is mostly not thi
 - **contexts with no SDK atom** — "on costs that contain {X}" (4 lines, and Rosheen Meanderer is a
   card people play), "a multicolored spell" (4 cards), "a colorless spell", "spells from your
   graveyard", "your commander";
-- **the chosen type** (5 lines) — a different *effect*, `AddAnyColorManaSpendOnChosenTypeEffect`, which
-  mints its restriction at resolution from the source's `CastChoicesComponent`, so the whole two-sentence
-  span is one rule rather than a restriction slot;
+- **the chosen type** (5 lines) — now a restriction atom, `ManaRestriction.OfChosenType(creatureOnly)`,
+  that the engine binds to the source's chosen type when the mana is made, so it can fill the ordinary
+  restriction slot (and an `AnyOf`) — no grammar rule reads it yet;
 - **`creatureOnly` on a printed subtype** — "cast Dragon creature spells", "an Elf creature spell". The
   field exists on `SubtypeSpellsOrAbilitiesOnly`, but every hand-written user of it is a chosen-type
   card whose printed wording is "a creature spell of the chosen type", so reading a *named* subtype onto
@@ -6414,6 +6414,41 @@ on the *first request*, so a server nobody opens it on fetches nothing. Where `~
 does not exist, that first sweep downloads the bulk; where it cannot, the page stays up with its
 live parser and rule tree and reports the failure. The differential needs `mtg-sets` test resources
 and so answers "no goldens found" off a bootJar — one page degraded, the rest intact.
+
+### What the engine AI reads
+
+Inside the app, each card page also has an **AI reading** panel: what the engine AI's static card
+readers (target polarity, card intent, combat reach, end-of-turn timing, the escalate picker)
+understand of each of the card's abilities — the corpus audit of
+[`docs/ai/reading-audit.md`](../docs/ai/reading-audit.md), placed. Each spell, triggered and
+activated ability is a row marked read (✓) or with gaps (✕); each finding names its reader, the
+target slot or the step of the effect it is about, a plain-English reason ("target 1: can't tell if
+this helps or hurts"), and the SDK effect type for a developer. A chip beside the card's title sums
+it up ("AI reads 3/4 abilities") and jumps to the panel. The card list gains an AI column and an
+**AI gaps** filter.
+
+Which definition is read: the engine's own (the live registry), else the hand-written golden, else —
+for a card nobody has implemented — Assay's whole-card [`CardCompiler`] output, labelled a
+**preview** of what the AI would understand if the card were written the way Assay reads it.
+
+This module cannot compute any of that: the readers live in `:ai`, which depends on the engine, and
+`:oracle-assay` depends on the SDK alone. So `explore/AiReading.kt` declares an
+`AiReadingProvider` interface and the views the page renders, `ExploreApi` takes one optionally, and
+`game-server` passes its implementation (`AiReadingService`) when it mounts the explorer. Standalone
+`just assay-explore` passes none, and the panel says the AI reading needs the game server.
+
+Beside it, **How the AI rates it** draws the numbers the AI puts on the card, from the same provider
+(`AiReadingProvider.rate`, answered by `AiCardRating` in `:ai`):
+
+- **Draft & deckbuilding** — the 0–5 limited pick rating on a gauge banded by the scorer's cutoffs,
+  where it came from (17Lands, a pick table, or the effect heuristic — called out as "No draft rating"
+  when nothing rates the card), the draft scorer's starting number per set the card is in, and the
+  heuristic as a waterfall: base, each keyword, each ability, rarity and curve.
+- **In play** — the evaluator's board value on an empty battlefield, on a scale ticked with familiar
+  cards, broken into stats and keywords (a creature) or the prior rung that priced it (any other
+  permanent), and the intent tags the AI's timing and targeting policies read.
+
+`just ai-card "<name>|<name>"` prints both panels' answers in the terminal.
 
 ## The verdict ledger
 

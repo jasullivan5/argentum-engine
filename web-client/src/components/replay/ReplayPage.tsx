@@ -7,7 +7,7 @@
  * the two cannot drift apart again.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   reconstructSnapshots,
   type PublicReplayData,
@@ -20,6 +20,7 @@ import styles from './Replay.module.css'
 export function ReplayPage() {
   const { gameId } = useParams<{ gameId: string }>()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const [snapshots, setSnapshots] = useState<SpectatorStateUpdate[]>([])
   const [metadata, setMetadata] = useState<ReplayMetadata | null>(null)
@@ -59,6 +60,10 @@ export function ReplayPage() {
   }, [gameId])
 
   const goHome = useCallback(() => { navigate('/') }, [navigate])
+  // Back returns to wherever the replay was opened from (admin Activity, a tournament, a profile);
+  // only a replay opened cold — a shared link, a new tab — has nowhere to go back to but home.
+  const canGoBack = location.key !== 'default'
+  const goBack = useCallback(() => { if (canGoBack) navigate(-1); else navigate('/') }, [canGoBack, navigate])
 
   if (loading || error) {
     return (
@@ -74,8 +79,8 @@ export function ReplayPage() {
               <>
                 <h1 className={styles.stateTitle}>Replay unavailable</h1>
                 <p className={styles.stateText}>{error}</p>
-                <button type="button" onClick={goHome} className={pageStyles.buttonPrimary}>
-                  Back to home
+                <button type="button" onClick={goBack} className={pageStyles.buttonPrimary}>
+                  {canGoBack ? 'Go back' : 'Back to home'}
                 </button>
               </>
             )}
@@ -90,7 +95,7 @@ export function ReplayPage() {
       snapshots={snapshots}
       gameId={gameId ?? ''}
       metadata={metadata}
-      onExit={goHome}
+      onExit={goBack}
       onHome={goHome}
     />
   )

@@ -1,6 +1,9 @@
 package com.wingedsheep.sdk.scripting.effects
 
+import com.wingedsheep.sdk.core.CardType
+import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.CounterType
+import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.scripting.Duration
 import com.wingedsheep.sdk.scripting.GameObjectFilter
@@ -52,6 +55,25 @@ data class RemoveDamageShieldEffect(
     override val description: String =
         "The next time ${target.description} would be destroyed this turn, " +
             "remove all damage marked on it instead"
+}
+
+/**
+ * Remove all damage marked on target permanent, right now — "all damage already dealt to it is
+ * healed" / "remove all damage from it".
+ *
+ * The immediate counterpart of the two deferred heals: [RemoveDamageShieldEffect] waits for the next
+ * destruction this turn, and [RegenerateEffect] also taps the permanent and removes it from combat.
+ * Neither takes an "immediately" axis without changing what its name promises, hence a sibling. It is
+ * the natural "instead …" body of a [com.wingedsheep.sdk.scripting.ReplaceDestructionWith]
+ * (Dr. McCoy, Surly Surgeon), and works as a one-shot spell effect too. A no-op on an object with no
+ * marked damage (players, planeswalkers and battles never have any).
+ */
+@SerialName("HealDamage")
+@Serializable
+data class HealDamageEffect(
+    val target: EffectTarget
+) : Effect {
+    override val description: String = "remove all damage from ${target.description}"
 }
 
 /**
@@ -234,14 +256,25 @@ data class ForceSacrificeEffect(
      * The fixed [count] is kept as the fallback for the common edict ("a creature") case so
      * existing cards and their compiled snapshots are untouched.
      */
-    val dynamicCount: DynamicAmount? = null
+    val dynamicCount: DynamicAmount? = null,
+    /**
+     * When true, [dynamicCount] is evaluated **once per sacrificing player**, with [Player.You]
+     * bound to that player (the rebinding `ForEachPlayer` gives its body) — "each opponent
+     * sacrifices half the creatures **they** control, rounded up" (Vona's Hunger, Legate Lanius,
+     * Zodiark). Every count is read before anyone sacrifices, and the sacrifices stay one
+     * simultaneous event (CR 101.4), which a `ForEachPlayer` loop around a single-player edict
+     * can't give. False keeps the single resolution-time evaluation (Rush of Dread's targeted
+     * opponent, Meathook Massacre II's X).
+     */
+    val countPerPlayer: Boolean = false
 ) : Effect {
     override val description: String = buildString {
         append(target.description)
         // "you sacrifice", not "you sacrifices" — the controller form reads as second person.
         append(if (target.description.equals("you", ignoreCase = true)) " sacrifice " else " sacrifices ")
         if (dynamicCount != null) {
-            append(dynamicCount.description)
+            // A per-player count reads the sacrificing player's own permanents: "they control".
+            append(if (countPerPlayer) dynamicCount.description.replace("you control", "they control") else dynamicCount.description)
             append(" ")
             append(filter.description)
             append("s")
@@ -359,12 +392,86 @@ data class DestroyAllEquipmentOnTargetEffect(
  * that another effect makes a creature on the battlefield (March of the Machines) counts as a
  * creature, as Recommission's ruling requires, and a permanent that was only a creature through a
  * type-changing effect doesn't (Semester's End's ruling). Null places it unconditionally.
+ *
+ * [count] is how many of them — one by default; a [DynamicAmount] for "return it to the battlefield
+ * with X +1/+1 counters on it, where X is the number of voyage counters on it" (Cosima, God of the
+ * Voyage). It is evaluated once, *before* the card moves, so it can read the card where it was —
+ * counters on a card in exile are gone once it leaves (CR 122.2). Zero or less places none.
  */
 @Serializable
 data class EntryCounter(
     val counterType: CounterType,
-    val onlyIf: GameObjectFilter? = null
+    val onlyIf: GameObjectFilter? = null,
+    val count: DynamicAmount = DynamicAmount.Fixed(1)
 )
+
+/**
+ * Characteristics a card put onto the battlefield by an effect has **as it enters** — "they enter
+ * as 5/5 creatures in addition to their other types" (Dance of the Manse), "they're 5/5 Elemental
+ * creatures in addition to their other types" (Relive the Past). Everything here *adds*: the card
+ * keeps its printed types, subtypes and colors (the "in addition to" templating), and
+ * [power]/[toughness] set its base P/T (layer 7b) only when both are given.
+ *
+ * Unlike entering and then animating with `BecomeCreatureEffect`, the permanent already has these
+ * characteristics the moment it arrives, so entry replacements ("creatures enter tapped"), entry
+ * counters gated on being a creature, and "whenever a creature enters" triggers all see it as a
+ * creature. The change lasts for as long as the permanent stays on the battlefield.
+ *
+ * [creatureSubtypes] is the one axis that *replaces* rather than adds: the card's creature types
+ * become exactly that set (assimilate's "loses all other creature types").
+ *
+ * For a face-down entry these are instead the face-down characteristics the effect specifies
+ * (CR 708.2a): added types/subtypes/colors join the face-down creature's and [power]/[toughness]
+ * replace its 2/2, as copiable values that end when it is turned face up ("They're 5/5 artifact
+ * creatures", Tezzeret, Cruel Machinist).
+ *
+ * Carried by [MoveToZoneEffect.entersWith] and [MoveCollectionEffect.entersWith]; ignored for any
+ * destination but the battlefield, and for an Aura entering through the
+ * attach/enchant prompt (an Aura that is also a creature can't stay attached anyway). Replacements
+ * that ask whether a creature would enter (Containment Priest) judge the entrant with it applied. The closest neighbours are
+ * `BecomeCreatureEffect` (a resolving effect on a permanent already in play, with a duration) and
+ * `CopyExceptions` (copiable values of a copy effect) — neither is an entry rider.
+ */
+@Serializable
+data class EntersWithCharacteristics(
+    val addedCardTypes: Set<CardType> = emptySet(),
+    val addedSubtypes: Set<Subtype> = emptySet(),
+    val addedColors: Set<Color> = emptySet(),
+    val power: Int? = null,
+    val toughness: Int? = null,
+    /**
+     * When set, the card's creature types are *replaced* by these as it enters — "it's a Borg
+     * artifact creature and loses all other creature types" (assimilate). Non-creature subtypes
+     * stay (CR 205.1a). `null` (the default) leaves its creature types alone; [addedSubtypes] still
+     * add on top.
+     */
+    val creatureSubtypes: Set<Subtype>? = null,
+) {
+    init {
+        require((power == null) == (toughness == null)) { "power and toughness are set together" }
+    }
+
+    companion object {
+        /**
+         * Assimilate's rider (Star Trek): "It's a Borg artifact creature and loses all other creature
+         * types." Pair it with a +1/+1 entry counter and your control — `Effects.Assimilate(target)`
+         * for a targeted card, or a pipeline `move(…, addCounterType = PLUS_ONE_PLUS_ONE, entersWith =
+         * assimilated())` for one chosen at resolution (Borg Cube).
+         */
+        fun assimilated() = EntersWithCharacteristics(
+            addedCardTypes = setOf(CardType.ARTIFACT, CardType.CREATURE),
+            creatureSubtypes = setOf(Subtype("Borg")),
+        )
+
+        /** "enters as a [power]/[toughness] [subtypes] creature in addition to its other types". */
+        fun creature(power: Int, toughness: Int, vararg subtypes: String) = EntersWithCharacteristics(
+            addedCardTypes = setOf(CardType.CREATURE),
+            addedSubtypes = subtypes.map { Subtype(it) }.toSet(),
+            power = power,
+            toughness = toughness,
+        )
+    }
+}
 
 @SerialName("MoveToZone")
 @Serializable
@@ -391,7 +498,7 @@ data class MoveToZoneEffect(
      */
     val positionFromTop: Int? = null,
     /**
-     * Counters the card enters the battlefield with, one per [EntryCounter], honoring
+     * Counters the card enters the battlefield with, [EntryCounter.count] per entry, honoring
      * counter-placement replacements and prevention. In other destinations they annotate the
      * arriving card — "exile it with a stash counter on it" (Tinybones, Bauble Burglar), "with a dream
      * counter on it" (Goliath Daydreamer). Each entry's [EntryCounter.onlyIf] gates it on the card
@@ -407,7 +514,9 @@ data class MoveToZoneEffect(
      * first opponent); [EnteringAttackDefender.RETURNED_ATTACKER] is ninjutsu's "the same player,
      * planeswalker, or battle as the creature that was returned" (CR 702.49c).
      */
-    val attackDefender: EnteringAttackDefender = EnteringAttackDefender.JOIN_SOURCE
+    val attackDefender: EnteringAttackDefender = EnteringAttackDefender.JOIN_SOURCE,
+    /** Characteristics the card has as it enters the battlefield — see [EntersWithCharacteristics]. */
+    val entersWith: EntersWithCharacteristics? = null,
 ) : Effect {
     init {
         require(attackDefender != EnteringAttackDefender.CONTROLLER_CHOOSES) {
@@ -541,6 +650,9 @@ data class ReturnSelfToBattlefieldAttachedEffect(
  * @property grantedAbilities Activated abilities it has as that Aura (Bronzehide Lion's
  *   "{G}{W}: Enchanted creature gains indestructible until end of turn").
  * @property fromZone The zone the card must still be in; a card that has left it doesn't move.
+ * @property losesOtherAbilities Whether it loses its printed abilities as that Aura (Harold and Bob,
+ *   Bronzehide Lion). `false` when the Oracle text doesn't say so — Old-Growth Troll keeps trample and
+ *   its own dies trigger; only its types change.
  */
 @SerialName("PutOntoBattlefieldAsAura")
 @Serializable
@@ -550,13 +662,14 @@ data class PutOntoBattlefieldAsAuraEffect(
     val grantedAbilities: List<com.wingedsheep.sdk.scripting.ActivatedAbility> = emptyList(),
     val target: EffectTarget = EffectTarget.Self,
     val fromZone: Zone? = Zone.GRAVEYARD,
+    val losesOtherAbilities: Boolean = true,
 ) : Effect {
     override val description: String = buildString {
         append("Return ${target.description} to the battlefield. It's an Aura enchantment with enchant ")
         append(enchant.description)
         val gained = grantedStaticAbilities.map { it.description } + grantedAbilities.map { it.description }
         if (gained.isNotEmpty()) append(" and ${gained.joinToString(" and ") { "\"$it\"" }}")
-        append(", and it loses all other abilities")
+        if (losesOtherAbilities) append(", and it loses all other abilities")
     }
 
     override fun applyTextReplacement(replacer: TextReplacer): Effect {
@@ -583,7 +696,7 @@ data class PutOntoBattlefieldAsAuraEffect(
  * [com.wingedsheep.sdk.scripting.ChoiceSlot.PLAYER] choice, so the granted abilities can name
  * "that player" as [Player.ChosenPlayer].
  *
- * No neighbour takes this: [PutOntoBattlefieldAsAuraEffect] makes a card an Aura and strips every
+ * No neighbour takes this: [PutOntoBattlefieldAsAuraEffect] makes a card an Aura and (by default) strips every
  * other ability, the opposite direction on both axes; [MoveToZoneEffect] moves an Aura card with
  * its printed type line, so it would need a host and die to CR 704.5m without one.
  *
@@ -809,19 +922,30 @@ data class MoveTrackedBattlefieldObjectEffect(
 }
 
 /**
- * Move an object out of its zone until this source leaves the battlefield. The return is a
+ * Move an object out of its zone until a permanent leaves the battlefield. The return is a
  * one-shot effect, not a triggered ability: it happens immediately, even during resolution.
- * Both the source's battlefield visit and the moved object's destination visit are remembered.
+ * Both the anchor's battlefield visit and the moved object's destination visit are remembered.
+ *
+ * [anchor] is the permanent whose departure ends the duration: this source by default, or another
+ * permanent ("until target enchantment you control leaves the battlefield" — Calix, Destiny's
+ * Hand). If the anchor is no longer on the battlefield as the effect resolves, nothing moves.
+ *
+ * [target] is one object, or an [EffectTarget.GroupRef] for "exile all <filter> until …": the
+ * whole group moves in one simultaneous move and every member returns at once (Aligned Hedron
+ * Network). A group that includes the anchor itself ends the duration in the same move.
  */
 @SerialName("MoveUntilSourceLeaves")
 @Serializable
 data class MoveUntilSourceLeavesEffect(
     val target: EffectTarget,
-    val destination: Zone
+    val destination: Zone,
+    val anchor: EffectTarget = EffectTarget.Self
 ) : Effect {
     init {
         require(destination != Zone.BATTLEFIELD && destination != Zone.STACK)
     }
     override val description: String =
-        "Move ${target.description} to ${destination.name.lowercase()} until this permanent leaves the battlefield"
+        "Move ${target.description} to ${destination.name.lowercase()} until " +
+            (if (anchor == EffectTarget.Self) "this permanent" else anchor.description) +
+            " leaves the battlefield"
 }

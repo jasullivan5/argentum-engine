@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.handlers.predicates
 
+import com.wingedsheep.engine.mechanics.targeting.TypeQualityProtection
 import com.wingedsheep.engine.mechanics.targeting.ColorProtection
 import com.wingedsheep.engine.mechanics.targeting.SourceKindProtection
 import com.wingedsheep.engine.handlers.PredicateContext
@@ -154,9 +155,8 @@ object EnchantRestriction {
         val types = if (battlefield) projected.getTypes(attachmentId) else attachmentCard.typeLine.cardTypes.map { it.name }.toSet()
         if (types.any { projected.hasKeyword(hostId, "PROTECTION_FROM_CARDTYPE_$it") }) return true
         val subtypes = if (battlefield) projected.getSubtypes(attachmentId) else attachmentCard.typeLine.subtypes.map { it.value }.toSet()
-        if (subtypes.any { projected.hasKeyword(hostId, "PROTECTION_FROM_SUBTYPE_${it.uppercase()}") }) return true
         val supertypes = if (battlefield) projected.getSupertypes(attachmentId) else attachmentCard.typeLine.supertypes.map { it.name }.toSet()
-        if (supertypes.any { projected.hasKeyword(hostId, "PROTECTION_FROM_SUPERTYPE_${it.uppercase()}") }) return true
+        if (TypeQualityProtection.matchedQuality(projected, hostId, subtypes, supertypes, types) != null) return true
         // An Aura or Equipment that was cast this turn (CR 702.16c/d) — Emrakul, the World Anew.
         if (SourceKindProtection.isProtectedFromObject(state, hostId, attachmentId)) return true
         if (projected.hasKeyword(hostId, "PROTECTION_FROM_EACH_OPPONENT")) {
@@ -165,8 +165,7 @@ object EnchantRestriction {
                 ?: state.getEntity(attachmentId)?.get<com.wingedsheep.engine.state.components.identity.ControllerComponent>()?.playerId
             if (hostController != null && attachmentController in state.getOpponents(hostController)) return true
         }
-        val colors: Set<String> = if (attachmentId in state.getBattlefield()) projected.getColors(attachmentId)
-        else attachmentCard.colors.map { it.name }.toSet()
+        val colors: Set<String> = projected.colorsOf(attachmentId)
         // A colorless attachment meets protection from colorless (CR 105.2c, 702.16c/d).
         if (colors.isEmpty()) return projected.hasKeyword(hostId, ColorProtection.PROTECTION_FROM_COLORLESS)
         // A multicolored attachment meets protection from multicolored (CR 105.2b).

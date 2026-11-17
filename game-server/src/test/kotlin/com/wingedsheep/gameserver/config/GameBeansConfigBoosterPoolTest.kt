@@ -1,20 +1,27 @@
 package com.wingedsheep.gameserver.config
 
 import com.wingedsheep.gameserver.coverage.SetCoverageService
+import com.wingedsheep.mtg.sets.definitions.emn.EldritchMoonSet
+import com.wingedsheep.sdk.core.CardType
+import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.limited.DedicatedSlotBooster
 import com.wingedsheep.sdk.limited.EchoedPairsPlayBooster
 import com.wingedsheep.sdk.limited.LandSlotBooster
 import com.wingedsheep.sdk.limited.PlayBooster
 import com.wingedsheep.sdk.limited.PrintSheetBooster
 import com.wingedsheep.sdk.limited.StandardBooster
+import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.Rarity
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 
@@ -73,6 +80,857 @@ class GameBeansConfigBoosterPoolTest : FunSpec({
         val packs = 2000
         repeat(packs) {
             val pack = boosterGenerator.generateBooster("SNC")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        // 1 in 8 rare slots upgrades to a mythic.
+        (mythics.toDouble() / packs) shouldBe (0.125 plusOrMinus 0.03)
+    }
+
+    test("Ixalan draft pack is 10 commons, 3 uncommons and a rare or mythic, never a Planeswalker Deck card") {
+        // MTGJSON's XLN draft booster: 1 rare or mythic, 3 uncommons, 10 commons and a basic land (supplied
+        // at deck building). The rare sheet prints each rare twice and each mythic once: 15 mythics in 141.
+        val xln = boosterGenerator.availableSets["XLN"].shouldNotBeNull()
+        xln.fullyImplemented shouldBe true
+        xln.boosterStrategy shouldBe StandardBooster(commons = 10, mythicChance = 15.0 / 141)
+        val planeswalkerDeck = setOf(
+            "Jace, Ingenious Mind-Mage", "Castaway's Despair", "Grasping Current", "Jace's Sentinel",
+            "Woodland Stream", "Huatli, Dinosaur Knight", "Huatli's Snubhorn", "Huatli's Spurring",
+            "Sun-Blessed Mount", "Stone Quarry",
+        )
+        // The Planeswalker Deck cards (#280-289) are authored but never reach the booster pool.
+        xln.cards.map { it.name }.toSet().intersect(planeswalkerDeck) shouldBe emptySet()
+        val eligible = xln.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // Scryfall `set:xln is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 63, Rarity.MYTHIC to 15,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("XLN")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (mythics.toDouble() / packs) shouldBe (15.0 / 141 plusOrMinus 0.025)
+    }
+
+    test("Rivals of Ixalan draft pack is 10 commons, 3 uncommons and a rare or mythic, never a Planeswalker Deck card") {
+        // Retail pack: 1 rare or mythic, 3 uncommons, 10 commons and a basic land (supplied at deck
+        // building). The rare sheet prints each rare twice and each mythic once: 13 mythics in 109.
+        val rix = boosterGenerator.availableSets["RIX"].shouldNotBeNull()
+        rix.fullyImplemented shouldBe true
+        rix.boosterStrategy shouldBe StandardBooster(commons = 10, mythicChance = 13.0 / 109)
+        val planeswalkerDeck = setOf(
+            "Vraska, Scheming Gorgon", "Vampire Champion", "Vraska's Conquistador", "Vraska's Scorn",
+            "Angrath, Minotaur Pirate", "Angrath's Ambusher", "Swab Goblin", "Angrath's Fury",
+            "Cinder Barrens",
+        )
+        // The Planeswalker Deck cards (#197-205) are authored but never reach the booster pool.
+        rix.cards.map { it.name }.toSet().intersect(planeswalkerDeck) shouldBe emptySet()
+        val eligible = rix.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // Scryfall `set:rix is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 70, Rarity.UNCOMMON to 60, Rarity.RARE to 48, Rarity.MYTHIC to 13,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("RIX")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (mythics.toDouble() / packs) shouldBe (13.0 / 109 plusOrMinus 0.025)
+    }
+
+    test("Hour of Devastation draft pack is 10 commons, 3 uncommons and a rare or mythic, never a Planeswalker Deck card") {
+        // Retail pack: 1 rare or mythic, 3 uncommons, 10 commons and a basic land (supplied at deck
+        // building). The rare sheet prints each rare twice and each mythic once: 12 mythics in 96.
+        val hou = boosterGenerator.availableSets["HOU"].shouldNotBeNull()
+        hou.fullyImplemented shouldBe true
+        hou.boosterStrategy shouldBe StandardBooster(commons = 10, mythicChance = 12.0 / 96)
+        val planeswalkerDeck = setOf(
+            "Nissa, Genesis Mage", "Avid Reclaimer", "Brambleweft Behemoth", "Nissa's Encouragement",
+            "Woodland Stream", "Nicol Bolas, the Deceiver", "Wasp of the Bitter End",
+            "Zealot of the God-Pharaoh", "Visage of Bolas", "Cinder Barrens",
+        )
+        // The Planeswalker Deck cards (#200-209) are authored but never reach the booster pool.
+        hou.cards.map { it.name }.toSet().intersect(planeswalkerDeck) shouldBe emptySet()
+        val eligible = hou.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // Scryfall `set:hou is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 70, Rarity.UNCOMMON to 60, Rarity.RARE to 42, Rarity.MYTHIC to 12,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("HOU")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (mythics.toDouble() / packs) shouldBe (12.0 / 96 plusOrMinus 0.025)
+    }
+
+    test("Amonkhet draft pack is 10 commons, 3 uncommons and a rare or mythic, never a Planeswalker Deck card") {
+        // Retail pack: 1 rare or mythic, 3 uncommons, 10 commons and a basic land (supplied at deck
+        // building). The rare sheet prints each rare twice and each mythic once: 15 mythics in 121.
+        val akh = boosterGenerator.availableSets["AKH"].shouldNotBeNull()
+        akh.fullyImplemented shouldBe true
+        akh.boosterStrategy shouldBe StandardBooster(commons = 10, mythicChance = 15.0 / 121)
+        val planeswalkerDeck = setOf(
+            "Gideon, Martial Paragon", "Companion of the Trials", "Gideon's Resolve", "Graceful Cat",
+            "Stone Quarry", "Liliana, Death Wielder", "Desiccated Naga", "Liliana's Influence",
+            "Tattered Mummy", "Foul Orchard",
+        )
+        val eligible = akh.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // The Planeswalker Deck cards (#270-287) are authored or reprinted but never reach the booster pool.
+        eligible.map { it.name }.toSet().intersect(planeswalkerDeck) shouldBe emptySet()
+        // Scryfall `set:akh is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("AKH")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (mythics.toDouble() / packs) shouldBe (15.0 / 121 plusOrMinus 0.025)
+    }
+
+    test("Kaladesh draft pack is 10 commons, 3 uncommons and a rare or mythic, never a Planeswalker Deck card") {
+        // Retail pack: 1 rare or mythic, 3 uncommons, 10 commons and a basic land (supplied at deck
+        // building). The rare sheet prints each rare twice and each mythic once: 15 mythics in 121.
+        val kld = boosterGenerator.availableSets["KLD"].shouldNotBeNull()
+        kld.fullyImplemented shouldBe true
+        kld.boosterStrategy shouldBe StandardBooster(commons = 10, mythicChance = 15.0 / 121)
+        val planeswalkerDeck = setOf(
+            "Chandra, Pyrogenius", "Flame Lash", "Liberating Combustion", "Renegade Firebrand",
+            "Stone Quarry", "Nissa, Nature's Artisan", "Guardian of the Great Conduit", "Terrain Elemental",
+            "Verdant Crescendo", "Woodland Stream",
+        )
+        val eligible = kld.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // The Planeswalker Deck cards (#265-274) are authored or reprinted but never reach the booster pool.
+        eligible.map { it.name }.toSet().intersect(planeswalkerDeck) shouldBe emptySet()
+        // Scryfall `set:kld is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("KLD")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (mythics.toDouble() / packs) shouldBe (15.0 / 121 plusOrMinus 0.025)
+    }
+
+    test("Aether Revolt draft pack is 10 commons, 3 uncommons and a rare or mythic, never a Planeswalker Deck card") {
+        // Retail pack: 1 rare or mythic, 3 uncommons, 10 commons and a token or basic land (supplied at
+        // deck building). The rare sheet prints each rare twice and each mythic once: 12 mythics in 96.
+        val aer = boosterGenerator.availableSets["AER"].shouldNotBeNull()
+        aer.fullyImplemented shouldBe true
+        aer.boosterStrategy shouldBe StandardBooster(commons = 10, mythicChance = 12.0 / 96)
+        val planeswalkerDeck = setOf(
+            "Ajani, Valiant Protector", "Inspiring Roar", "Ajani's Comrade", "Ajani's Aid", "Tranquil Expanse",
+            "Tezzeret, Master of Metal", "Tezzeret's Betrayal", "Pendulum of Patterns", "Tezzeret's Simulacrum",
+            "Submerged Boneyard",
+        )
+        val eligible = aer.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // The Planeswalker Deck cards (#185-194) are authored or reprinted but never reach the booster pool.
+        eligible.map { it.name }.toSet().intersect(planeswalkerDeck) shouldBe emptySet()
+        // Scryfall `set:aer is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 70, Rarity.UNCOMMON to 60, Rarity.RARE to 42, Rarity.MYTHIC to 12,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("AER")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (mythics.toDouble() / packs) shouldBe (12.0 / 96 plusOrMinus 0.025)
+    }
+
+    test("Kaldheim draft pack opens 10 commons, 3 uncommons, a rare or mythic and one snow land") {
+        // WotC "Kaldheim Product Overview": 1 rare/mythic, 3 uncommons, 10 commons, 1 snow land (basic
+        // or dual). MTGJSON's land sheet weights each snow dual 5 and each snow-basic art 7 (50/120
+        // duals); the foil replacing a common in a third of packs is cosmetic and not modelled.
+        val khm = boosterGenerator.availableSets["KHM"].shouldNotBeNull()
+        khm.fullyImplemented shouldBe true
+        val strategy = khm.boosterStrategy.shouldBeInstanceOf<LandSlotBooster>()
+        strategy.base shouldBe StandardBooster(commons = 10, mythicChance = 20.0 / 148)
+        strategy.basicLands shouldBe emptyList()
+        val duals = strategy.nonbasicLandNames
+        duals.size shouldBe 10
+        val snowBasics = khm.cards.filter { it.typeLine.isBasicLand }
+        snowBasics.map { it.name }.toSet() shouldBe setOf(
+            "Snow-Covered Plains", "Snow-Covered Island", "Snow-Covered Swamp",
+            "Snow-Covered Mountain", "Snow-Covered Forest",
+        )
+        snowBasics.all { it.typeLine.isSnow && it.metadata.inBooster && it.setCode == "KHM" } shouldBe true
+        val eligible = khm.cards.filter {
+            it.metadata.inBooster && !it.typeLine.isBasicLand && !it.meldResult && it.name !in duals
+        }
+        // MTGJSON `booster.draft` sheets: the non-land commons, uncommons and rares/mythics by name.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 64, Rarity.MYTHIC to 20,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        val snowBasicNames = snowBasics.map { it.name }.toSet()
+        var mythics = 0
+        var dualLands = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("KHM")
+            pack.size shouldBe 15
+            pack.map { it.name }.toSet().size shouldBe 15
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card outside the land slot") {
+                pack.dropLast(1).all { it.name in eligibleNames } shouldBe true
+            }
+            pack.dropLast(1).count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            val land = pack.last()
+            (land.name in duals || land.name in snowBasicNames) shouldBe true
+            if (land.name in duals) dualLands++
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (dualLands.toDouble() / packs) shouldBe (50.0 / 120 plusOrMinus 0.035)
+        (mythics.toDouble() / packs) shouldBe (20.0 / 148 plusOrMinus 0.025)
+        repeat(20) {
+            val pack = boosterGenerator.generateBooster("KHM", bannedCardNames = duals)
+            pack.size shouldBe 15
+            (pack.last().name in snowBasicNames) shouldBe true
+        }
+        // Snow basics are pack cards only: deck building still offers just the nonsnow basics.
+        boosterGenerator.getBasicLands("KHM").keys shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+    }
+
+    test("Battle for Zendikar draft pack is 10 commons, 3 uncommons and one rare or mythic") {
+        // Draft Booster (mtg.wtf/pack/bfz): 10 commons, 3 uncommons, a rare or mythic (rares 2/121, mythics
+        // 1/121) and a full-art basic (supplied at deck building). The foil replacing a common is cosmetic.
+        val bfz = boosterGenerator.availableSets["BFZ"].shouldNotBeNull()
+        bfz.fullyImplemented shouldBe true
+        bfz.boosterStrategy shouldBe StandardBooster(commons = 10, mythicChance = 15.0 / 121)
+        val eligible = bfz.cards.filter { it.metadata.inBooster && !it.typeLine.isFreelyAddedBasicLand }
+        // Scryfall `set:bfz is:booster -t:basic` (101 / 80 / 53 / 15): every nonbasic card opens.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        var mythics = 0
+        val packs = 4000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("BFZ")
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.map { it.name }.toSet().size shouldBe 14
+                pack.all { it.name in eligibleNames } shouldBe true
+                pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+                pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+                pack.none { it.typeLine.isFreelyAddedBasicLand } shouldBe true
+            }
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        // 53 rares printed twice and 15 mythics once.
+        (mythics.toDouble() / packs) shouldBe ((15.0 / 121) plusOrMinus 0.02)
+        // Deck building hands out the set's own full-art basics.
+        boosterGenerator.getBasicLands("BFZ").keys shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+        boosterGenerator.getBasicLands("BFZ").values.all { it.setCode == "BFZ" } shouldBe true
+
+        // A host ban leaves the banned commons' slots to other commons.
+        val banned = eligible.filter { it.metadata.rarity == Rarity.COMMON }.take(5).mapTo(hashSetOf()) { it.name }
+        repeat(200) {
+            val pack = boosterGenerator.generateBooster("BFZ", bannedCardNames = banned)
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.none { it.name in banned } shouldBe true
+                pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            }
+        }
+    }
+
+    test("Dragons of Tarkir draft pack is 10 commons, 3 uncommons and one rare or mythic") {
+        // Draft Booster (mtg.wtf/pack/dtk): 10 commons, 3 uncommons, a rare or mythic (rares 2/121, mythics 1/121)
+        // and a basic from a basic-only land slot (supplied at deck building). The foil replacing a common in
+        // 9 packs of 40 is cosmetic.
+        val dtk = boosterGenerator.availableSets["DTK"].shouldNotBeNull()
+        dtk.fullyImplemented shouldBe true
+        dtk.boosterStrategy shouldBe StandardBooster(commons = 10, mythicChance = 15.0 / 121)
+        val eligible = dtk.cards.filter { it.metadata.inBooster && !it.typeLine.isFreelyAddedBasicLand }
+        // Scryfall `set:dtk is:booster -t:basic` (101 / 80 / 53 / 15) — every card of the set opens.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        // Reprints whose canonical lives in an earlier set still open as DTK cards.
+        eligible.map { it.name } shouldContainAll listOf("Gravepurge", "Ultimate Price", "Evolving Wilds")
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        var mythics = 0
+        val packs = 4000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("DTK")
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.map { it.name }.toSet().size shouldBe 14
+                pack.all { it.name in eligibleNames } shouldBe true
+                pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+                pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+                pack.none { it.typeLine.isFreelyAddedBasicLand } shouldBe true
+            }
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        // 53 rares printed twice and 15 mythics once.
+        (mythics.toDouble() / packs) shouldBe ((15.0 / 121) plusOrMinus 0.02)
+        boosterGenerator.getBasicLands("DTK").keys shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+
+        // A host ban leaves the banned commons' slots to other commons.
+        val banned = eligible.filter { it.metadata.rarity == Rarity.COMMON }.take(5).mapTo(hashSetOf()) { it.name }
+        repeat(200) {
+            val pack = boosterGenerator.generateBooster("DTK", bannedCardNames = banned)
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.none { it.name in banned } shouldBe true
+                pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            }
+        }
+    }
+
+    test("Fate Reforged draft pack is 10 commons, 3 uncommons, a rare or mythic and a gain land or KTK fetchland") {
+        // Draft Booster (mtg.wtf/pack/frf): 10 commons, 3 uncommons, a rare or mythic (35 rares 2/80, 10 mythics
+        // 1/80) and a land slot that never holds a basic: a gain land (23/240 each) or a Khans of Tarkir
+        // fetchland (1/120 each). The foil replacing a common in 9 packs of 40 is cosmetic.
+        val frf = boosterGenerator.availableSets["FRF"].shouldNotBeNull()
+        frf.fullyImplemented shouldBe true
+        frf.block shouldBe "Khans of Tarkir"
+        frf.boosterStrategy.shouldBeInstanceOf<DedicatedSlotBooster>()
+        val gainLands = setOf(
+            "Bloodfell Caves", "Blossoming Sands", "Dismal Backwater", "Jungle Hollow", "Rugged Highlands",
+            "Scoured Barrens", "Swiftwater Cliffs", "Thornwood Falls", "Tranquil Cove", "Wind-Scarred Crag",
+        )
+        val fetchlands = setOf("Bloodstained Mire", "Flooded Strand", "Polluted Delta", "Windswept Heath", "Wooded Foothills")
+        frf.guestCardNames shouldBe fetchlands
+        // The fetchlands open as their Khans of Tarkir printing, at rare.
+        frf.cards.filter { it.name in fetchlands }.forEach { fetch ->
+            fetch.metadata.rarity shouldBe Rarity.RARE
+            fetch.metadata.inBooster shouldBe true
+        }
+        frf.cards.filter { it.name in fetchlands }.map { it.setCode }.toSet() shouldBe setOf("KTK")
+        val eligible = frf.cards.filter { it.metadata.inBooster && !it.typeLine.isFreelyAddedBasicLand }
+        // Scryfall `set:frf is:booster -t:basic` (70 / 60 / 35 / 10), plus the five guest fetchlands at rare.
+        eligible.filterNot { it.name in fetchlands }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 70, Rarity.UNCOMMON to 60, Rarity.RARE to 35, Rarity.MYTHIC to 10,
+        )
+        // The guests never count as Fate Reforged cards.
+        frf.distinctCardCount shouldBe frf.cards.map { it.name }.toSet().size - fetchlands.size
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        var mythics = 0
+        var fetches = 0
+        val packs = 6000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("FRF")
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 15
+                pack.map { it.name }.toSet().size shouldBe 15
+                pack.all { it.name in eligibleNames } shouldBe true
+                pack.none { it.typeLine.isFreelyAddedBasicLand } shouldBe true
+                // Exactly one land-slot card, and it is the last one.
+                pack.count { it.name in gainLands || it.name in fetchlands } shouldBe 1
+                (pack.last().name in gainLands || pack.last().name in fetchlands) shouldBe true
+                val body = pack.dropLast(1)
+                body.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+                body.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+                body.count { it.metadata.rarity == Rarity.RARE || it.metadata.rarity == Rarity.MYTHIC } shouldBe 1
+                mythics += body.count { it.metadata.rarity == Rarity.MYTHIC }
+            }
+            if (pack.last().name in fetchlands) fetches++
+        }
+        (mythics.toDouble() / packs) shouldBe (0.125 plusOrMinus 0.02)
+        // 10 of 240 land-slot sheet positions are fetchlands.
+        (fetches.toDouble() / packs) shouldBe ((10.0 / 240) plusOrMinus 0.012)
+
+        // Banning the fetchlands leaves the land slot to the gain lands.
+        repeat(200) {
+            val pack = boosterGenerator.generateBooster("FRF", bannedCardNames = fetchlands)
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 15
+                pack.last().name shouldBeIn gainLands
+            }
+        }
+    }
+
+    test("Magic Origins draft pack is 10 commons, 3 uncommons and one rare or mythic, no Welcome Deck cards") {
+        // Draft Booster (mtg.wtf/pack/ori): 10 commons, 3 uncommons, a rare or mythic (rares 1/63, mythics 1/126)
+        // and a basic land (supplied at deck building). The foil replacing a common in 9 packs of 40 is cosmetic.
+        val ori = boosterGenerator.availableSets["ORI"].shouldNotBeNull()
+        ori.fullyImplemented shouldBe true
+        ori.boosterStrategy shouldBe StandardBooster(commons = 10, mythicChance = 16.0 / 126)
+        val eligible = ori.cards.filter { it.metadata.inBooster && !it.typeLine.isFreelyAddedBasicLand }
+        // Scryfall `set:ori is:booster -t:basic` (101 / 80 / 55 / 16).
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 55, Rarity.MYTHIC to 16,
+        )
+        // The 16 Welcome Deck cards (#273-288, Scryfall `set:ori -is:booster`) never open.
+        val welcomeDeck = setOf(
+            "Aegis Angel", "Divine Verdict", "Eagle of the Watch", "Fiery Hellhound", "Flesh to Dust", "Into the Void",
+            "Mahamoti Djinn", "Mind Rot", "Nightmare", "Plummet", "Prized Unicorn", "Sengir Vampire", "Serra Angel",
+            "Shivan Dragon", "Terra Stomper", "Weave Fate",
+        )
+        eligible.filter { it.name in welcomeDeck } shouldBe emptyList()
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        var mythics = 0
+        val packs = 4000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("ORI")
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.map { it.name }.toSet().size shouldBe 14
+                pack.all { it.name in eligibleNames } shouldBe true
+                pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+                pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+                pack.none { it.typeLine.isFreelyAddedBasicLand } shouldBe true
+            }
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        // 55 rares printed twice and 16 mythics once.
+        (mythics.toDouble() / packs) shouldBe ((16.0 / 126) plusOrMinus 0.02)
+        boosterGenerator.getBasicLands("ORI").keys shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+
+        // A host ban leaves the banned commons' slots to other commons.
+        val banned = eligible.filter { it.metadata.rarity == Rarity.COMMON }.take(5).mapTo(hashSetOf()) { it.name }
+        repeat(200) {
+            val pack = boosterGenerator.generateBooster("ORI", bannedCardNames = banned)
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.none { it.name in banned } shouldBe true
+                pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            }
+        }
+    }
+
+    test("Oath of the Gatewatch's two Wastes printings are common pack cards, not land-station basics") {
+        // Wastes is a pack-only basic: in Limited a player plays only the Wastes they open or draft,
+        // and the set prints two at common, so the name opens twice as often as any other common.
+        val ogw = boosterGenerator.availableSets["OGW"].shouldNotBeNull()
+        val wastes = ogw.cards.filter { it.name == "Wastes" }
+        wastes.map { it.metadata.collectorNumber }.toSet() shouldBe setOf("183", "184")
+        wastes.all { it.metadata.rarity == Rarity.COMMON && it.setCode == "OGW" } shouldBe true
+        boosterGenerator.getBasicLands("OGW").keys shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+        boosterGenerator.getBasicLands("OGW").values.all { it.setCode == "BFZ" } shouldBe true
+    }
+
+    test("Oath of the Gatewatch draft pack is 10 commons, 3 uncommons and one rare or mythic, Wastes at common") {
+        // Draft Booster (taw/magic-search-engine data/boosters/ogw/draft.yaml): 10 commons — the two full-art
+        // Wastes on the common sheet — 3 uncommons, a rare or mythic, and a full-art BFZ basic (supplied at deck
+        // building). The foil/Expedition replacing a common in 9 packs of 40 is cosmetic and not modelled.
+        val ogw = boosterGenerator.availableSets["OGW"].shouldNotBeNull()
+        ogw.fullyImplemented shouldBe true
+        ogw.boosterStrategy shouldBe StandardBooster(commons = 10)
+        val eligible = ogw.cards.filter { it.metadata.inBooster && !it.typeLine.isFreelyAddedBasicLand }
+        // Scryfall `set:ogw is:booster -t:basic` (68 / 60 / 42 / 12) plus the two full-art Wastes at common.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 70, Rarity.UNCOMMON to 60, Rarity.RARE to 42, Rarity.MYTHIC to 12,
+        )
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        val otherCommons = eligible.filter { it.metadata.rarity == Rarity.COMMON && it.name != "Wastes" }
+            .mapTo(hashSetOf()) { it.name }
+        var mythics = 0
+        var wastes = 0
+        var otherCommonCount = 0
+        val packs = 4000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("OGW")
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.map { it.name }.toSet().size shouldBe 14
+                pack.all { it.name in eligibleNames } shouldBe true
+                pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+                pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+                pack.none { it.typeLine.isFreelyAddedBasicLand } shouldBe true
+            }
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+            wastes += pack.count { it.name == "Wastes" }
+            otherCommonCount += pack.count { it.name in otherCommons }
+        }
+        // 42 rares printed twice and 12 mythics once.
+        (mythics.toDouble() / packs) shouldBe ((12.0 / 96) plusOrMinus 0.02)
+        // Two printings on the 70-card common sheet, never both in one pack (the picker draws distinct names):
+        // Wastes opens in 1 - C(68,10)/C(70,10) ≈ 26.7% of packs, ~1.9x any other common.
+        (wastes.toDouble() / packs) shouldBe ((1 - 60.0 * 59 / (70 * 69)) plusOrMinus 0.03)
+        val perOtherCommon = otherCommonCount.toDouble() / otherCommons.size
+        (wastes / perOtherCommon) shouldBe (1.9 plusOrMinus 0.3)
+
+        // A host ban on Wastes leaves its slot to an ordinary common.
+        repeat(200) {
+            val pack = boosterGenerator.generateBooster("OGW", bannedCardNames = setOf("Wastes"))
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.none { it.name == "Wastes" } shouldBe true
+                pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            }
+        }
+    }
+
+    test("Final Fantasy's Wastes opens only in the land slot and is never a land-station basic") {
+        val fin = boosterGenerator.availableSets["FIN"].shouldNotBeNull()
+        val strategy = fin.boosterStrategy.shouldBeInstanceOf<LandSlotBooster>()
+        strategy.basicLands.none { it.name == "Wastes" } shouldBe true
+        fin.cards.count { it.name == "Wastes" } shouldBe 1
+        boosterGenerator.getBasicLands("FIN").keys shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+        repeat(300) {
+            val pack = boosterGenerator.generateBooster("FIN")
+            pack.dropLast(1).none { it.name == "Wastes" } shouldBe true
+        }
+    }
+
+    test("Core Set 2019 draft pack opens 10 commons, 3 uncommons, a rare or mythic and a land-slot card") {
+        // M19 draft sheets (taw/magic-search-engine, mtg.wtf/pack/m19): 10 commons, 3 uncommons,
+        // 1 rare/mythic (rares weighted 2, mythics 1 -> 16/122), and a land slot of 30 cards at 1/30 each:
+        // the ten common dual taplands and the twenty basic arts. The foil replacing a common in 9 of 40
+        // packs is cosmetic and not modelled. The Planeswalker Deck cards (#281-314) never open.
+        val m19 = boosterGenerator.availableSets["M19"].shouldNotBeNull()
+        m19.fullyImplemented shouldBe true
+        val strategy = m19.boosterStrategy.shouldBeInstanceOf<LandSlotBooster>()
+        strategy.base shouldBe StandardBooster(commons = 10, mythicChance = 16.0 / 122)
+        strategy.nonbasicChance shouldBe 10.0 / 30
+        strategy.basicLands.map { it.name }.toSet() shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+        strategy.basicLands.size shouldBe 20
+        val slotLands = strategy.nonbasicLandNames
+        slotLands.size shouldBe 10
+        // The taplands are reprints here: the pool must resolve every one of them from its canonical.
+        m19.cards.map { it.name }.toSet().containsAll(slotLands) shouldBe true
+        val eligible = m19.cards.filter {
+            it.metadata.inBooster && !it.typeLine.isBasicLand && !it.meldResult && it.name !in slotLands
+        }
+        eligible.distinctBy { it.name }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 16,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        // Planeswalker Deck exclusives and the Buy-a-Box promo stay out of packs.
+        listOf("Ajani, Wise Counselor", "Tezzeret's Gatebreaker", "Nexus of Fate", "Shivan Dragon").forEach {
+            eligibleNames shouldNotContain it
+        }
+        var mythics = 0
+        var nonbasicPacks = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("M19")
+            pack.size shouldBe 15
+            pack.map { it.name }.toSet().size shouldBe 15
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card outside the land slot") {
+                pack.dropLast(1).all { it.name in eligibleNames } shouldBe true
+            }
+            pack.dropLast(1).count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            val land = pack.last()
+            (land.name in slotLands || land.typeLine.isBasicLand) shouldBe true
+            if (land.name in slotLands) nonbasicPacks++
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (nonbasicPacks.toDouble() / packs) shouldBe (10.0 / 30 plusOrMinus 0.035)
+        (mythics.toDouble() / packs) shouldBe (16.0 / 122 plusOrMinus 0.025)
+        // A host ban on every land-slot nonbasic leaves the land slot to the basics.
+        repeat(20) {
+            val pack = boosterGenerator.generateBooster("M19", bannedCardNames = slotLands)
+            pack.size shouldBe 15
+            pack.last().typeLine.isBasicLand shouldBe true
+        }
+    }
+
+    test("Core Set 2020 draft pack opens 10 commons, 3 uncommons, a rare or mythic and a land-slot card") {
+        // M20 draft sheets (taw/magic-search-engine, mtg.wtf/pack/m20): 10 commons, 3 uncommons,
+        // 1 rare/mythic (rares weighted 2, mythics 1 -> 15/121), and a land slot of 31 cards at 1/31 each:
+        // the ten gain lands, Evolving Wilds and the twenty basic arts. The foil replacing a common in a
+        // third of packs is cosmetic and not modelled.
+        val m20 = boosterGenerator.availableSets["M20"].shouldNotBeNull()
+        m20.fullyImplemented shouldBe true
+        val strategy = m20.boosterStrategy.shouldBeInstanceOf<LandSlotBooster>()
+        strategy.base shouldBe StandardBooster(commons = 10, mythicChance = 15.0 / 121)
+        strategy.nonbasicChance shouldBe 11.0 / 31
+        strategy.basicLands.map { it.name }.toSet() shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+        val slotLands = strategy.nonbasicLandNames
+        slotLands.size shouldBe 11
+        val eligible = m20.cards.filter {
+            it.metadata.inBooster && !it.typeLine.isBasicLand && !it.meldResult && it.name !in slotLands
+        }
+        // The draft sheets' commons (Evolving Wilds and the gain lands sit in the land slot), uncommons and
+        // rares/mythics, by distinct name.
+        eligible.distinctBy { it.name }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        var nonbasicPacks = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("M20")
+            pack.size shouldBe 15
+            pack.map { it.name }.toSet().size shouldBe 15
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card outside the land slot") {
+                pack.dropLast(1).all { it.name in eligibleNames } shouldBe true
+            }
+            pack.dropLast(1).count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            val land = pack.last()
+            (land.name in slotLands || land.typeLine.isBasicLand) shouldBe true
+            if (land.name in slotLands) nonbasicPacks++
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (nonbasicPacks.toDouble() / packs) shouldBe (11.0 / 31 plusOrMinus 0.035)
+        (mythics.toDouble() / packs) shouldBe (15.0 / 121 plusOrMinus 0.025)
+        // A host ban on every land-slot nonbasic leaves the land slot to the basics.
+        repeat(20) {
+            val pack = boosterGenerator.generateBooster("M20", bannedCardNames = slotLands)
+            pack.size shouldBe 15
+            pack.last().typeLine.isBasicLand shouldBe true
+        }
+    }
+
+    test("Ravnica Allegiance draft pack opens 10 commons, 3 uncommons, a rare or mythic and a Guildgate") {
+        // RNA draft sheets (taw/magic-search-engine, mtg.wtf/pack/rna): 10 commons, 3 uncommons,
+        // 1 rare/mythic (rares weighted 2, mythics 1 -> 15/121), and a land slot that is always one of the
+        // five Guildgates, which the common sheet never carries. The foil replacing a common is not modelled.
+        val rna = boosterGenerator.availableSets["RNA"].shouldNotBeNull()
+        rna.fullyImplemented shouldBe true
+        val strategy = rna.boosterStrategy.shouldBeInstanceOf<LandSlotBooster>()
+        strategy.base shouldBe StandardBooster(commons = 10, mythicChance = 15.0 / 121)
+        strategy.nonbasicChance shouldBe 1.0
+        val gates = strategy.nonbasicLandNames
+        gates shouldBe setOf("Azorius Guildgate", "Gruul Guildgate", "Orzhov Guildgate", "Rakdos Guildgate", "Simic Guildgate")
+        val eligible = rna.cards.filter {
+            it.metadata.inBooster && !it.typeLine.isBasicLand && !it.meldResult && it.name !in gates
+        }
+        // The draft sheets by distinct name: commons (with Gateway Plaza), uncommons and rares/mythics;
+        // the Planeswalker Deck cards and the buy-a-box promo are off every sheet.
+        eligible.distinctBy { it.name }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        eligibleNames shouldContain "Gateway Plaza"
+        // Scryfall's booster list names split cards by their first half; the pool still admits them.
+        eligibleNames shouldContain "Carnival // Carnage"
+        for (deckOnly in listOf("Dovin, Architect of Law", "Domri, City Smasher", "Ragefire", "The Haunt of Hightower")) {
+            eligibleNames shouldNotContain deckOnly
+        }
+        var mythics = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("RNA")
+            pack.size shouldBe 15
+            pack.map { it.name }.toSet().size shouldBe 15
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card outside the land slot") {
+                pack.dropLast(1).all { it.name in eligibleNames } shouldBe true
+            }
+            pack.dropLast(1).count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            (pack.last().name in gates) shouldBe true
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (mythics.toDouble() / packs) shouldBe (15.0 / 121 plusOrMinus 0.025)
+        // A host ban on every Guildgate falls back to a basic land in the land slot.
+        repeat(20) {
+            val pack = boosterGenerator.generateBooster("RNA", bannedCardNames = gates)
+            pack.size shouldBe 15
+            pack.last().typeLine.isBasicLand shouldBe true
+        }
+    }
+
+    test("Guilds of Ravnica draft pack opens 10 commons, 3 uncommons, a rare or mythic and a Guildgate") {
+        // GRN draft sheets (taw/magic-search-engine, mtg.wtf/pack/grn): 10 commons, 3 uncommons,
+        // 1 rare/mythic (rares weighted 2, mythics 1 -> 15/121), and a land slot that is always one of the
+        // five Guildgates, which the common sheet never carries. The foil replacing a common is not modelled.
+        val grn = boosterGenerator.availableSets["GRN"].shouldNotBeNull()
+        grn.fullyImplemented shouldBe true
+        val strategy = grn.boosterStrategy.shouldBeInstanceOf<LandSlotBooster>()
+        strategy.base shouldBe StandardBooster(commons = 10, mythicChance = 15.0 / 121)
+        strategy.nonbasicChance shouldBe 1.0
+        val gates = strategy.nonbasicLandNames
+        gates shouldBe setOf("Boros Guildgate", "Dimir Guildgate", "Golgari Guildgate", "Izzet Guildgate", "Selesnya Guildgate")
+        val eligible = grn.cards.filter {
+            it.metadata.inBooster && !it.typeLine.isBasicLand && !it.meldResult && it.name !in gates
+        }
+        // The draft sheets by distinct name: commons (with Gateway Plaza), uncommons and rares/mythics;
+        // the Planeswalker Deck cards and the buy-a-box promo are off every sheet.
+        eligible.distinctBy { it.name }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        eligibleNames shouldContain "Gateway Plaza"
+        // Scryfall's booster list names split cards by their first half; the pool still admits them.
+        eligibleNames shouldContain "Discovery // Dispersal"
+        for (deckOnly in listOf("Ral, Caller of Storms", "Vraska, Regal Gorgon", "Kraul Raider", "Impervious Greatwurm")) {
+            eligibleNames shouldNotContain deckOnly
+        }
+        var mythics = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("GRN")
+            pack.size shouldBe 15
+            pack.map { it.name }.toSet().size shouldBe 15
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card outside the land slot") {
+                pack.dropLast(1).all { it.name in eligibleNames } shouldBe true
+            }
+            pack.dropLast(1).count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            (pack.last().name in gates) shouldBe true
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (mythics.toDouble() / packs) shouldBe (15.0 / 121 plusOrMinus 0.025)
+        // A host ban on every Guildgate falls back to a basic land in the land slot.
+        repeat(20) {
+            val pack = boosterGenerator.generateBooster("GRN", bannedCardNames = gates)
+            pack.size shouldBe 15
+            pack.last().typeLine.isBasicLand shouldBe true
+        }
+    }
+
+    test("Ikoria draft pack opens 10 commons, 3 uncommons, a rare or mythic and a gain land or basic") {
+        // IKO draft sheets (taw/magic-search-engine, mtg.wtf/pack/iko-draft): 10 commons, 3 uncommons,
+        // 1 rare/mythic (rares weighted 2, mythics 1 -> 15/121), and a basic_or_gainland slot where the ten
+        // gain lands (1/20 each) and fifteen basic arts (1/30 each) split it 50/50. Showcase variants and
+        // the foil replacing a common in a third of packs are cosmetic and not modelled.
+        val iko = boosterGenerator.availableSets["IKO"].shouldNotBeNull()
+        iko.fullyImplemented shouldBe true
+        val strategy = iko.boosterStrategy.shouldBeInstanceOf<LandSlotBooster>()
+        strategy.base shouldBe StandardBooster(commons = 10, mythicChance = 15.0 / 121)
+        strategy.nonbasicChance shouldBe 0.5
+        strategy.basicLands.map { it.name }.toSet() shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+        val gainLands = strategy.nonbasicLandNames
+        gainLands.size shouldBe 10
+        val eligible = iko.cards.filter {
+            it.metadata.inBooster && !it.typeLine.isBasicLand && !it.meldResult && it.name !in gainLands
+        }
+        // The draft sheets' non-land commons, uncommons and rares/mythics, by distinct name.
+        eligible.distinctBy { it.name }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        var gainLandPacks = 0
+        val packs = 3000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("IKO")
+            pack.size shouldBe 15
+            pack.map { it.name }.toSet().size shouldBe 15
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card outside the land slot") {
+                pack.dropLast(1).all { it.name in eligibleNames } shouldBe true
+            }
+            pack.dropLast(1).count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            val land = pack.last()
+            (land.name in gainLands || land.typeLine.isBasicLand) shouldBe true
+            if (land.name in gainLands) gainLandPacks++
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (gainLandPacks.toDouble() / packs) shouldBe (0.5 plusOrMinus 0.035)
+        (mythics.toDouble() / packs) shouldBe (15.0 / 121 plusOrMinus 0.025)
+        // A host ban on every gain land leaves the land slot to the basics.
+        repeat(20) {
+            val pack = boosterGenerator.generateBooster("IKO", bannedCardNames = gainLands)
+            pack.size shouldBe 15
+            pack.last().typeLine.isBasicLand shouldBe true
+        }
+    }
+
+    test("Throne of Eldraine draft pack is 10 commons, 3 uncommons and one rare or mythic from its booster pool") {
+        // Draft Booster (Project Booster Fun, magic.wizards.com 2019-07-20): 1 rare/mythic, 3 uncommons,
+        // 10 commons, 1 basic land (the generator supplies basics at deck building) and an ad/token card.
+        // Showcase and borderless variants and the foil replacing a common are cosmetic, not modelled.
+        // The Brawl-deck cards (Oko, the Trickster etc.) are not booster cards.
+        val eld = boosterGenerator.availableSets["ELD"].shouldNotBeNull()
+        eld.fullyImplemented shouldBe true
+        eld.boosterStrategy shouldBe StandardBooster(commons = 10)
+        val eligible = eld.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // Scryfall `set:eld is:booster -t:basic`.
+        eligible.distinctBy { it.name }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        eligible.map { it.name } shouldNotContain "Oko, the Trickster"
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        val packs = 2000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("ELD")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            mythics += pack.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        // 1 in 8 rare slots upgrades to a mythic.
+        (mythics.toDouble() / packs) shouldBe (0.125 plusOrMinus 0.03)
+    }
+
+    test("Adventures in the Forgotten Realms draft pack is 10 commons, 3 uncommons and one rare or mythic from its booster pool") {
+        // Draft Booster: 1 rare/mythic, 3 uncommons, 10 commons, 1 basic land (the generator supplies
+        // basics at deck building), a token/ad card, and a foil of any rarity replacing a common in a
+        // third of packs (cosmetic, not modelled). Dungeons are tokens, not booster cards.
+        val afr = boosterGenerator.availableSets["AFR"].shouldNotBeNull()
+        afr.fullyImplemented shouldBe true
+        afr.boosterStrategy shouldBe StandardBooster(commons = 10)
+        val eligible = afr.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // Scryfall `set:afr is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 60, Rarity.MYTHIC to 20,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        val packs = 2000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("AFR")
             pack.size shouldBe 14
             pack.map { it.name }.toSet().size shouldBe 14
             withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
@@ -159,6 +1017,200 @@ class GameBeansConfigBoosterPoolTest : FunSpec({
         (dfcRares.toDouble() / packs) shouldBe ((1.0 / 6) plusOrMinus 0.03)
     }
 
+    test("Eldritch Moon draft pack opens a double-faced or meld card beside 9 commons, 3 uncommons and a rare") {
+        // Draft Booster (collation per mtg.wtf/pack/emn-draft, after lethe.xyz): 8 single-faced commons, 3 uncommons,
+        // a single-faced rare or mythic, one double-faced-or-meld common or uncommon (sheet: each common x5, each
+        // uncommon x2), and a slot that is a single-faced common in 7 packs of 8 and a double-faced-or-meld rare or
+        // mythic in the eighth, plus a Shadows over Innistrad basic (supplied at deck building). The foil replacing
+        // a common in 9 packs of 40 is cosmetic and not modelled.
+        val emn = boosterGenerator.availableSets["EMN"].shouldNotBeNull()
+        emn.fullyImplemented shouldBe true
+        emn.boosterStrategy.shouldBeInstanceOf<DedicatedSlotBooster>()
+        val eligible = emn.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand && !it.meldResult }
+        // Scryfall `set:emn is:booster -t:basic`, minus the three meld results.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 74, Rarity.UNCOMMON to 70, Rarity.RARE to 47, Rarity.MYTHIC to 14,
+        )
+        // Scryfall `set:emn (is:dfc or is:meld) -is:meldresult`: 4 commons, 10 uncommons, 5 rares, 2 mythics.
+        val sheet = eligible.filter { it.name in EldritchMoonSet.DOUBLE_FACED_SHEET }
+        sheet.size shouldBe EldritchMoonSet.DOUBLE_FACED_SHEET.size
+        sheet.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 4, Rarity.UNCOMMON to 10, Rarity.RARE to 5, Rarity.MYTHIC to 2,
+        )
+        eligible.filter { it.isDoubleFaced }.all { it.name in EldritchMoonSet.DOUBLE_FACED_SHEET } shouldBe true
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        fun CardDefinition.isRareOrMythic() = metadata.rarity == Rarity.RARE || metadata.rarity == Rarity.MYTHIC
+        var sheetCommons = 0
+        var sheetRares = 0
+        var sheetMythics = 0
+        val packs = 4000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("EMN")
+            val onSheet = pack.filter { it.name in EldritchMoonSet.DOUBLE_FACED_SHEET }
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.map { it.name }.toSet().size shouldBe 14
+                pack.all { it.name in eligibleNames } shouldBe true
+                onSheet.count { !it.isRareOrMythic() } shouldBe 1
+                pack.count { it.isRareOrMythic() && it.name !in EldritchMoonSet.DOUBLE_FACED_SHEET } shouldBe 1
+                pack.count { it.metadata.rarity == Rarity.UNCOMMON && it.name !in EldritchMoonSet.DOUBLE_FACED_SHEET } shouldBe 3
+                val sheetRare = onSheet.count { it.isRareOrMythic() }
+                pack.count { it.metadata.rarity == Rarity.COMMON && it.name !in EldritchMoonSet.DOUBLE_FACED_SHEET } shouldBe
+                    9 - sheetRare
+            }
+            if (onSheet.any { it.metadata.rarity == Rarity.COMMON }) sheetCommons++
+            sheetRares += onSheet.count { it.metadata.rarity == Rarity.RARE }
+            sheetMythics += onSheet.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (sheetCommons.toDouble() / packs) shouldBe (0.5 plusOrMinus 0.03)
+        ((sheetRares + sheetMythics).toDouble() / packs) shouldBe (0.125 plusOrMinus 0.02)
+        (sheetMythics.toDouble() / (sheetRares + sheetMythics)) shouldBe ((1.0 / 6) plusOrMinus 0.06)
+    }
+
+    test("Shadows over Innistrad draft pack opens a double-faced card beside 9 commons, 3 uncommons and a rare") {
+        // Draft Booster (collation per mtg.wtf/pack/soi-draft, after lethe.xyz): 8 single-faced commons, 3 uncommons,
+        // a single-faced rare or mythic, one double-faced common or uncommon (sheet: each common x5, each uncommon x2),
+        // and a slot that is a single-faced common in 7 packs of 8 and a double-faced rare or mythic in the eighth,
+        // plus a basic land (supplied at deck building). The foil replacing a common in 9 packs of 40 is cosmetic and
+        // not modelled.
+        val soi = boosterGenerator.availableSets["SOI"].shouldNotBeNull()
+        soi.fullyImplemented shouldBe true
+        soi.boosterStrategy.shouldBeInstanceOf<DedicatedSlotBooster>()
+        val eligible = soi.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // Scryfall `set:soi is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 105, Rarity.UNCOMMON to 100, Rarity.RARE to 59, Rarity.MYTHIC to 18,
+        )
+        // Scryfall `set:soi is:booster is:dfc`: 4 commons, 20 uncommons, 6 rares, 3 mythics.
+        eligible.filter { it.isDoubleFaced }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 4, Rarity.UNCOMMON to 20, Rarity.RARE to 6, Rarity.MYTHIC to 3,
+        )
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        fun CardDefinition.isRareOrMythic() = metadata.rarity == Rarity.RARE || metadata.rarity == Rarity.MYTHIC
+        var dfcCommons = 0
+        var dfcRares = 0
+        var dfcMythics = 0
+        val packs = 4000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("SOI")
+            val dfcs = pack.filter { it.isDoubleFaced }
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.map { it.name }.toSet().size shouldBe 14
+                pack.all { it.name in eligibleNames } shouldBe true
+                dfcs.count { !it.isRareOrMythic() } shouldBe 1
+                pack.count { it.isRareOrMythic() && !it.isDoubleFaced } shouldBe 1
+                pack.count { it.metadata.rarity == Rarity.UNCOMMON && !it.isDoubleFaced } shouldBe 3
+                val dfcRare = dfcs.count { it.isRareOrMythic() }
+                pack.count { it.metadata.rarity == Rarity.COMMON && !it.isDoubleFaced } shouldBe 9 - dfcRare
+            }
+            if (dfcs.any { it.metadata.rarity == Rarity.COMMON }) dfcCommons++
+            dfcRares += dfcs.count { it.metadata.rarity == Rarity.RARE }
+            dfcMythics += dfcs.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        (dfcCommons.toDouble() / packs) shouldBe ((1.0 / 3) plusOrMinus 0.03)
+        ((dfcRares + dfcMythics).toDouble() / packs) shouldBe (0.125 plusOrMinus 0.02)
+        (dfcMythics.toDouble() / (dfcRares + dfcMythics)) shouldBe (0.2 plusOrMinus 0.07)
+
+        // A host ban on every double-faced card leaves the double-faced slots to single-faced commons and uncommons: no extra rare.
+        val dfcNames = eligible.filter { it.isDoubleFaced }.mapTo(hashSetOf()) { it.name }
+        repeat(200) {
+            val pack = boosterGenerator.generateBooster("SOI", bannedCardNames = dfcNames)
+            withClue("pack ${pack.map { it.name }}") {
+                pack.size shouldBe 14
+                pack.none { it.isDoubleFaced } shouldBe true
+                pack.count { it.isRareOrMythic() } shouldBe 1
+            }
+        }
+    }
+
+    test("Eldritch Moon offers Shadows over Innistrad basic lands for sealed deckbuilding") {
+        val emn = boosterGenerator.availableSets["EMN"].shouldNotBeNull()
+
+        emn.basicLands.map { it.name }.toSet() shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+        emn.basicLands.all { it.setCode == "SOI" } shouldBe true
+        boosterGenerator.getBasicLands("EMN").keys shouldBe setOf("Plains", "Island", "Swamp", "Mountain", "Forest")
+    }
+
+    test("Zendikar Rising draft pack opens exactly one modal double-faced card beside 10 commons and a rare") {
+        // Draft Booster (MTGJSON `booster.draft`): 10 commons, 3 uncommons, 1 rare or mythic and a basic land
+        // (supplied at deck building), one of the uncommons or the rare being a modal double-faced card — the
+        // double-faced card is the rare in 81 packs of 444. The foil replacing a common is not modelled.
+        val znr = boosterGenerator.availableSets["ZNR"].shouldNotBeNull()
+        znr.fullyImplemented shouldBe true
+        znr.boosterStrategy.shouldBeInstanceOf<DedicatedSlotBooster>()
+        val eligible = znr.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // Scryfall `set:znr is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 64, Rarity.MYTHIC to 20,
+        )
+        // Scryfall `set:znr is:booster is:dfc`: 20 uncommons, 11 rares, 5 mythics.
+        eligible.filter { it.isDoubleFaced }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.UNCOMMON to 20, Rarity.RARE to 11, Rarity.MYTHIC to 5,
+        )
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        var dfcRares = 0
+        var mythics = 0
+        val packs = 2000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("ZNR")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.isDoubleFaced } shouldBe 1
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            val rare = pack.single { it.metadata.rarity == Rarity.RARE || it.metadata.rarity == Rarity.MYTHIC }
+            if (rare.isDoubleFaced) dfcRares++
+            if (rare.metadata.rarity == Rarity.MYTHIC) mythics++
+        }
+        (dfcRares.toDouble() / packs) shouldBe ((81.0 / 444) plusOrMinus 0.03)
+        (mythics.toDouble() / packs) shouldBe (((15.0 + 45.0) / 444) plusOrMinus 0.03)
+    }
+
+    test("Strixhaven draft pack opens a Lesson beside 10 non-Lesson commons, 3 uncommons and a rare") {
+        // Draft Booster (MTGJSON `booster.draft`): 9 non-Lesson commons, 3 uncommons, a non-Lesson rare or
+        // mythic (60 mythic draws in 444), a Lesson (137 per common, 18 per rare, 9 for the mythic Lesson:
+        // rare or mythic in 99 of 1332) and a Mystical Archive card. STA isn't a set here, so the Archive
+        // slot opens a tenth STX common; the foil replacing a common is not modelled.
+        val stx = boosterGenerator.availableSets["STX"].shouldNotBeNull()
+        stx.fullyImplemented shouldBe true
+        stx.boosterStrategy.shouldBeInstanceOf<DedicatedSlotBooster>()
+        val eligible = stx.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // Scryfall `set:stx is:booster -t:basic`.
+        eligible.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 105, Rarity.UNCOMMON to 80, Rarity.RARE to 69, Rarity.MYTHIC to 21,
+        )
+        val isLesson = { card: CardDefinition -> card.typeLine.hasSubtype(Subtype.LESSON) }
+        // Scryfall `set:stx t:lesson`: 9 commons, 5 uncommons, 5 rares, 1 mythic.
+        eligible.filter(isLesson).groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 9, Rarity.UNCOMMON to 5, Rarity.RARE to 5, Rarity.MYTHIC to 1,
+        )
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        val rareOrMythic = { card: CardDefinition -> card.metadata.rarity == Rarity.RARE || card.metadata.rarity == Rarity.MYTHIC }
+        var rareLessons = 0
+        var mythics = 0
+        val packs = 2000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("STX")
+            pack.size shouldBe 15
+            pack.map { it.name }.toSet().size shouldBe 15
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            val slotLesson = pack.single { isLesson(it) && it.metadata.rarity != Rarity.UNCOMMON }
+            pack.count { it.metadata.rarity == Rarity.COMMON && !isLesson(it) } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            val rare = pack.single { rareOrMythic(it) && !isLesson(it) }
+            if (rareOrMythic(slotLesson)) rareLessons++
+            if (rare.metadata.rarity == Rarity.MYTHIC) mythics++
+        }
+        (rareLessons.toDouble() / packs) shouldBe ((99.0 / 1332) plusOrMinus 0.02)
+        (mythics.toDouble() / packs) shouldBe ((60.0 / 444) plusOrMinus 0.03)
+    }
+
     test("March of the Machine: The Aftermath opens a 5-card Epilogue Booster from its 50-card pool") {
         // 2 uncommons, a rare/mythic and two any-rarity wildcards (foil + Booster Fun) that are each a
         // rare or mythic about 1 time in 6; the ad card/token slot is not modelled, so 5 playable cards.
@@ -241,6 +1293,45 @@ class GameBeansConfigBoosterPoolTest : FunSpec({
         }
     }
 
+    test("every War of the Spark draft pack opens exactly one planeswalker and no Planeswalker Deck card") {
+        // taw/magic-search-engine `war/draft.yaml`: 10 commons, 3 uncommons, 1 rare or mythic, and one
+        // planeswalker — at the rare slot in 29 of 121 packs, otherwise one of the three uncommons.
+        val war = boosterGenerator.availableSets["WAR"].shouldNotBeNull()
+        war.fullyImplemented shouldBe true
+        war.boosterStrategy.shouldBeInstanceOf<DedicatedSlotBooster>()
+        val eligible = war.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // Scryfall `set:war is:booster -t:basic` and `set:war is:booster t:planeswalker`.
+        eligible.distinctBy { it.name }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 101, Rarity.UNCOMMON to 80, Rarity.RARE to 53, Rarity.MYTHIC to 15,
+        )
+        eligible.filter { it.isPlaneswalker() }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.UNCOMMON to 20, Rarity.RARE to 13, Rarity.MYTHIC to 3,
+        )
+        val deckExclusives = listOf(
+            "Gideon, the Oathsworn", "Desperate Lunge", "Gideon's Battle Cry", "Gideon's Company",
+            "Orzhov Guildgate", "Jace, Arcane Strategist", "Guildpact Informant", "Jace's Projection",
+            "Jace's Ruse", "Simic Guildgate", "Tezzeret, Master of the Bridge",
+        )
+        deckExclusives.forEach { eligible.map { card -> card.name } shouldNotContain it }
+        val eligibleNames = eligible.mapTo(hashSetOf()) { it.name }
+        val packs = 2000
+        var rarePlaneswalkers = 0
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("WAR")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                pack.all { it.name in eligibleNames } shouldBe true
+            }
+            pack.count { it.isPlaneswalker() } shouldBe 1
+            pack.count { it.metadata.rarity == Rarity.COMMON } shouldBe 10
+            pack.count { it.metadata.rarity == Rarity.UNCOMMON } shouldBe 3
+            val rare = pack.single { it.metadata.rarity == Rarity.RARE || it.metadata.rarity == Rarity.MYTHIC }
+            if (rare.isPlaneswalker()) rarePlaneswalkers++
+        }
+        (rarePlaneswalkers.toDouble() / packs) shouldBe ((29.0 / 121) plusOrMinus 0.04)
+    }
+
     test("Reality Fracture is selectable as a complete set and generates a nonempty pack") {
         val fra = boosterGenerator.availableSets["FRA"].shouldNotBeNull()
         fra.setName shouldBe "Reality Fracture"
@@ -279,6 +1370,56 @@ class GameBeansConfigBoosterPoolTest : FunSpec({
             pack.size shouldBe 14
             pack.last().typeLine.isBasicLand shouldBe true
             pack.none { it.name in strategy.nonbasicLandNames } shouldBe true
+        }
+    }
+
+    test("Star Trek play booster is 7 commons, 3 uncommons, two wildcards, a rare or mythic and a land slot") {
+        // Play Booster per magic.wizards.com/en/news/feature/collecting-star-trek (2026-10-20). The
+        // 1-in-25 Stardates common replacement and the sub-2% treatment variants are not modelled.
+        val trk = boosterGenerator.availableSets["TRK"].shouldNotBeNull()
+        trk.fullyImplemented shouldBe true
+        val strategy = trk.boosterStrategy.shouldBeInstanceOf<LandSlotBooster>()
+        val base = strategy.base.shouldBeInstanceOf<PlayBooster>()
+        base.commons shouldBe 7
+        base.uncommons shouldBe 3
+        base.mythicChance shouldBe (0.134 plusOrMinus 0.001)
+        base.wildcardSlots.size shouldBe 2
+        strategy.nonbasicChance shouldBe 0.5
+        strategy.nonbasicLandNames.size shouldBe 10
+        strategy.basicLands.size shouldBe 20
+        val eligible = trk.cards.filter { it.metadata.inBooster && !it.typeLine.isBasicLand }
+        // The article's main set: 81 commons + 10 common duals, 110 uncommons, 80 rares (incl. the ten
+        // default-frame shock lands), 25 mythics.
+        eligible.distinctBy { it.name }.groupingBy { it.metadata.rarity }.eachCount() shouldBe mapOf(
+            Rarity.COMMON to 91, Rarity.UNCOMMON to 110, Rarity.RARE to 80, Rarity.MYTHIC to 25,
+        )
+        val eligibleNames = eligible.map { it.name }.toSet()
+        var mythics = 0
+        var duals = 0
+        val packs = 2000
+        repeat(packs) {
+            val pack = boosterGenerator.generateBooster("TRK")
+            pack.size shouldBe 14
+            pack.map { it.name }.toSet().size shouldBe 14
+            val land = pack.last()
+            val rest = pack.dropLast(1)
+            withClue("pack ${pack.map { it.name }} holds an off-sheet card") {
+                rest.all { it.name in eligibleNames && it.name !in strategy.nonbasicLandNames } shouldBe true
+            }
+            (land.typeLine.isBasicLand || land.name in strategy.nonbasicLandNames) shouldBe true
+            if (land.name in strategy.nonbasicLandNames) duals++
+            (rest.count { it.metadata.rarity == Rarity.COMMON } >= 7) shouldBe true
+            (rest.count { it.metadata.rarity == Rarity.UNCOMMON } >= 3) shouldBe true
+            (rest.count { it.metadata.rarity == Rarity.RARE || it.metadata.rarity == Rarity.MYTHIC } >= 1) shouldBe true
+            mythics += rest.count { it.metadata.rarity == Rarity.MYTHIC }
+        }
+        // Rare slot 12.4 / 92.5 mythic, plus the wildcards' 2.6% and 1.0% mythic shares, normalised by each mix's sum.
+        (mythics.toDouble() / packs) shouldBe (0.172 plusOrMinus 0.03)
+        (duals.toDouble() / packs) shouldBe (0.5 plusOrMinus 0.05)
+        repeat(20) {
+            val pack = boosterGenerator.generateBooster("TRK", bannedCardNames = strategy.nonbasicLandNames)
+            pack.size shouldBe 14
+            pack.last().typeLine.isBasicLand shouldBe true
         }
     }
 
@@ -374,10 +1515,10 @@ class GameBeansConfigBoosterPoolTest : FunSpec({
         // foil/List/Special Guest/bonus-sheet cards).
         val expected = mapOf(
             "ARN" to 8, "ATQ" to 8, "DRK" to 8, "FEM" to 8, "LEG" to 15, "PTK" to 8,
-            "POR" to 13, "P02" to 13, "S99" to 13, "VOW" to 14, "LCI" to 15, "MOM" to 14,
+            "POR" to 13, "P02" to 13, "S99" to 13, "VOW" to 14, "SOI" to 14, "EMN" to 14, "OGW" to 14, "ORI" to 14, "FRF" to 15, "DTK" to 14, "KHM" to 15, "IKO" to 15, "M20" to 15, "RNA" to 15, "GRN" to 15, "LCI" to 15, "MOM" to 14,
             "MKM" to 13, "OTJ" to 13, "MH3" to 13, "BLB" to 13, "DSK" to 14, "FDN" to 14, "INR" to 13,
             "DFT" to 14, "TDM" to 14, "FIN" to 14, "EOE" to 13, "SPM" to 14, "TLA" to 14, "ECL" to 13,
-            "TMT" to 14, "SOS" to 13, "MSH" to 14, "HOB" to 14,
+            "TMT" to 14, "SOS" to 13, "MSH" to 14, "HOB" to 14, "ZNR" to 14, "STX" to 15,
         )
         for ((code, size) in expected) {
             boosterGenerator.availableSets[code].shouldNotBeNull().fullyImplemented shouldBe true
@@ -446,3 +1587,5 @@ class GameBeansConfigBoosterPoolTest : FunSpec({
         }
     }
 })
+
+private fun CardDefinition.isPlaneswalker() = CardType.PLANESWALKER in typeLine.cardTypes

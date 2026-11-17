@@ -93,8 +93,10 @@ class PlayoutPolicy(
                 state, state.projectedState, action, playerId, cardRegistry,
                 aimAtPlaneswalkers = combatAdvisor.attackPlaneswalkers,
                 walkerEngines = combatAdvisor.walkerEngines,
+                minimalLethalInPods = combatAdvisor.minimalLethalInPods,
+                threatAwareDefender = combatAdvisor.threatAwareDefender,
             )
-            return DeclareAttackers(playerId, seed.attackers) to rng
+            return DeclareAttackers(playerId, CombatSeed.obeyLoneAttackers(action, seed.attackers)) to rng
         }
         legalActions.firstOrNull { it.actionType == "DeclareBlockers" }?.let { action ->
             return combatAdvisor.chooseBlockers(
@@ -144,7 +146,7 @@ class PlayoutPolicy(
 
         var score = when (action.actionType) {
             "PlayLand" -> LAND_SCORE
-            "CastSpell", "CastWithKicker", "CastWithSplice" -> BASE_CAST_SCORE
+            "CastSpell", "CastWithKicker", "CastWithSplice", "CastWithSurge" -> BASE_CAST_SCORE
             else -> BASE_ACTIVATION_SCORE
         }
 

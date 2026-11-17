@@ -10,6 +10,7 @@ import com.wingedsheep.engine.state.endResolutionControl
  * Core auto-resumers that process continuations without player input:
  * - AdvanceStepContinuation / FinishUntapStepContinuation (the rest of a turn-based step)
  * - ForEachContinuation (remaining ForEach iterations, any iteration space)
+ * - CounterEachUnlessPaysContinuation (next object of a stack-wide counter-unless-pays batch)
  * - DrawReplacementRemainingDrawsContinuation (remaining draws after bounce)
  * - CycleDrawContinuation / TypecycleSearchContinuation (legacy saved games only)
  * - EffectProgram (the rest of an effect program, once the node at its cursor has finished)
@@ -68,6 +69,13 @@ class CoreAutoResumerModule(
             checkForMore(published, events + result.events)
         },
 
+        autoResumer(CounterEachUnlessPaysContinuation::class) { state, continuation, events, checkForMore ->
+            val result = com.wingedsheep.engine.handlers.effects.stack.CounterEachUnlessPays(
+                services.spellCounterer, services.manaSolver
+            ).step(state, continuation)
+            mergeAndContinue(result, events, checkForMore)
+        },
+
         autoResumer(DrawReplacementRemainingDrawsContinuation::class) { state, continuation, events, checkForMore ->
             // The preceding draw and all its replacement work are complete.
             val nextDrawState = state.copy(activeReplacementChain = null)
@@ -86,7 +94,8 @@ class CoreAutoResumerModule(
                         amountEvaluator = services.dynamicAmountEvaluator
                     )
                     val drawResult = drawExecutor.executeDraws(
-                        nextDrawState, continuation.drawingPlayerId, continuation.remainingDraws, announce = announce
+                        nextDrawState, continuation.drawingPlayerId, continuation.remainingDraws, announce = announce,
+                        cycledCardId = continuation.cycledCardId
                     ).toExecutionResult()
                     mergeAndContinue(drawResult, events, checkForMore)
                 }
@@ -288,7 +297,7 @@ class CoreAutoResumerModule(
                         targetFinder = services.targetFinder
                     ).createTokens(
                         state, e, continuation.context, continuation.controllerId,
-                        continuation.remaining, auraHostId = null,
+                        continuation.remaining, auraHostId = null, firstIndex = continuation.firstIndex,
                     )
                 is com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfSourceEffect ->
                     com.wingedsheep.engine.handlers.effects.token.CreateTokenCopyOfSourceExecutor(

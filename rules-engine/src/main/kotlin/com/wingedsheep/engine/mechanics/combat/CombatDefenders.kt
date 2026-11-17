@@ -53,6 +53,16 @@ object CombatDefenders {
             .flatMap { state.sharedTurnTeam(it) }
             .toSet()
 
+    /** Attackers aimed at this defending side, including its planeswalkers and battles. */
+    fun blockableAttackers(state: GameState, playerId: EntityId): List<EntityId> {
+        val defendingSide = state.sharedTurnTeam(playerId)
+        val projected = state.projectedState
+        return state.getBattlefield().filter { id ->
+            val attack = state.getEntity(id)?.get<AttackingComponent>() ?: return@filter false
+            defendingPlayerOf(state, attack, projected) in defendingSide
+        }
+    }
+
     /** Combat's defending seats, including before attack declaration. */
     fun isCombatDefender(state: GameState, playerId: EntityId?): Boolean =
         state.step.phase == com.wingedsheep.sdk.core.Phase.COMBAT &&
@@ -76,16 +86,39 @@ object CombatDefenders {
      *
      * A planeswalker/battle is attackable iff its controller/protector is in this set (the caller
      * maps it). Departed players are already skipped by the seat helpers, so in Free-for-All the
-     * left/right neighbour is always an opponent exactly one seat away.
+     * left/right neighbour is always an opponent exactly one seat away. In a team game it can be a
+     * teammate: then the nearest opponent on that side is more than one seat away and the player
+     * can't attack at all (CR 803.1a / 803.1b).
      */
     fun legalDefendingPlayers(state: GameState, attackingPlayer: EntityId): Set<EntityId> =
         when (state.attackMode) {
             com.wingedsheep.sdk.core.AttackMode.MULTIPLE -> state.getOpponents(attackingPlayer).toSet()
             com.wingedsheep.sdk.core.AttackMode.LEFT ->
-                setOf(state.getNextPlayer(attackingPlayer)).minus(attackingPlayer)
+                adjacentOpponent(state, attackingPlayer, state.getNextPlayer(attackingPlayer))
             com.wingedsheep.sdk.core.AttackMode.RIGHT ->
-                setOf(state.getPreviousPlayer(attackingPlayer)).minus(attackingPlayer)
+                adjacentOpponent(state, attackingPlayer, state.getPreviousPlayer(attackingPlayer))
         }
+
+    private fun adjacentOpponent(state: GameState, attackingPlayer: EntityId, neighbour: EntityId): Set<EntityId> =
+        if (neighbour in state.getOpponents(attackingPlayer)) setOf(neighbour) else emptySet()
+
+    /**
+     * Everything [attackingPlayer] may declare an attack on this combat, before any per-creature
+     * rule narrows it: the [legalDefendingPlayers], then the planeswalkers they control and the
+     * battles they protect (CR 310.9b — which is why a Siege the attacking player controls
+     * themselves appears once an opponent protects it).
+     */
+    fun attackTargets(state: GameState, projected: ProjectedState, attackingPlayer: EntityId): List<EntityId> {
+        val opponents = legalDefendingPlayers(state, attackingPlayer)
+        return opponents.toList() + state.getBattlefield().filter { entityId ->
+            when {
+                projected.isBattle(entityId) ->
+                    com.wingedsheep.engine.mechanics.battle.Battles.canBeAttackedBy(state, entityId, attackingPlayer, opponents)
+                projected.isPlaneswalker(entityId) -> projected.getController(entityId) in opponents
+                else -> false
+            }
+        }
+    }
 
     /**
      * True if a creature [controllerId] puts onto the battlefield attacking may attack
@@ -103,6 +136,18 @@ object CombatDefenders {
         return (projected.isPlaneswalker(defenderId) && projected.getController(defenderId) in defending) ||
             (projected.isBattle(defenderId) &&
                 com.wingedsheep.engine.mechanics.battle.Battles.canBeAttackedBy(state, defenderId, controllerId, defending))
+    }
+
+    /**
+     * Whether a creature put onto the battlefield attacking under [playerId]'s control can be
+     * attacking at all: only an attacking player — the active player, or under shared team turns
+     * any player on the active team — controls attackers. A token created "tapped and attacking"
+     * under anyone else (Crafty Cutpurse taking an attacker's token) enters tapped, not attacking.
+     * True when no turn is running (bare test states), which keeps the old default.
+     */
+    fun isAttackingPlayer(state: GameState, playerId: EntityId): Boolean {
+        val active = state.activePlayerId ?: return true
+        return playerId in state.sharedTurnTeam(active)
     }
 
     /**
@@ -140,6 +185,23 @@ object CombatDefenders {
         val defenders = state.getOpponents(active)
             .flatMap { state.sharedTurnTeam(it) }.toSet()
         return state.apnapOrder.filter { it in defenders }
+    }
+
+    /**
+     * Every player **being attacked** right now, in APNAP order: each player some attacking
+     * creature on the battlefield is attacking directly. A player whose planeswalker or battle is
+     * the only thing attacked isn't "being attacked" (CR 802.4 tells the two apart), and neither is
+     * a defending player no creature attacks. Read live, so a player stops being attacked once the
+     * last creature attacking them leaves combat. Backs [com.wingedsheep.sdk.scripting.references.Player.EachAttackedPlayer].
+     */
+    fun attackedPlayersInApnapOrder(state: GameState): List<EntityId> {
+        if (state.step.phase != com.wingedsheep.sdk.core.Phase.COMBAT) return emptyList()
+        val attacked = state.getBattlefield()
+            .mapNotNull { state.getEntity(it)?.get<AttackingComponent>()?.defenderId }
+            .filter { it in state.turnOrder }
+            .toSet()
+        if (attacked.isEmpty()) return emptyList()
+        return state.apnapOrder.filter { it in attacked }
     }
 
     /**

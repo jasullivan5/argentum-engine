@@ -25,7 +25,10 @@ val DrillTooDeep = card("Drill Too Deep") {
         modal(chooseCount = 1) {
             mode("Put five charge counters on target Spacecraft or Planet you control") {
                 val t = target(
-                    TargetFilter(GameObjectFilter.Permanent.withSubtype("Planet") or GameObjectFilter.Permanent.withSubtype("Spacecraft")),
+                    TargetFilter(
+                        (GameObjectFilter.Permanent.withSubtype("Planet") or GameObjectFilter.Permanent.withSubtype("Spacecraft"))
+                            .youControl()
+                    ),
                 )
                 effect = Effects.AddCounters(CounterType.CHARGE, 5, t)
             }

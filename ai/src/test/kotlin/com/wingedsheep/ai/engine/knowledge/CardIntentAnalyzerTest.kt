@@ -6,6 +6,7 @@ import com.wingedsheep.engine.state.components.identity.RoomFace
 import com.wingedsheep.engine.state.components.identity.RoomFaceId
 import com.wingedsheep.engine.support.ScenarioTestBase
 import com.wingedsheep.mtg.sets.definitions.dsk.cards.UnholyAnnexRitualChamber
+import com.wingedsheep.mtg.sets.definitions.war.cards.GodEternalKefnet
 import com.wingedsheep.mtg.sets.definitions.woe.cards.VirtueOfLoyalty
 import io.kotest.assertions.withClue
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -40,6 +41,63 @@ class CardIntentAnalyzerTest : ScenarioTestBase() {
     )
 
     init {
+        test("a control Aura steals its host, and moving it steals the new one") {
+            listOf("Control Magic", "Illusory Gains").forEach { name ->
+                withClue(name) { intentOf(name).tags shouldContain IntentTag.REMOVAL }
+            }
+            withClue("Illusory Gains' attach-to-the-newcomer trigger takes the opponent's creature") {
+                val gains = cardRegistry.requireCard("Illusory Gains")
+                val trigger = gains.script.triggeredAbilities.single()
+                CardIntentAnalyzer.analyzeEffect(trigger.effect, source = gains).tags shouldContain IntentTag.REMOVAL
+                withClue("without the control static the same attach is no steal") {
+                    CardIntentAnalyzer.analyzeEffect(trigger.effect).tags shouldNotContain IntentTag.REMOVAL
+                }
+            }
+        }
+
+        test("a toothless 0/2 base Aura neutralizes its host") {
+            listOf("Reduce in Stature", "Illusory Wrappings").forEach { name ->
+                withClue(name) { intentOf(name).tags shouldContain IntentTag.NEUTRALIZE }
+            }
+        }
+
+        test("a death shield's rider over opponents' creatures reads as what it does each time") {
+            withClue("Kalitas: instead exile that card and create a 2/2 Zombie") {
+                intentOf("Kalitas, Traitor of Ghet").tags shouldContain IntentTag.TOKEN_MAKER
+            }
+            withClue("The Darkness Crystal: instead exile it and you gain 2 life") {
+                intentOf("The Darkness Crystal").tags shouldContain IntentTag.LIFEGAIN
+            }
+            withClue("a self-only rider (Ugin's Nexus) is the card's own leave-play consolation, not a payoff") {
+                intentOf("Ugin's Nexus").tags shouldNotContain IntentTag.EXTRA_TURN
+            }
+        }
+
+        test("keywords borrowed from a pool of cards read as the grants they may become") {
+            withClue("Soulflayer: flying, trample, … and hexproof from its delved creature cards") {
+                val tags = intentOf("Soulflayer").tags
+                tags shouldContain IntentTag.EVASION_GRANT
+                tags shouldContain IntentTag.PROTECTION
+            }
+            withClue("Cairn Wanderer: landwalk is evasion, protection a shield") {
+                val tags = intentOf("Cairn Wanderer").tags
+                tags shouldContain IntentTag.EVASION_GRANT
+                tags shouldContain IntentTag.PROTECTION
+            }
+        }
+
+        test("an emblem with \"you can't lose the game and your opponents can't win\" reads as protection") {
+            val emblem = cardRegistry.requireCard("Gideon of the Trials").script.activatedAbilities[2]
+            CardIntentAnalyzer.analyzeEffect(emblem.effect).tags shouldContain IntentTag.PROTECTION
+            CardIntentAnalyzer.analyze(cardRegistry.requireCard("Platinum Angel")).tags shouldContain IntentTag.PROTECTION
+        }
+
+        test("a standing cast-from-graveyard permission reads as recursion and a graveyard payoff") {
+            val sarcophagus = cardRegistry.requireCard("Abandoned Sarcophagus")
+            CardIntentAnalyzer.analyze(sarcophagus).tags shouldContain IntentTag.RECURSION
+            GraveyardSynergy.isPayoff(sarcophagus) shouldBe true
+        }
+
         test("a repeatable tapper reads as a repeatable tapper") {
             val intent = intentOf("Icy Manipulator")
             intent.tags shouldContain IntentTag.TAPPER
@@ -51,13 +109,37 @@ class CardIntentAnalyzerTest : ScenarioTestBase() {
             }
         }
 
-        test("a mana rock is ramp, and is worth about a land") {
+        test("a team-wide can't-block or can't-be-blocked turn reads as an evasion grant") {
+            intentOf("Rumbling Ruin").tags shouldContain IntentTag.EVASION_GRANT
+            intentOf("Barrage of Boulders").tags shouldContain IntentTag.EVASION_GRANT
+            intentOf("Jace, Arcane Strategist").tags shouldContain IntentTag.EVASION_GRANT
+        }
+
+        test("a lasting can't-block static over opponents' creatures reads as an evasion grant") {
+            // Void Winnower: "your opponents can't block with creatures with even mana values" is a
+            // permanent CantBlock on their side of the table, beside a cast ban.
+            val intent = intentOf("Void Winnower")
+            intent.tags shouldContain IntentTag.EVASION_GRANT
+            intent.tags shouldContain IntentTag.CAST_BAN
+            intent.tags shouldNotContain IntentTag.COMBAT_RESTRICTION
+        }
+
+        test("an extra-mana-when-you-tap-a-land static is ramp") {
+            // Zendikar Resurgent / Mirari's Wake: "whenever you tap a land for mana, add one mana of
+            // any type that land produced" doubles every land you tap.
+            intentOf("Zendikar Resurgent").tags shouldContain IntentTag.RAMP
+            intentOf("Mirari's Wake").tags shouldContain IntentTag.RAMP
+        }
+
+        test("a mana rock is ramp, and is worth about a land plus the card it can still cash in") {
             val intent = intentOf("Mind Stone")
             intent.tags shouldContain IntentTag.RAMP
             withClue("the draw ability sacrifices the rock, so it is not a repeatable engine") {
                 intent.repeatable shouldBe false
             }
-            intent.staticPriorValue shouldBeLessThan 1.0
+            withClue("a rock alone is the mana-source rung (0.7); the draw its sacrifice still holds is the one-shot rung") {
+                intent.staticPriorValue shouldBe 1.0
+            }
         }
 
         test("an anthem carries its per-creature bonus separately from its prior") {
@@ -118,6 +200,18 @@ class CardIntentAnalyzerTest : ScenarioTestBase() {
             }
         }
 
+        test("bolster — a +1/+1 counter on our own least-toughness creature — is a lasting pump") {
+            // The pick is made on resolution (gather our creatures → least toughness → choose one →
+            // counter), so no target slot says whose creature grows; the gather of our own does.
+            for (name in listOf("Dromoka Captain", "Sandcrafter Mage", "Echoes of the Kin Tree")) {
+                withClue(name) {
+                    val intent = intentOf(name)
+                    intent.tags shouldContain IntentTag.PUMP
+                    intent.tags shouldNotContain IntentTag.COMBAT_TRICK
+                }
+            }
+        }
+
         test("a permanent pump is not a combat trick and buys no trick toughness") {
             val intent = intentOf("Unholy Strength")
             intent.tags shouldContain IntentTag.PUMP
@@ -141,6 +235,20 @@ class CardIntentAnalyzerTest : ScenarioTestBase() {
             intent.speed shouldBe Speed.INSTANT
         }
 
+        test("a keyword stripped from the opponents' creatures opens them to the fight") {
+            // Bonds of Mortality: "{G}: Creatures your opponents control lose hexproof and
+            // indestructible until end of turn."
+            val strip = cardRegistry.requireCard("Bonds of Mortality").script.activatedAbilities.single()
+            CardIntentAnalyzer.analyzeEffect(strip.effect).tags shouldContain IntentTag.COMBAT_ENHANCEMENT
+            CombatReach.of(strip) shouldContain CombatReach.FIGHT
+        }
+
+        test("a group of our creatures biting one chosen victim is removal, not a sweeper") {
+            val intent = intentOf("Nissa's Judgment")
+            intent.tags shouldContain IntentTag.REMOVAL
+            intent.tags shouldNotContain IntentTag.SWEEPER
+        }
+
         test("a sweeper is tagged as one, and reads as opponent-facing") {
             val intent = intentOf("Wrath of God")
             intent.tags shouldContain IntentTag.REMOVAL
@@ -156,6 +264,14 @@ class CardIntentAnalyzerTest : ScenarioTestBase() {
             val intent = intentOf("Grizzly Bears")
             intent.tags shouldBe emptySet()
             intent.staticPriorValue shouldBe CardIntent.UNKNOWN.staticPriorValue
+        }
+
+        test("copying a card to cast the copy reads as card advantage") {
+            // God-Eternal Kefnet: "copy that card and you may cast the copy" is an extra spell on
+            // top of the hand — a repeatable draw engine, not an unread blank.
+            val intent = CardIntentAnalyzer.analyze(GodEternalKefnet)
+            intent.tags shouldContain IntentTag.DRAW
+            intent.repeatable shouldBe true
         }
 
         test("a Room's rules text lives on its faces, and the analyzer reads it") {
@@ -242,6 +358,24 @@ class CardIntentAnalyzerTest : ScenarioTestBase() {
                 IntentCatalog.NONE.forPermanent(
                     roomPermanent("Unholy Annex"), UnholyAnnexRitualChamber.name
                 ).shouldBeEmpty()
+            }
+        }
+
+        test("a delayed trigger reads as the effect it fires, minus the price of taking back its own") {
+            withClue("Cockatrice: the creature it blocked is destroyed at end of combat — removal, only later") {
+                intentOf("Cockatrice").tags shouldContain IntentTag.REMOVAL
+            }
+            withClue("Mishra's Bauble: the draw at the next upkeep is card draw") {
+                intentOf("Mishra's Bauble").tags shouldContain IntentTag.DRAW
+            }
+            for (name in listOf("Through the Breach", "Animate Dead", "Coalstoke Gearhulk", "Long River Lurker")) {
+                withClue("$name: sacrificing, exiling or blinking the creature it put in is its price, not removal") {
+                    intentOf(name).tags shouldNotContain IntentTag.REMOVAL
+                }
+            }
+            withClue("Tilonalli's Summoner: exiling \"those tokens\" it made at the end step is its price, not removal") {
+                intentOf("Tilonalli's Summoner").tags shouldNotContain IntentTag.REMOVAL
+                intentOf("Tilonalli's Summoner").tags shouldContain IntentTag.TOKEN_MAKER
             }
         }
 

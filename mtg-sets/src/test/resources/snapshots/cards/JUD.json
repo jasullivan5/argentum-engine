@@ -149,6 +149,89 @@
     ]
 }
 
+// Balthor the Defiled
+{
+    "name": "Balthor the Defiled",
+    "manaCost": "{2}{B}{B}",
+    "typeLine": "Legendary Creature — Zombie Dwarf",
+    "oracleText": "Minion creatures get +1/+1.\n{B}{B}{B}, Exile Balthor: Each player returns all black and all red creature cards from their graveyard to the battlefield.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Balthor the Defiled:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{B}{B}{B}"
+                            }
+                        },
+                        "CostExileSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Graveyard",
+                                "player": "Each",
+                                "filter": "creature black|red"
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "gathered0",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Battlefield"
+                            },
+                            "underOwnersControl": true
+                        }
+                    ]
+                },
+                "descriptionOverride": "Each player returns all black and all red creature cards from their graveyard to the battlefield."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "creature Minion"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "61",
+        "rarity": "RARE",
+        "artist": "Carl Critchlow",
+        "flavorText": "He remembers enough of his life to weep for what he has lost.",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/d/ed4cc273-adc3-4f46-9743-134b552d1d56.jpg?1783945124",
+        "rulings": [
+            {
+                "date": "2013-07-01",
+                "text": "You can only activate this ability if Balthor the Defiled is on the battlefield."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Border Patrol
 {
     "name": "Border Patrol",
@@ -1121,7 +1204,14 @@
             {
                 "type": "TargetObject",
                 "filter": {
-                    "baseFilter": {},
+                    "baseFilter": {
+                        "statePredicates": [
+                            {
+                                "type": "WasCast",
+                                "fromZone": "Graveyard"
+                            }
+                        ]
+                    },
                     "zone": "Stack"
                 },
                 "id": "t0"
@@ -1358,6 +1448,51 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Mirari's Wake
+{
+    "name": "Mirari's Wake",
+    "manaCost": "{3}{G}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "Creatures you control get +1/+1.\nWhenever you tap a land for mana, add one mana of any type that land produced.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                }
+            },
+            {
+                "type": "AdditionalManaOnSourceTap",
+                "sourceFilter": "land ctrl:you"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "139",
+        "rarity": "RARE",
+        "artist": "David Martin",
+        "flavorText": "The land drank power from the Mirari as though it had thirsted forever.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/5/b5ddad46-5e2e-43c9-8c91-7aca6ca23562.jpg?1783945107",
+        "rulings": [
+            {
+                "date": "2021-06-18",
+                "text": "If tapping a land produces more than one type of mana, you choose one type that was produced and add one mana of that type."
+            },
+            {
+                "date": "2021-06-18",
+                "text": "If the mana produced by the land has any additional restrictions or riders, those restrictions or riders don't apply to the mana added by Mirari's Wake. You just get one mana of the appropriate type."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
     ]
 }
 
@@ -1810,6 +1945,56 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Test of Endurance
+{
+    "name": "Test of Endurance",
+    "manaCost": "{2}{W}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "At the beginning of your upkeep, if you have 50 or more life, you win the game.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Test of Endurance:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": "WinGame",
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "LifeTotal",
+                        "player": "You"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 50
+                    }
+                },
+                "descriptionOverride": "At the beginning of your upkeep, if you have 50 or more life, you win the game."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "29",
+        "rarity": "RARE",
+        "artist": "Mike Ploog",
+        "flavorText": "\"If we have learned nothing else, we have learned to survive.\"\n—Mystic elder",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/f/cf16bd6b-e99c-4da3-bd03-11f63b7ee85d.jpg?1783945131",
+        "rulings": [
+            {
+                "date": "2022-12-08",
+                "text": "Test of Endurance's ability will check your life total as your upkeep begins, before any player has the opportunity to take any actions. If you don't have 50 or more life at that time, the ability won't trigger at all. If the ability does trigger, it will check again as it tries to resolve. If your life total has fallen below 50 at that point, the ability won't have any effect."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }
 

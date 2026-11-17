@@ -67,7 +67,7 @@ internal object RetiredSdkTypeLift {
     )
 
     private fun nameNotShared(filter: GameObjectFilter, excludeSelf: Boolean) = predicate(
-        CardPredicate.Not(CardPredicate.SharesNameWithPermanentYouControl(filter, excludeSelf))
+        CardPredicate.Not(CardPredicate.SharesNameWithYourCard(filter, excludeSelf))
     )
 
     private val cardTypeFilters = mapOf(
@@ -92,6 +92,10 @@ internal object RetiredSdkTypeLift {
         "NameNotSharedWithControlledToken" to { _ -> nameNotShared(GameObjectFilter.Token, excludeSelf = false) },
         "NameNotSharedWithAnotherControlledPermanent" to { _ ->
             nameNotShared(GameObjectFilter.Permanent, excludeSelf = true)
+        },
+        // Renamed when it gained its zone axis; the battlefield is the old meaning and the default.
+        "SharesNameWithPermanentYouControl" to { old ->
+            JsonObject(old + ("type" to JsonPrimitive("SharesNameWithYourCard")))
         },
         // Condition — the life comparisons and the last-known type checks
         "AnOpponentLifeAtMost" to { old -> condition(Conditions.AnOpponentLifeAtMost(old.int("threshold"))) },
@@ -127,6 +131,10 @@ internal object RetiredSdkTypeLift {
         "SkipDrawStep" to { _ -> static(SkipStepOrPhase(TurnPart.DRAW_STEP)) },
         "GrantHexproofFromMonocoloredToGroup" to { old -> hexproofGrant(ProtectionScope.Monocolored, old) },
         "GrantHexproofFromMulticoloredToGroup" to { old -> hexproofGrant(ProtectionScope.Multicolored, old) },
+        // StaticAbility — the toughness-only base setter, now the null-power half of the fixed one
+        "SetBaseToughnessForCreatureGroup" to { old ->
+            JsonObject(old + ("type" to JsonPrimitive("SetBasePowerToughnessStatic")) + ("power" to JsonNull))
+        },
     )
 
     /**
@@ -135,7 +143,137 @@ internal object RetiredSdkTypeLift {
      * a stored grant. A true flag is a cap of one; a false one is the uncapped default.
      */
     private fun withoutRetiredFields(element: JsonObject, type: String?): JsonObject =
-        withoutSingleEntryCounter(withoutCastTimeFlags(withoutSingleUse(element, type)), type)
+        withTotalCap(element)
+            .let { withRetiredFieldsLifted(it, type) }
+
+    private fun withRetiredFieldsLifted(element: JsonObject, type: String?): JsonObject =
+        withoutSacrificeTrackers(element, type).takeIf { it !== element } ?: withDynamicLandCount(withoutSkipUntapFlags(withoutLandEntersTapped(
+            withoutCreaturesOnly(
+                withoutSingleEntryCounter(withoutCastTimeFlags(withoutColorlessAsAnyColor(withoutSingleUse(element, type))), type)
+            )
+        ), type), type)
+
+    /**
+     * The mana-value-only aggregate target cap became a cap over any numeric property: a card
+     * script's `TargetObject.totalManaValueAtMost` amount is now `totalAtMost = TotalCap(MANA_VALUE,
+     * amount)`, and a stored target pause's resolved `totalManaValueAtMost` integer is now
+     * `totalCap` labelled "mana value" (its per-candidate `targetValues` weren't stored, so that
+     * pause's picker no longer pre-checks the sum; `TargetValidator` still enforces it). A null
+     * field was the uncapped default.
+     */
+    private fun withTotalCap(element: JsonObject): JsonObject {
+        val old = element["totalManaValueAtMost"] ?: return element
+        val rest = element - "totalManaValueAtMost"
+        return when (old) {
+            is JsonObject -> JsonObject(rest + ("totalAtMost" to JsonObject(mapOf(
+                "property" to JsonPrimitive(CardNumericProperty.MANA_VALUE.name),
+                "amount" to old,
+            ))))
+            is JsonPrimitive -> if (old is JsonNull) JsonObject(rest) else JsonObject(
+                rest + ("totalCap" to old) + ("totalCapLabel" to JsonPrimitive(CardNumericProperty.MANA_VALUE.description))
+            )
+            else -> JsonObject(rest)
+        }
+    }
+
+    /** The four retired sacrifice trackers, each the filter it is over the per-turn sacrifice record. */
+    private val sacrificeTrackerFilters = mapOf(
+        "PERMANENTS_SACRIFICED" to GameObjectFilter.Any,
+        "NONTOKEN_PERMANENTS_SACRIFICED" to GameObjectFilter.Any.nontoken(),
+        "ARTIFACT_SACRIFICED" to GameObjectFilter.Artifact,
+        "FOOD_SACRIFICED" to GameObjectFilter.Any.withSubtype(Subtype.FOOD),
+    )
+
+    /**
+     * `TurnTracking(player, PERMANENTS_SACRIFICED / NONTOKEN_PERMANENTS_SACRIFICED /
+     * ARTIFACT_SACRIFICED / FOOD_SACRIFICED)` became `PermanentsSacrificedThisTurn(player, filter)`.
+     * The two indicators (0 or 1) become counts; every card read them as "at least one", which a
+     * count answers the same.
+     */
+    private fun withoutSacrificeTrackers(element: JsonObject, type: String?): JsonObject {
+        if (type != "TurnTracking") return element
+        val filter = sacrificeTrackerFilters[(element["tracker"] as? JsonPrimitive)?.content] ?: return element
+        return JsonObject(
+            buildMap {
+                put("type", JsonPrimitive("PermanentsSacrificedThisTurn"))
+                element["player"]?.let { put("player", it) }
+                put("filter", encode(GameObjectFilter.serializer(), filter))
+            }
+        )
+    }
+
+    /**
+     * `PlayAdditionalLandsEffect.count` was a bare number; it is now a `DynamicAmount`, so a stored
+     * `2` becomes `Fixed(2)`.
+     */
+    private fun withDynamicLandCount(element: JsonObject, type: String?): JsonObject {
+        if (type != "PlayAdditionalLands") return element
+        val count = element["count"] as? JsonPrimitive ?: return element
+        return JsonObject(element + ("count" to encode(DynamicAmount.serializer(), DynamicAmount.Fixed(count.int))))
+    }
+
+    /**
+     * "Don't untap during their next untap step" carried `affectsCreatures` / `affectsLands` flags; it
+     * now carries a permanent filter — `permanents` on `SkipUntapEffect` in a card script, a list of
+     * them on a player's pending `SkipUntapComponent`. Both flags default to true, as they did.
+     */
+    private fun withoutSkipUntapFlags(element: JsonObject, type: String?): JsonObject {
+        if ("affectsCreatures" !in element && "affectsLands" !in element) return element
+        val creatures = (element["affectsCreatures"] as? JsonPrimitive)?.content != "false"
+        val lands = (element["affectsLands"] as? JsonPrimitive)?.content != "false"
+        val rest = element - "affectsCreatures" - "affectsLands"
+        val filter = when {
+            creatures && lands -> GameObjectFilter.Creature or GameObjectFilter.Land
+            creatures -> GameObjectFilter.Creature
+            lands -> GameObjectFilter.Land
+            else -> null
+        }
+        val encoded = filter?.let { encode(GameObjectFilter.serializer(), it) }
+        return when {
+            type != "SkipUntap" -> JsonObject(rest + ("permanents" to JsonArray(listOfNotNull(encoded))))
+            encoded != null -> JsonObject(rest + ("permanents" to encoded))
+            else -> JsonObject(rest)
+        }
+    }
+
+    /**
+     * The may-play `colorlessAsAnyColor` flag became `spendAsAnyColor`, naming *which* mana stands in
+     * for a color — on `GrantMayPlayFromExileEffect` in a card script and `MayPlayPermission` on a
+     * stored grant. A true flag is `COLORLESS`; a false one is the unset default.
+     */
+    private fun withoutColorlessAsAnyColor(element: JsonObject): JsonObject {
+        val flag = element["colorlessAsAnyColor"] as? JsonPrimitive ?: return element
+        val rest = element - "colorlessAsAnyColor"
+        return JsonObject(if (flag.content == "true") rest + ("spendAsAnyColor" to JsonPrimitive("COLORLESS")) else rest)
+    }
+
+    /**
+     * The damage-redirection shield's `creaturesOnly` flag became `protectedFilter` — on
+     * `RedirectNextDamageEffect` in a card script and on the stored `RedirectNextDamage` shield. A
+     * true flag protects every creature; a false one is the unset default.
+     */
+    private fun withoutCreaturesOnly(element: JsonObject): JsonObject {
+        val flag = element["creaturesOnly"] as? JsonPrimitive ?: return element
+        val rest = element - "creaturesOnly"
+        return JsonObject(
+            if (flag.content == "true") rest + ("protectedFilter" to encode(GameObjectFilter.serializer(), GameObjectFilter.Creature))
+            else rest
+        )
+    }
+
+    /**
+     * The may-play `landEntersTapped` flag became `entersTapped`, a filter naming which played cards
+     * enter tapped — on `GrantMayPlayFromExileEffect` in a card script and `MayPlayPermission` on a
+     * stored grant. A true flag is the land filter; a false one is the unset default.
+     */
+    private fun withoutLandEntersTapped(element: JsonObject): JsonObject {
+        val flag = element["landEntersTapped"] as? JsonPrimitive ?: return element
+        val rest = element - "landEntersTapped"
+        return JsonObject(
+            if (flag.content == "true") rest + ("entersTapped" to encode(GameObjectFilter.serializer(), GameObjectFilter.Land))
+            else rest
+        )
+    }
 
     /**
      * `MoveToZoneEffect` carried one entry counter as `addCounterType` + `addCounterIf`; it now

@@ -31,6 +31,7 @@ import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.PlotFromTopOfLibrary
 import com.wingedsheep.sdk.scripting.conditions.SourcePlottedOnPriorTurn
 import kotlin.reflect.KClass
+import com.wingedsheep.engine.state.components.identity.faceUpCardDefinition
 
 /**
  * Handler for the [PlotCard] special action (CR 718, Outlaws of Thunder Junction).
@@ -55,8 +56,8 @@ class PlotCardHandler(
 ) : ActionHandler<PlotCard> {
     override val actionType: KClass<PlotCard> = PlotCard::class
 
-    private val plotCostReducer =
-        com.wingedsheep.engine.mechanics.mana.PlotCostReducer(cardRegistry)
+    private val specialActionCostReducer =
+        com.wingedsheep.engine.mechanics.mana.SpecialActionCostReducer(cardRegistry)
 
     /**
      * Where the card being plotted lives and what its plot cost is. Plot normally exiles a
@@ -75,7 +76,9 @@ class PlotCardHandler(
         if (action.cardId in state.getZone(ZoneKey(action.playerId, Zone.HAND))) {
             val plotAbility = cardDef.keywordAbilities.filterIsInstance<KeywordAbility.Plot>().firstOrNull()
                 ?: return null
-            val reduced = plotCostReducer.effectivePlotCostFromHand(state, action.playerId, plotAbility.cost)
+            val reduced = specialActionCostReducer.effectiveCost(
+                state, action.playerId, com.wingedsheep.sdk.scripting.SpecialActionKind.PLOT, plotAbility.cost
+            )
             return PlotSource(Zone.HAND, reduced)
         }
 
@@ -84,8 +87,7 @@ class PlotCardHandler(
         val library = state.getLibrary(action.playerId)
         if (library.firstOrNull() == action.cardId) {
             val filter = state.getBattlefield(action.playerId).asSequence()
-                .mapNotNull { state.getEntity(it)?.get<CardComponent>() }
-                .mapNotNull { cardRegistry.getCard(it.cardDefinitionId) }
+                .mapNotNull { state.faceUpCardDefinition(it, cardRegistry) }
                 .flatMap { it.script.staticAbilities.asSequence() }
                 .filterIsInstance<PlotFromTopOfLibrary>()
                 .firstOrNull()?.filter

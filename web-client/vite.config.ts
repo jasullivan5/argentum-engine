@@ -1,6 +1,8 @@
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { execSync } from 'child_process'
+import { readFileSync } from 'fs'
+import { createRequire } from 'module'
 import path from 'path'
 
 let commitHash = process.env.VITE_COMMIT_HASH?.slice(0, 7) || 'unknown'
@@ -39,8 +41,30 @@ const contributeGuideInDev: Plugin = {
   },
 }
 
+/**
+ * The admin GeoMap needs one thing from `world-countries`: each country's centroid, by ISO alpha-2.
+ * Importing the package bundles the whole dataset (~1.3 MB of names, borders, currencies,
+ * translations…) into the admin chunk. This virtual module reads it at build time and emits only
+ * `{ cca2: [lng, lat] }` — a few kB.
+ */
+const COUNTRY_CENTROIDS_ID = 'virtual:country-centroids'
+const countryCentroids: Plugin = {
+  name: 'country-centroids',
+  resolveId(id) {
+    return id === COUNTRY_CENTROIDS_ID ? '\0' + COUNTRY_CENTROIDS_ID : undefined
+  },
+  load(id) {
+    if (id !== '\0' + COUNTRY_CENTROIDS_ID) return undefined
+    const file = createRequire(import.meta.url).resolve('world-countries/countries.json')
+    const countries = JSON.parse(readFileSync(file, 'utf8')) as Array<{ cca2: string; latlng: [number, number] }>
+    // world-countries stores [lat, lng]; d3 projections want [lng, lat].
+    const centroids = Object.fromEntries(countries.map((c) => [c.cca2, [c.latlng[1], c.latlng[0]]]))
+    return `export default ${JSON.stringify(centroids)}`
+  },
+}
+
 export default defineConfig({
-  plugins: [react(), contributeGuideInDev],
+  plugins: [react(), contributeGuideInDev, countryCentroids],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

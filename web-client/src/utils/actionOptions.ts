@@ -40,7 +40,7 @@ export interface ActionOption {
   /** The legal action info if available */
   action: LegalActionInfo | null
   /** Action type for coloring */
-  actionType: 'cast' | 'castFaceDown' | 'castWithKicker' | 'cycle' | 'plot' | 'suspend' | 'companion' | 'playLand' | 'activate' | 'turnFaceUp'
+  actionType: 'cast' | 'castFaceDown' | 'castWithKicker' | 'cycle' | 'plot' | 'foretell' | 'suspend' | 'companion' | 'playLand' | 'activate' | 'turnFaceUp'
   /**
    * Signed loyalty change for planeswalker loyalty abilities (+1, -2, -8, 0).
    * When present, the button renders a mana-font loyalty icon instead of a text prefix.
@@ -83,7 +83,7 @@ const PLAY_ACTION_TYPES: ReadonlySet<ActionOption['actionType']> = new Set([
  * battlefield, not to a decision about playing the card.
  */
 const LADDER_ACTION_TYPES: ReadonlySet<ActionOption['actionType']> = new Set([
-  'cast', 'castFaceDown', 'castWithKicker', 'cycle', 'plot', 'suspend', 'playLand',
+  'cast', 'castFaceDown', 'castWithKicker', 'cycle', 'plot', 'foretell', 'suspend', 'playLand',
 ])
 
 /**
@@ -238,6 +238,9 @@ export interface KeywordAlternativeCost {
  * card carries two of these keywords, and a second one would need its own row rather than a
  * different shape of this one.
  */
+/** "Exile a Goblin card…" → "exile a Goblin card…": only the sentence case changes. */
+const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1)
+
 export function keywordAlternativeCostFor(cardInfo: ClientCard): KeywordAlternativeCost | null {
   if (cardInfo.bestow) {
     return {
@@ -270,11 +273,14 @@ export function keywordAlternativeCostFor(cardInfo: ClientCard): KeywordAlternat
     return {
       key: 'evoke',
       label: `Evoke ${cardInfo.name}`,
-      cost: cardInfo.evoke,
+      cost: cardInfo.evoke.cost || '{0}',
       alternativeCostType: 'EVOKE',
       // The sacrifice is the whole point of the cheaper price, and it is the half a player who
-      // dragged the card out to hard-cast it needs to see before clicking.
-      hint: 'evoke — sacrificed as it enters, keeping only its ETB',
+      // dragged the card out to hard-cast it needs to see before clicking. A non-mana evoke cost
+      // (Endurance's "exile a green card from your hand") leads, since it is the price itself.
+      hint: cardInfo.evoke.additionalCostDescription
+        ? `${lowerFirst(cardInfo.evoke.additionalCostDescription)} — sacrificed as it enters`
+        : 'evoke — sacrificed as it enters, keeping only its ETB',
     }
   }
   return null
@@ -302,9 +308,13 @@ export function buildActionOptions(
   // "Kicked {G}" / "Kicked {1}{U}" / both — so every one the server offers gets its own option.
   const kickerActions = legalActions.filter((a) => a.actionType === 'CastWithKicker')
   const morphAction = legalActions.find((a) => a.actionType === 'CastFaceDown')
-  const cycleAction = legalActions.find((a) => a.action.type === 'CycleCard')
+  // A card can hold printed cycling plus cycling granted in hand (Rhet-Tomb Mystic), one action
+  // per distinct cost — so this is a filter, not a find.
+  const cycleActions = legalActions.filter((a) => a.action.type === 'CycleCard')
+  const cycleAction = cycleActions[0] ?? null
   const typecycleAction = legalActions.find((a) => a.action.type === 'TypecycleCard')
   const plotAction = legalActions.find((a) => a.action.type === 'PlotCard')
+  const foretellAction = legalActions.find((a) => a.action.type === 'ForetellCard')
   const suspendAction = legalActions.find((a) => a.action.type === 'SuspendCardFromHand')
   // A modal double-faced land (the Zendikar Rising Pathway cycle) sends *two* PlayLand actions
   // for one card — one per land face, CR 712.12 — so this is a filter, not a find.
@@ -454,7 +464,7 @@ export function buildActionOptions(
       action: null,
       actionType: 'cast',
     })
-  } else if ((cycleAction || typecycleAction || plotAction || suspendAction) && !cardInfo.cardTypes.includes('LAND')) {
+  } else if ((cycleAction || typecycleAction || plotAction || foretellAction || suspendAction) && !cardInfo.cardTypes.includes('LAND')) {
     // Non-land card with cycling/plot but no CastSpell action — show grayed-out cast option
     // so the action menu always presents both choices
     options.push({
@@ -526,16 +536,16 @@ export function buildActionOptions(
   })
 
   // 4. Cycling
-  if (cycleAction) {
+  cycleActions.forEach((action, index) => {
     options.push({
-      key: 'cycle',
+      key: index === 0 ? 'cycle' : `cycle-${index}`,
       label: 'Cycle',
-      manaCost: cycleAction.manaCostString || null,
-      isAvailable: cycleAction.isAffordable !== false,
-      action: cycleAction,
+      manaCost: action.manaCostString || null,
+      isAvailable: action.isAffordable !== false,
+      action,
       actionType: 'cycle',
     })
-  }
+  })
 
   // 4b. Typecycling (e.g., Islandcycling, Swampcycling)
   if (typecycleAction) {
@@ -558,6 +568,18 @@ export function buildActionOptions(
       isAvailable: plotAction.isAffordable !== false,
       action: plotAction,
       actionType: 'plot',
+    })
+  }
+
+  // 4c'. Foretell (CR 702.143) — the {2} exile-face-down special action; sits alongside the cast option.
+  if (foretellAction) {
+    options.push({
+      key: 'foretell',
+      label: 'Foretell',
+      manaCost: foretellAction.manaCostString || null,
+      isAvailable: foretellAction.isAffordable !== false,
+      action: foretellAction,
+      actionType: 'foretell',
     })
   }
 
@@ -604,7 +626,8 @@ export function buildActionOptions(
       options.push({
         key: `pw-${pw.abilityId}-${index}`,
         label: pw.description,
-        manaCost: null,
+        // A loyalty tax (Eidolon of Obstruction) adds mana to the loyalty cost; untaxed it's null.
+        manaCost: match?.manaCostString || null,
         isAvailable: match !== undefined && match.isAffordable !== false,
         action: match ?? null,
         actionType: 'activate',

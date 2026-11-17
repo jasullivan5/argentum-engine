@@ -1,11 +1,13 @@
 package com.wingedsheep.engine.mechanics.layers
 
+import com.wingedsheep.engine.handlers.CapturedObjectBinding
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.PipelineState
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.stack.ChosenTarget
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.Duration
+import com.wingedsheep.sdk.scripting.MustAttackDefender
 import com.wingedsheep.sdk.scripting.effects.RedirectScope
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
 import com.wingedsheep.sdk.scripting.effects.Effect
@@ -72,7 +74,17 @@ data class ActiveFloatingEffect(
     /** Objects referred to by this effect, captured before later zone changes. Used for source choices. */
     @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
-    val referencedObjects: List<com.wingedsheep.engine.state.ObjectRef> = emptyList()
+    val referencedObjects: List<com.wingedsheep.engine.state.ObjectRef> = emptyList(),
+    /**
+     * For a source-tapped duration created by an activated ability, the source's
+     * [com.wingedsheep.engine.state.components.battlefield.UntapCountComponent] clock at activation:
+     * the effect holds only while the source is tapped *and* hasn't untapped since (CR 611.2b).
+     * Null otherwise — the gate then reads the tapped state alone. Read through
+     * [com.wingedsheep.engine.mechanics.durations.GrantDurationGate.sourceTapped].
+     */
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val sourceUntapCount: Int? = null
 )
 
 /**
@@ -325,14 +337,6 @@ sealed interface SerializableModification {
     ) : SerializableModification
 
     /**
-     * Damage reflection: when an attacking creature deals combat damage to the protected player,
-     * it deals that much damage to its controller.
-     * Used by Harsh Justice.
-     */
-    @Serializable
-    data class ReflectCombatDamage(val protectedPlayerId: String) : SerializableModification
-
-    /**
      * Grant protection from a specific color.
      * Used by Akroma's Blessing and similar effects.
      */
@@ -376,6 +380,9 @@ sealed interface SerializableModification {
      * that would be dealt to it this turn" — Fleeting Flight). With [onlyCausedByObjectTargetingIt]
      * set, only damage the innermost resolving spell or ability causes while it has the recipient
      * among its targets is prevented (Silhouette, `PreventionSourceFilter.TargetingRecipient`).
+     * With [sourceFilter] set, only damage from sources matching it is prevented — "prevent all
+     * damage that would be dealt to that creature this turn by colorless sources" (Lithomancer's
+     * Focus); an unidentifiable source fails closed and isn't prevented.
      */
     @Serializable
     data class PreventAllDamageTo(
@@ -383,6 +390,9 @@ sealed interface SerializableModification {
         @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
         @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
         val onlyCausedByObjectTargetingIt: Boolean = false,
+        @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+        @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+        val sourceFilter: GameObjectFilter? = null,
     ) : SerializableModification
 
     /**
@@ -432,6 +442,13 @@ sealed interface SerializableModification {
      */
     @Serializable
     data class AddSubtype(val subtype: String) : SerializableModification
+
+    /**
+     * Remove one subtype, keeping the rest — "it isn't an Equipment" when an Equipment animates
+     * itself (Dancing Sword, via [com.wingedsheep.sdk.scripting.effects.BecomeCreatureEffect.removeSubtypes]).
+     */
+    @Serializable
+    data class RemoveSubtype(val subtype: String) : SerializableModification
 
     /**
      * Set a permanent's basic land subtypes, replacing all existing land subtypes
@@ -511,6 +528,21 @@ sealed interface SerializableModification {
     data object SetMustBlock : SerializableModification
 
     /**
+     * Attack requirement: creature attacks each combat if able, aimed as [defender] says
+     * ([com.wingedsheep.sdk.scripting.effects.MustAttackGroupEffect], Kardur, Doomscourge).
+     *
+     * Floating counterpart of the static [com.wingedsheep.sdk.scripting.MustAttack]: both project
+     * onto `ProjectedState.mustAttack` and its defender halves. [otherThan] is the player
+     * [MustAttackDefender.PlayerOtherThanYou] names — the effect's controller, fixed at resolution —
+     * and is null for every other defender.
+     */
+    @Serializable
+    data class SetMustAttack(
+        val defender: MustAttackDefender = MustAttackDefender.Any,
+        val otherThan: EntityId? = null
+    ) : SerializableModification
+
+    /**
      * "It can't be turned face up." Used by Unable to Scream while it enchants a face-down
      * creature. Projected onto the affected permanent; [TurnFaceUpHandler] reads it.
      */
@@ -529,9 +561,13 @@ sealed interface SerializableModification {
      * Damage prevention: prevent all damage that affected creature(s) would deal this turn.
      * Used by Chain of Silence and similar effects.
      * The affected entities are the creatures whose damage is prevented.
+     *
+     * @property combatOnly only combat damage the affected sources would deal is prevented —
+     *   "prevent all **combat** damage that would be dealt by target creature" (Restrain, Subdue)
+     *   or "… a creature of your choice would deal" (Ajani's Aid); their noncombat damage is dealt.
      */
     @Serializable
-    data object PreventAllDamageDealtBy : SerializableModification
+    data class PreventAllDamageDealtBy(val combatOnly: Boolean = false) : SerializableModification
 
     /**
      * Damage redirection shield: while active, damage that would be dealt to any of the affected
@@ -549,13 +585,14 @@ sealed interface SerializableModification {
         val amount: Int? = null,
         val scope: RedirectScope = RedirectScope.NEXT_INSTANCE,
         /**
-         * When true the shield protects **every creature** rather than a fixed list of entities —
-         * Blood of the Martyr's "if damage would be dealt to any creature". Checked against
-         * projected state at damage time, so a creature that entered after the shield was created
-         * is covered and a player never is. An empty `affectedEntities` otherwise means "anything",
-         * players included, which is not what this wants.
+         * When set the shield protects **every permanent matching this filter** rather than a fixed
+         * list of entities — Blood of the Martyr's "any creature", Ascent of the Worthy's "creatures
+         * you control" ("you" being the shield's controller). Matched against projected state at
+         * damage time, so a permanent that entered after the shield was created is covered and a
+         * player never is. An empty `affectedEntities` otherwise means "anything", players included,
+         * which is not what this wants.
          */
-        val creaturesOnly: Boolean = false,
+        val protectedFilter: com.wingedsheep.sdk.scripting.GameObjectFilter? = null,
         /**
          * "**you may** have that damage dealt to you instead" (Blood of the Martyr). The shield's
          * controller is asked per damage instance before that damage is dealt; the answers live in
@@ -703,13 +740,31 @@ sealed interface SerializableModification {
      * [sourceFilter], when non-null, additionally
      * restricts the shield to damage whose *source* matches it ("… by creatures"), evaluated against
      * projected state at damage time just like [filter].
+     *
+     * [onPrevented] is the rest of the shield's printed text — "for each 1 damage prevented this
+     * way, create a 2/1 … Inkling" (Inkshield). Each application that actually prevents damage
+     * queues it as a [com.wingedsheep.engine.replacement.PendingReplacementRider] carrying that
+     * application's prevented amount. Where the damage can't be prevented (CR 615.12) the shield
+     * is still applied, prevents nothing, and queues it with amount 0.
+     *
+     * [onPreventedTargets] (and [onPreventedNamedTargets], the same targets by the name the card's
+     * `target(...)` bound them to) are the targets the creating spell or ability chose, frozen when the
+     * shield was created, so [onPrevented] can name them — "you may have Channel Harm deal that
+     * much damage to *target creature*", a target chosen as the spell was cast, not when damage is
+     * prevented. [onPreventedBound] pins each battlefield target to the object it was then: one
+     * that has left the battlefield since (even if it came back) is a new object the rider can't
+     * name (CR 400.7). Its legality is not re-checked after the spell resolves.
      */
     @Serializable
     data class PreventAllDamageToGroup(
         val filter: GameObjectFilter? = null,
         val combatOnly: Boolean = false,
         val includesController: Boolean = false,
-        val sourceFilter: GameObjectFilter? = null
+        val sourceFilter: GameObjectFilter? = null,
+        val onPrevented: com.wingedsheep.sdk.scripting.effects.Effect? = null,
+        val onPreventedTargets: List<ChosenTarget> = emptyList(),
+        val onPreventedNamedTargets: Map<String, ChosenTarget> = emptyMap(),
+        val onPreventedBound: List<CapturedObjectBinding> = emptyList(),
     ) : SerializableModification
 
     /**
@@ -775,7 +830,13 @@ sealed interface SerializableModification {
          * Only damage to a player matches (Ria Ivor: "combat damage to one or more players"); damage
          * to a permanent passes and leaves the shield up.
          */
-        val playersOnly: Boolean = false
+        val playersOnly: Boolean = false,
+        /**
+         * False for a plain next-instance shield with no linked reaction ("the next time that
+         * creature would deal damage this turn, prevent that damage" — Dazzling Reflection); the
+         * [linkId] then routes to no delayed trigger.
+         */
+        val hasReaction: Boolean = true
     ) : SerializableModification
 
     /**
@@ -819,17 +880,20 @@ sealed interface SerializableModification {
     ) : SerializableModification
 
     /**
-     * Turn-duration damage amplification (CR 616): every damage instance matching [appliesTo] is
-     * increased by [bonus] this turn. [appliesTo]'s source / recipient filters are "you"-relative to
+     * Turn-duration damage amplification (CR 616): every damage instance matching [appliesTo] becomes
+     * `amount * [multiplier] + [bonus]` this turn (Insult // Injury doubles: multiplier 2, bonus 0). [appliesTo]'s source / recipient filters are "you"-relative to
      * [ActiveFloatingEffect.controllerId]. Read directly during damage resolution by
      * `DamageUtils.applyStaticDamageAmplification` (not a layer modification). Installed by
-     * `AmplifyDamageThisTurnEffect` — Taii Wakeen, Perfect Shot; Rankle and Torbran.
+     * `AmplifyDamageThisTurnEffect` — Taii Wakeen, Perfect Shot; Rankle and Torbran; Insult // Injury.
      */
     @Serializable
     data class AmplifyDamage(
         val bonus: Int,
         val appliesTo: EventPattern.DamageEvent,
-    ) : SerializableModification
+        val multiplier: Int = 1,
+    ) : SerializableModification {
+        fun apply(amount: Int): Int = amount * multiplier + bonus
+    }
 
     /**
      * Duration-bounded damage-doubling scoped to a single player (CR 616): all damage — any source,
@@ -905,8 +969,6 @@ fun SerializableModification.toModification(): Modification = when (this) {
     is SerializableModification.CantBeBlockedByColor -> Modification.NoOp
     // AttackBlockTaxPerCreatureType doesn't map to a layer modification - it's checked by CombatManager directly
     is SerializableModification.AttackBlockTaxPerCreatureType -> Modification.NoOp
-    // ReflectCombatDamage doesn't map to a layer modification - it's checked by CombatManager directly
-    is SerializableModification.ReflectCombatDamage -> Modification.NoOp
     is SerializableModification.GrantProtectionFromColor -> Modification.GrantProtectionFromColor(color)
     is SerializableModification.GrantProtectionFromCardType -> Modification.GrantProtectionFromCardType(cardType)
     // PreventNextDamage doesn't map to a layer modification - it's checked during damage resolution directly
@@ -925,6 +987,7 @@ fun SerializableModification.toModification(): Modification = when (this) {
     is SerializableModification.PreventAllCombatDamage -> Modification.NoOp
     is SerializableModification.SetCreatureSubtypes -> Modification.SetCreatureSubtypes(subtypes)
     is SerializableModification.AddSubtype -> Modification.AddSubtype(subtype)
+    is SerializableModification.RemoveSubtype -> Modification.RemoveSubtype(subtype)
     is SerializableModification.SetName -> Modification.SetName(name)
     is SerializableModification.SetCardTypes -> Modification.SetCardTypes(types)
     is SerializableModification.SetAllSubtypes -> Modification.SetAllSubtypes(subtypes)
@@ -938,6 +1001,14 @@ fun SerializableModification.toModification(): Modification = when (this) {
     is SerializableModification.SetAttacksWithoutTapping -> Modification.SetAttacksWithoutTapping
     // SetMustBlock maps to the layer modification for the "must block" requirement projection
     is SerializableModification.SetMustBlock -> Modification.SetMustBlock
+    is SerializableModification.SetMustAttack -> when (defender) {
+        MustAttackDefender.Any -> Modification.SetMustAttack
+        MustAttackDefender.APlayer -> Modification.SetMustAttackPlayer
+        MustAttackDefender.PlayerOtherThanYou ->
+            otherThan?.let { Modification.SetMustAttackOtherThan(it) } ?: Modification.SetMustAttack
+        // Never built: MustAttackGroupEffect rejects it, as a resolved effect has no attached source.
+        MustAttackDefender.EnchantedCreatureController -> Modification.SetMustAttack
+    }
     // SetSuspected maps to the layer modification for the "suspected" status projection
     is SerializableModification.SetSuspected -> Modification.SetSuspected
     // PreventAllDamageDealtBy doesn't map to a layer modification - it's checked during damage resolution directly
@@ -977,5 +1048,5 @@ fun SerializableModification.toModification(): Modification = when (this) {
     is SerializableModification.DoubleDamageToPlayer -> Modification.NoOp
     // OverrideImage is display-only - it changes no characteristic, read directly by ClientStateTransformer
     is SerializableModification.OverrideImage -> Modification.NoOp
-    is SerializableModification.RemoveAllAbilities -> Modification.RemoveAllAbilities
+    is SerializableModification.RemoveAllAbilities -> Modification.RemoveAllAbilities()
 }

@@ -1330,7 +1330,8 @@
                                     "zone": "Library",
                                     "filter": "creature|land"
                                 },
-                                "storeAs": "gathered0"
+                                "storeAs": "gathered0",
+                                "search": true
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -1722,13 +1723,9 @@
             {
                 "id": "Aurelia, the Law Above:1",
                 "trigger": {
-                    "type": "AttackEvent",
-                    "requires": [
-                        {
-                            "type": "AttackerCountAtLeast",
-                            "n": 3
-                        }
-                    ]
+                    "type": "YouAttackEvent",
+                    "minAttackers": 3,
+                    "player": "Each"
                 },
                 "binding": "ANY",
                 "effect": {
@@ -1743,13 +1740,9 @@
             {
                 "id": "Aurelia, the Law Above:2",
                 "trigger": {
-                    "type": "AttackEvent",
-                    "requires": [
-                        {
-                            "type": "AttackerCountAtLeast",
-                            "n": 5
-                        }
-                    ]
+                    "type": "YouAttackEvent",
+                    "minAttackers": 5,
+                    "player": "Each"
                 },
                 "binding": "ANY",
                 "effect": {
@@ -7387,9 +7380,8 @@
                         "condition": {
                             "type": "Compare",
                             "left": {
-                                "type": "TurnTracking",
-                                "player": "You",
-                                "tracker": "ARTIFACT_SACRIFICED"
+                                "type": "PermanentsSacrificedThisTurn",
+                                "filter": "artifact"
                             },
                             "operator": "GTE",
                             "right": {
@@ -7493,7 +7485,7 @@
     "script": {
         "staticAbilities": [
             {
-                "type": "SuppressEntersTriggers",
+                "type": "SuppressZoneChangeTriggers",
                 "filter": "creature|artifact"
             }
         ]
@@ -10039,9 +10031,8 @@
                 "condition": {
                     "type": "Compare",
                     "left": {
-                        "type": "TurnTracking",
-                        "player": "You",
-                        "tracker": "ARTIFACT_SACRIFICED"
+                        "type": "PermanentsSacrificedThisTurn",
+                        "filter": "artifact"
                     },
                     "operator": "GTE",
                     "right": {
@@ -13059,7 +13050,10 @@
                         "Investigate",
                         {
                             "type": "PlayAdditionalLands",
-                            "count": 1
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 1
+                            }
                         }
                     ]
                 }
@@ -14286,7 +14280,7 @@
                 }
             }
         ],
-        "mayStartOnBattlefield": true
+        "beginOnBattlefield": {}
     },
     "metadata": {
         "collectorNumber": "217",
@@ -15780,8 +15774,14 @@
                         "gate": {
                             "type": "Gate.WhenCondition",
                             "condition": {
-                                "type": "PlayerControlsMostPermanents",
-                                "player": "You"
+                                "type": "PlayerHasMost",
+                                "player": "You",
+                                "amount": {
+                                    "type": "Count",
+                                    "player": "You",
+                                    "zone": "Battlefield",
+                                    "filter": "creature"
+                                }
                             }
                         },
                         "then": {
@@ -17954,113 +17954,27 @@
             "type": "Composite",
             "effects": [
                 {
-                    "type": "MoveToZone",
-                    "target": {
-                        "type": "BoundVariable",
-                        "name": "t0"
-                    },
-                    "destination": "Battlefield"
+                    "type": "GatherCards",
+                    "source": "ChosenTargets",
+                    "storeAs": "gathered0"
                 },
                 {
-                    "type": "BecomeCreature",
-                    "target": {
-                        "type": "BoundVariable",
-                        "name": "t0"
+                    "type": "MoveCollection",
+                    "from": "gathered0",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Battlefield"
                     },
-                    "power": {
-                        "type": "Fixed",
-                        "amount": 5
-                    },
-                    "toughness": {
-                        "type": "Fixed",
-                        "amount": 5
-                    },
-                    "duration": "Permanent"
-                },
-                {
-                    "type": "AddSubtype",
-                    "subtype": "Elemental",
-                    "target": {
-                        "type": "BoundVariable",
-                        "name": "t0"
-                    },
-                    "duration": "Permanent"
-                },
-                {
-                    "type": "Composite",
-                    "effects": [
-                        {
-                            "type": "MoveToZone",
-                            "target": {
-                                "type": "BoundVariable",
-                                "name": "t1"
-                            },
-                            "destination": "Battlefield"
-                        },
-                        {
-                            "type": "BecomeCreature",
-                            "target": {
-                                "type": "BoundVariable",
-                                "name": "t1"
-                            },
-                            "power": {
-                                "type": "Fixed",
-                                "amount": 5
-                            },
-                            "toughness": {
-                                "type": "Fixed",
-                                "amount": 5
-                            },
-                            "duration": "Permanent"
-                        },
-                        {
-                            "type": "AddSubtype",
-                            "subtype": "Elemental",
-                            "target": {
-                                "type": "BoundVariable",
-                                "name": "t1"
-                            },
-                            "duration": "Permanent"
-                        }
-                    ]
-                },
-                {
-                    "type": "Composite",
-                    "effects": [
-                        {
-                            "type": "MoveToZone",
-                            "target": {
-                                "type": "BoundVariable",
-                                "name": "t2"
-                            },
-                            "destination": "Battlefield"
-                        },
-                        {
-                            "type": "BecomeCreature",
-                            "target": {
-                                "type": "BoundVariable",
-                                "name": "t2"
-                            },
-                            "power": {
-                                "type": "Fixed",
-                                "amount": 5
-                            },
-                            "toughness": {
-                                "type": "Fixed",
-                                "amount": 5
-                            },
-                            "duration": "Permanent"
-                        },
-                        {
-                            "type": "AddSubtype",
-                            "subtype": "Elemental",
-                            "target": {
-                                "type": "BoundVariable",
-                                "name": "t2"
-                            },
-                            "duration": "Permanent"
-                        }
-                    ]
+                    "entersWith": {
+                        "addedCardTypes": [
+                            "CREATURE"
+                        ],
+                        "addedSubtypes": [
+                            "Elemental"
+                        ],
+                        "power": 5,
+                        "toughness": 5
+                    }
                 }
             ]
         },
@@ -20106,9 +20020,8 @@
                     "condition": {
                         "type": "Compare",
                         "left": {
-                            "type": "TurnTracking",
-                            "player": "You",
-                            "tracker": "ARTIFACT_SACRIFICED"
+                            "type": "PermanentsSacrificedThisTurn",
+                            "filter": "artifact"
                         },
                         "operator": "GTE",
                         "right": {
@@ -20930,7 +20843,7 @@
                 "trigger": {
                     "type": "CreaturesAttackYouEvent",
                     "minAttackers": 2,
-                    "includePlaneswalkersYouControl": true
+                    "defenders": "YOU_AND_PLANESWALKERS_YOU_CONTROL"
                 },
                 "binding": "ANY",
                 "effect": {

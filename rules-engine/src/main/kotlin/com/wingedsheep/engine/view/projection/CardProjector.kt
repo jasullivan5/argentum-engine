@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.view.projection
 
+import com.wingedsheep.engine.state.components.identity.ownCardUnderTextExchange
 import com.wingedsheep.engine.mechanics.combat.BandsWithOtherRules
 import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.handlers.effects.AnnouncedDivision
@@ -25,6 +26,7 @@ import com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComp
 import com.wingedsheep.engine.state.permissions.hasMayPlayFor
 import com.wingedsheep.engine.view.ClientCard
 import com.wingedsheep.engine.view.ClientBestow
+import com.wingedsheep.engine.view.ClientEvoke
 import com.wingedsheep.engine.view.ClientImpending
 import com.wingedsheep.engine.view.ClientRuling
 import com.wingedsheep.engine.view.Visibility
@@ -33,9 +35,11 @@ import com.wingedsheep.sdk.core.CardType
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.core.Supertype
 import com.wingedsheep.sdk.core.TypeLine
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.scripting.MayCastSelfFromZones
 import com.wingedsheep.sdk.dsl.RIOT_MODE_COUNTER
 import com.wingedsheep.sdk.dsl.RIOT_MODE_HASTE
 import com.wingedsheep.sdk.model.CardDefinition
@@ -261,13 +265,14 @@ internal class CardProjector(
             else projectedValues?.toughness ?: if (frame.isFaceDown) 2 else cardComponent.baseStats?.baseToughness
         val rawKeywords = projectedValues?.keywords?.mapNotNull {
             when {
-                // Granted toxic / bushido / rampage / crew float as TOXIC_<N> / BUSHIDO_<N> / RAMPAGE_<N> / CREW_<N>
-                // (Skrelv's activated ability, Sensei Golden-Tail, Rapid Fire, Astor); collapse to the bare
-                // keyword so the icon-render path picks it up.
+                // Granted toxic / bushido / rampage / crew / renown float as TOXIC_<N> / BUSHIDO_<N> /
+                // RAMPAGE_<N> / CREW_<N> / RENOWN_<N> (Skrelv's activated ability, Sensei Golden-Tail,
+                // Rapid Fire, Astor, Aragorn); collapse to the bare keyword so the icon-render path picks it up.
                 it.startsWith("TOXIC_") -> Keyword.TOXIC
                 it.startsWith("BUSHIDO_") -> Keyword.BUSHIDO
                 it.startsWith("RAMPAGE_") -> Keyword.RAMPAGE
                 it.startsWith("CREW_") -> Keyword.CREW
+                it.startsWith("RENOWN_") -> Keyword.RENOWN
                 else -> try { Keyword.valueOf(it) } catch (_: Exception) { null }
             }
         }?.toSet() ?: cardComponent.baseKeywords
@@ -313,7 +318,9 @@ internal class CardProjector(
             hexproofFromMulticolored = projectedValues?.keywords?.contains("HEXPROOF_FROM_MULTICOLORED") ?: false,
             colors = projectedValues?.colors?.mapNotNull {
                 try { Color.valueOf(it) } catch (_: Exception) { null }
-            }?.toSet() ?: cardComponent.colors,
+            }?.toSet() ?: frame.projectedState.offBattlefieldColors(frame.entityId)?.mapNotNullTo(linkedSetOf()) { name ->
+                Color.entries.firstOrNull { it.name == name }
+            } ?: cardComponent.colors,
             isTapped = container.has<TappedComponent>(),
             isExerted = container.has<ExertedComponent>(),
             isPhasedOut = container.has<PhasedOutComponent>(),
@@ -383,20 +390,42 @@ internal class CardProjector(
         val faceDownProtections = colorsWithPrefix(keywords, PROTECTION_PREFIX)
         val faceDownKeywordsWithProtection =
             if (faceDownProtections.isNotEmpty()) faceDownKeywords + Keyword.PROTECTION else faceDownKeywords
+        // The face-down characteristics are public: a plain 2/2 creature, or what the effect that
+        // put it onto the battlefield face down specified (CR 708.2a — Tezzeret's 5/5 artifacts).
+        // Continuous effects on it are public too (a granted color or type), so the projection
+        // wins where there is one; it is built from those face-down values, never the hidden card's.
+        // Only a face-down permanent has face-down copiable values and a projection built from them;
+        // a face-down spell on the stack would read the hidden card's colors and types, so it stays
+        // the plain 2/2 creature.
+        val onBattlefield = frame.zoneKey.zoneType == Zone.BATTLEFIELD
+        val faceDownCard = if (onBattlefield) container.copiableCardComponent() else null
+        val projected = frame.projectedValues.takeIf { onBattlefield }
+        val faceDownTypeLine = if (projected != null) {
+            val subtypes = projected.subtypes.takeUnless { hasEveryCreatureType(it.toList()) }
+                ?.mapTo(linkedSetOf()) { Subtype(it) }
+                ?: faceDownCard?.typeLine?.subtypes.orEmpty()
+            TypeLine(
+                supertypes = Supertype.fromProjectedTypes(projected.types).toSet(),
+                cardTypes = projected.types.mapNotNullTo(linkedSetOf()) { t -> CardType.entries.firstOrNull { it.name == t } },
+                subtypes = subtypes,
+            )
+        } else faceDownCard?.typeLine ?: TypeLine.creature()
+        val faceDownColors = projected?.colors?.mapNotNullTo(linkedSetOf()) { c -> Color.entries.firstOrNull { it.name == c } }
+            ?: faceDownCard?.colors.orEmpty()
         return ClientCard(
             id = frame.entityId,
             name = FACE_DOWN_DISPLAY_NAME,
             manaCost = "",
             manaValue = 0,
-            typeLine = "Creature",
-            cardTypes = setOf("CREATURE"),
-            subtypes = emptySet(),
-            colors = emptySet(),
+            typeLine = faceDownTypeLine.toString(),
+            cardTypes = faceDownTypeLine.cardTypes.mapTo(linkedSetOf()) { it.name },
+            subtypes = faceDownTypeLine.subtypes.mapTo(linkedSetOf()) { it.value },
+            colors = faceDownColors,
             oracleText = "",
             power = characteristics.power,
             toughness = characteristics.toughness,
-            basePower = 2,
-            baseToughness = 2,
+            basePower = faceDownCard?.baseStats?.basePower ?: 2,
+            baseToughness = faceDownCard?.baseStats?.baseToughness ?: 2,
             damage = container.get<DamageComponent>()?.amount,
             keywords = faceDownKeywordsWithProtection,
             abilityFlags = keywords?.let(::abilityFlagsOf) ?: emptySet(),
@@ -460,6 +489,10 @@ internal class CardProjector(
         val container = frame.container
         val cardComponent = frame.cardComponent
         val cardDef = frame.cardDef
+        // Under an exchanged text box the definition carries the other card's abilities; art,
+        // rulings and printed supertypes are still this card's own.
+        val printedDef = container.ownCardUnderTextExchange()
+            ?.let { cardRegistry.getCard(it.cardDefinitionId) } ?: cardDef
         val spellOnStack = frame.spellOnStack
         val onBattlefield = frame.zoneType == Zone.BATTLEFIELD
 
@@ -470,13 +503,19 @@ internal class CardProjector(
 
         val castFace = castFace(frame)
         val typeLine = displayedTypeLine(frame, castFace, characteristics.rawKeywords)
+        // What the stat breakdown and "granted types" measure against: the printed card, or — for
+        // a face-down permanent its controller sees — its face-down characteristics (CR 708.2a: a
+        // plain 2/2 creature, or Tezzeret's 5/5 artifact creature), not the hidden card's.
+        val faceBaseline = if (frame.isFaceDown && onBattlefield) {
+            container.copiableCardComponent() ?: cardComponent
+        } else cardComponent
         val choices = chosenValues(frame)
         val zoneStatus = zoneStatus(frame)
         val spell = spellOnStackProjector.project(
             state, entityId, frame.zoneKey, spellOnStack, cardDef, cardComponent,
             frame.viewingPlayerId, frame.isSpectator
         )
-        val faces = facesProjector.project(state, entityId, frame.zoneKey, container, cardComponent, cardDef)
+        val faces = facesProjector.project(state, entityId, frame.zoneKey, container, cardComponent, printedDef)
 
         // Build active effects from floating effects
         val cardEffects = activeEffects.project(state, entityId, frame.projectedState) +
@@ -501,8 +540,8 @@ internal class CardProjector(
             // A non-permanent cast face (Omen/Adventure/split half) has no power/toughness.
             power = if (castFace != null) null else characteristics.power,
             toughness = if (castFace != null) null else characteristics.toughness,
-            basePower = cardComponent.baseStats?.basePower,
-            baseToughness = cardComponent.baseStats?.baseToughness,
+            basePower = faceBaseline.baseStats?.basePower,
+            baseToughness = faceBaseline.baseStats?.baseToughness,
             damage = container.get<DamageComponent>()?.amount,
             keywords = characteristics.keywords,
             abilityFlags = characteristics.abilityFlags,
@@ -566,18 +605,18 @@ internal class CardProjector(
             // Targets for spells/abilities on stack (for targeting arrows)
             targets = StackTextRenderer.toClientTargets(container.get<TargetsComponent>()),
             imageUri = state.imageOverrideFor(entityId)
-                ?: cardDef?.metadata?.imageUriByCreatureSubtype
+                ?: printedDef?.metadata?.imageUriByCreatureSubtype
                     ?.entries
                     ?.firstOrNull { (subtype) -> subtype in typeLine.subtypes }
                     ?.value
                 ?: cardComponent.imageUri
-                ?: cardDef?.metadata?.imageUri,
+                ?: printedDef?.metadata?.imageUri,
             // A flipped flip card (CR 710) is the same physical card turned upside down, so its
             // single image is rotated 180° to read the flip half.
-            imageRotation = ((cardDef?.metadata?.imageRotation ?: 0) +
+            imageRotation = ((printedDef?.metadata?.imageRotation ?: 0) +
                 (if (container.has<FlippedComponent>()) 180 else 0)) % 360,
             activeEffects = cardEffects,
-            rulings = cardDef?.metadata?.rulings?.map {
+            rulings = printedDef?.metadata?.rulings?.map {
                 ClientRuling(date = it.date, text = it.text)
             } ?: emptyList(),
             optionalCostLabel = spell.optionalCostLabel,
@@ -592,6 +631,7 @@ internal class CardProjector(
             chosenMode = choices.mode,
             chosenCardName = choices.cardName,
             chosenCardType = choices.cardType,
+            chosenNumber = choices.number,
             sacrificedCreatureTypes = spell.sacrificedCreatureTypes,
             playableFromExile = zoneStatus.playableFromExile,
             copyOf = container.get<CopyOfComponent>()?.let { copyComp ->
@@ -606,18 +646,18 @@ internal class CardProjector(
             // Syndrome's copy designated Ring-bearer) is simply legendary, so "not legendary" is a lie
             // about it and the client would otherwise badge it both ways at once.
             nonLegendaryCopy = onBattlefield
-                && cardDef != null
-                && Supertype.LEGENDARY in cardDef.typeLine.supertypes
+                && printedDef != null
+                && Supertype.LEGENDARY in printedDef.typeLine.supertypes
                 && Supertype.LEGENDARY !in cardComponent.typeLine.supertypes
                 && Supertype.LEGENDARY !in typeLine.supertypes,
             legendaryByEffect = onBattlefield
                 && Supertype.LEGENDARY in typeLine.supertypes
                 && Supertype.LEGENDARY !in cardComponent.typeLine.supertypes,
             grantedSubtypes = if (onBattlefield && !typeLine.hasAllCreatureTypes) {
-                grantedSubtypes(frame, typeLine.subtypes)
+                grantedSubtypes(frame, typeLine.subtypes, faceBaseline)
             } else emptySet(),
             grantedCardTypes = if (onBattlefield) {
-                val printed = cardComponent.typeLine.cardTypes.map { it.name }.toSet()
+                val printed = faceBaseline.typeLine.cardTypes.map { it.name }.toSet()
                 typeLine.cardTypes.map { it.name }.filterNot { it in printed }.toSet()
             } else frame.projectedState.crossZoneGrantedCardTypes(frame.entityId)
                 .filterNot { name -> cardComponent.typeLine.cardTypes.any { it.name == name } }
@@ -661,8 +701,7 @@ internal class CardProjector(
             evoke = cardDef?.keywordAbilities
                 ?.filterIsInstance<KeywordAbility.Evoke>()
                 ?.firstOrNull()
-                ?.cost
-                ?.toString(),
+                ?.let { ClientEvoke(it.cost.toString(), it.additionalCost?.description) },
             bestow = cardDef?.keywordAbilities
                 ?.filterIsInstance<KeywordAbility.Bestow>()
                 ?.firstOrNull()
@@ -783,8 +822,8 @@ internal class CardProjector(
      * `legendaryByEffect`. Skipped by the caller for the all-creature-types case, which the type line
      * already collapses.
      */
-    private fun grantedSubtypes(frame: CardFrame, displaySubtypes: List<String>): Set<String> {
-        val printed = frame.cardComponent.typeLine.subtypes.map { it.value }.toSet()
+    private fun grantedSubtypes(frame: CardFrame, displaySubtypes: List<String>, baseline: CardComponent): Set<String> {
+        val printed = baseline.typeLine.subtypes.map { it.value }.toSet()
         // Subtypes a *floating* effect is responsible for already have their own badge —
         // "+Hero" for AddSubtype (`type_added`) and the full list for SetCreatureSubtypes
         // (`type_changed`), both built by CardActiveEffectsProjector from those effects directly.
@@ -812,6 +851,7 @@ internal class CardProjector(
         val mode: String?,
         val cardName: String?,
         val cardType: String?,
+        val number: Int?,
     )
 
     private fun chosenValues(frame: CardFrame): ChosenValues {
@@ -829,6 +869,10 @@ internal class CardProjector(
             cardName = container.chosenCardName(),
             // Get chosen card type for "choose a card type" permanents (e.g., Arachne, Psionic Weaver)
             cardType = container.chosenCardType(),
+            // An as-enters number (Shapeshifter, Haktos the Unscarred); a Saga's is its read-ahead
+            // starting chapter (printed or granted), which its lore counters already show.
+            number = container.numberChoice(com.wingedsheep.sdk.scripting.ChoiceSlot.CHOSEN_NUMBER)
+                ?.takeIf { frame.cardDef?.isSaga != true },
         )
     }
 
@@ -867,6 +911,18 @@ internal class CardProjector(
         val isSaddled: Boolean,
     )
 
+    /**
+     * The card's own "you may cast this card from exile" (Squee, the Immortal; Eternal Scourge): its
+     * owner's exile only, and never while exiled face down — a face-down card has no characteristics
+     * (CR 406.3a). Like the linked-exile check, a condition gate isn't consulted: the flag marks a card
+     * the viewer can cast from exile, not one castable this moment.
+     */
+    private fun castsItselfFromExile(frame: CardFrame): Boolean =
+        frame.zoneKey.ownerId == frame.viewingPlayerId &&
+            !frame.container.has<FaceDownComponent>() &&
+            frame.cardDef?.script?.staticAbilities.orEmpty()
+                .any { it is MayCastSelfFromZones && Zone.EXILE in it.zones }
+
     private fun zoneStatus(frame: CardFrame): ZoneStatus {
         val container = frame.container
         val inExile = frame.zoneType == Zone.EXILE
@@ -879,7 +935,8 @@ internal class CardProjector(
                     // The legality kernel's linked-exile answer, not a view-layer re-derivation. The
                     // "right now" gates (during your turn, once per turn, the mana-value cap) are
                     // skipped: the flag marks a pile the viewer can cast from, even if not this moment.
-                    legality.linkedExileGranterFor(frame.state, frame.viewingPlayerId, frame.entityId, usableNow = false) != null
+                    legality.linkedExileGranterFor(frame.state, frame.viewingPlayerId, frame.entityId, usableNow = false) != null ||
+                    castsItselfFromExile(frame)
                 ),
             // Plotted cards (CR 718) sit face-up in exile with a PlottedComponent; surface a flag so the
             // client can badge them as plotted (otherwise indistinguishable from any other exiled card).

@@ -46,7 +46,9 @@ internal fun AbilityCost.firstExileForTotalAtomOrNull(): CostAtom.ExileFromGrave
  * effect reading it back saw nothing.
  */
 internal fun AbilityCost.hasExileAtom(): Boolean = when (this) {
-    is AbilityCost.Atom -> atom is CostAtom.ExileFrom || atom is CostAtom.ExileFromGraveyardForTotal
+    // A processor-style ExileFrom (destination = GRAVEYARD) exiles nothing, so it names no
+    // "exiled as a cost" card.
+    is AbilityCost.Atom -> (atom as? CostAtom.ExileFrom)?.exiles == true || atom is CostAtom.ExileFromGraveyardForTotal
     is AbilityCost.Composite -> costs.any { it.hasExileAtom() }
     else -> false
 }
@@ -59,6 +61,25 @@ internal fun AbilityCost.hasTapCost(): Boolean = when (this) {
     is AbilityCost.Tap -> true
     is AbilityCost.Composite -> costs.any { it.hasTapCost() }
     else -> false
+}
+
+/**
+ * The permanent a "Tap X untapped …" pool must leave out, if any: the source itself whenever the
+ * same cost also has {T} — the source is tapped paying {T}, so it can't also be one of the X
+ * (Merchant's Dockhand, Aryel, Knight of Windgrace rulings). Shared by the legal-action listing,
+ * the X-choice pause and payment validation so the three never disagree.
+ */
+internal fun AbilityCost.tapXExcludedSource(sourceId: com.wingedsheep.sdk.model.EntityId?) =
+    sourceId?.takeIf { hasTapCost() }
+
+/**
+ * This sub-cost of a cost that also has {T}, with a "tap N untapped …" pool that leaves the source
+ * out: the source is tapped paying {T}, so it can't also be one of the N (cohort — "{T}, Tap an
+ * untapped Ally you control"). Any other sub-cost is returned unchanged.
+ */
+internal fun AbilityCost.excludingSourceFromTapPool(): AbilityCost {
+    val atom = (this as? AbilityCost.Atom)?.atom as? CostAtom.TapPermanents ?: return this
+    return if (atom.excludeSelf) this else AbilityCost.Atom(atom.copy(excludeSelf = true))
 }
 
 /**
@@ -82,7 +103,8 @@ internal fun AbilityCost.hasTapAttachedCreatureCost(): Boolean =
  * resolving effect can read the pre-cost count (DynamicAmount.LastKnownSourceCounters).
  */
 internal fun AbilityCost.exilesOrSacrificesSelf(): Boolean = when (this) {
-    is AbilityCost.ExileSelf, is AbilityCost.SacrificeSelf, is AbilityCost.ReturnSelfToHand -> true
+    is AbilityCost.ExileSelf, is AbilityCost.SacrificeSelf, is AbilityCost.ReturnSelfToHand,
+    is AbilityCost.PutSelfIntoLibrary -> true
     is AbilityCost.Composite -> costs.any { it.exilesOrSacrificesSelf() }
     else -> false
 }
@@ -155,6 +177,18 @@ internal fun AbilityCost.stripManaCost(): AbilityCost = when (this) {
 }
 
 /**
+ * Pull the loyalty sub-cost ([AbilityCost.Loyalty] or [AbilityCost.LoyaltyX]) out of an ability
+ * cost (top-level or inside a [AbilityCost.Composite]), or null if none. A loyalty ability's cost
+ * is a bare loyalty atom until a tax prepends mana to it (Eidolon of Obstruction's "{1}, +1:"), so
+ * the payment events and the X pause read the loyalty part wherever it sits.
+ */
+internal fun AbilityCost.extractLoyaltyCost(): AbilityCost? = when (this) {
+    is AbilityCost.Loyalty, AbilityCost.LoyaltyX -> this
+    is AbilityCost.Composite -> costs.firstOrNull { it is AbilityCost.Loyalty || it == AbilityCost.LoyaltyX }
+    else -> null
+}
+
+/**
  * Pull the [AbilityCost.TapXPermanents] sub-cost out of an ability cost (top-level or
  * inside a [AbilityCost.Composite]), or null if none. Used by the legal-actions submission
  * path to detect that an activation needs to pause for an X choice + tap-target selection.
@@ -166,18 +200,25 @@ internal fun AbilityCost.extractTapXPermanentsCost(): AbilityCost.TapXPermanents
 }
 
 /**
- * Pull the graveyard-exile [CostAtom.ExileFrom] sub-cost out of an ability cost (top-level or
- * inside a [AbilityCost.Composite]), or null if none. Used by the legal-actions submission
+ * Pull the graveyard- or hand-exile [CostAtom.ExileFrom] sub-cost out of an ability cost (top-level
+ * or inside a [AbilityCost.Composite]), or null if none. Used by the legal-actions submission
  * path to detect that an activation needs to pause for a card-selection decision when the
- * player has more matching graveyard cards than the cost requires.
+ * player has more matching cards in that zone than the cost requires.
  */
-internal fun AbilityCost.extractExileFromGraveyardCost(): CostAtom.ExileFrom? = when (this) {
-    is AbilityCost.Atom -> (atom as? CostAtom.ExileFrom)?.takeIf { it.zone == Zone.GRAVEYARD }
+internal fun AbilityCost.extractChosenCardExileCost(): CostAtom.ExileFrom? = when (this) {
+    is AbilityCost.Atom -> (atom as? CostAtom.ExileFrom)?.takeIf { it.zone in CHOSEN_CARD_EXILE_ZONES }
     is AbilityCost.Composite -> costs.firstNotNullOfOrNull {
-        ((it as? AbilityCost.Atom)?.atom as? CostAtom.ExileFrom)?.takeIf { ex -> ex.zone == Zone.GRAVEYARD }
+        ((it as? AbilityCost.Atom)?.atom as? CostAtom.ExileFrom)?.takeIf { ex -> ex.zone in CHOSEN_CARD_EXILE_ZONES }
     }
     else -> null
 }
+
+/**
+ * The card zones whose `CostAtom.ExileFrom` is a real choice the activation pauses to ask about —
+ * the graveyard (Rust Harvester), the hand (Q, Stacking the Deck's "Exile a card from your hand")
+ * and exile (a processor's "put a card an opponent owns from exile into that player's graveyard").
+ */
+private val CHOSEN_CARD_EXILE_ZONES = setOf(Zone.GRAVEYARD, Zone.HAND, Zone.EXILE)
 
 /**
  * Pull the [AbilityCost.ExileXFromGraveyard] sub-cost out of an ability cost, or null if none.
@@ -204,6 +245,18 @@ internal fun AbilityCost.extractDiscardXCost(): AbilityCost.DiscardX? =
     }
 
 /**
+ * Whether an activation with this cost chooses its controller targets *after* a cost pick that
+ * announces X (CR 601.2b via CR 602.2b): a variable-permanents cost (Fabrication Foundry, Scrap
+ * Welder), or a measured discard — "discard a card with mana value X" (Kozilek, the Great
+ * Distortion) — with no `{X}` mana to fix X first. The enumerator, the validator and the
+ * activation's pauses all ask this one question, so a bare submission is offered, accepted and
+ * then asked for its targets in the same cases.
+ */
+internal fun AbilityCost.targetsFollowCostChoice(): Boolean =
+    extractVariablePermanentsCost() != null ||
+        (extractDiscardXCost()?.count != null && extractManaCost()?.hasX != true)
+
+/**
  * Pull the [CostAtom.Sacrifice] sub-cost out of an ability cost (top-level [AbilityCost.Atom] or
  * inside a [AbilityCost.Composite]), or null if none. Used by the legal-actions submission path
  * to detect that an activation needs to pause for a sacrifice-target selection when the player
@@ -214,6 +267,14 @@ internal fun AbilityCost.extractPutOnLibraryCost(): CostAtom.PutFromHandOnTopOfL
     is AbilityCost.Atom -> atom as? CostAtom.PutFromHandOnTopOfLibrary
     is AbilityCost.Composite -> costs.firstNotNullOfOrNull {
         (it as? AbilityCost.Atom)?.atom as? CostAtom.PutFromHandOnTopOfLibrary
+    }
+    else -> null
+}
+
+internal fun AbilityCost.extractMillCost(): CostAtom.Mill? = when (this) {
+    is AbilityCost.Atom -> atom as? CostAtom.Mill
+    is AbilityCost.Composite -> costs.firstNotNullOfOrNull {
+        (it as? AbilityCost.Atom)?.atom as? CostAtom.Mill
     }
     else -> null
 }

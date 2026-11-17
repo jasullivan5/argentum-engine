@@ -15,6 +15,7 @@ import com.wingedsheep.sdk.scripting.costs.PayCost
 import com.wingedsheep.sdk.scripting.effects.AddColorlessManaEffect
 import com.wingedsheep.sdk.scripting.effects.AddManaEffect
 import com.wingedsheep.sdk.scripting.effects.CreateDelayedTriggerEffect
+import com.wingedsheep.sdk.scripting.effects.ZonePlacement
 import com.wingedsheep.sdk.scripting.effects.CreateTokenEffect
 import com.wingedsheep.sdk.scripting.effects.ManaExpiry
 import com.wingedsheep.sdk.scripting.effects.Effect
@@ -29,6 +30,7 @@ import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
+import com.wingedsheep.sdk.scripting.values.ManaColorSet
 import com.wingedsheep.sdk.scripting.targets.TargetObject
 import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 
@@ -248,6 +250,13 @@ class CardBuilder(private val name: String) {
     var startingLoyalty: Int? = null
 
     /**
+     * Printed loyalty X (Nissa, Steward of Elements): the planeswalker enters with loyalty counters
+     * equal to the X paid for it, and 0 when it enters without being cast. Leave [startingLoyalty]
+     * unset; it builds as 0. See [CardDefinition.loyaltyIsX].
+     */
+    var loyaltyIsX: Boolean = false
+
+    /**
      * Printed defense (for battles) — the number in the card's lower right corner (CR 310.4a).
      * The battle enters with that many defense counters (CR 310.4b).
      */
@@ -386,11 +395,11 @@ class CardBuilder(private val name: String) {
     var layout: CardLayout = CardLayout.NORMAL
 
     /**
-     * Leyline marker. When true, the card carries the "If this card is in your opening
-     * hand, you may begin the game with it on the battlefield" ability. Set via the
-     * [leyline] DSL helper rather than by hand.
+     * The "If this card is in your opening hand, you may begin the game with it on the
+     * battlefield" action (CR 103.6a). Set via the [mayBeginGameOnBattlefield] DSL helper rather
+     * than by hand.
      */
-    var mayStartOnBattlefield: Boolean = false
+    var beginOnBattlefield: BeginOnBattlefield? = null
 
     /**
      * Opening-hand reveal payoff ("You may reveal this card from your opening hand. If you do, …").
@@ -491,6 +500,15 @@ class CardBuilder(private val name: String) {
         keywordAbilityList.add(KeywordAbility.rampage(n))
     }
 
+    /**
+     * Add Afflict N (CR 702.130) — "Whenever this creature becomes blocked, defending player loses
+     * N life." Only the keyword is stored: the engine derives the trigger from the projected
+     * keyword — see [com.wingedsheep.sdk.scripting.Afflict].
+     */
+    fun afflict(n: Int) {
+        keywordAbilityList.add(KeywordAbility.afflict(n))
+    }
+
     // The set-mechanic helpers mobilize / firebending / sneak / decayed / vivid* / impending /
     // renew / craft now live as CardBuilder extensions in `dsl/mechanics/` (SDK plan §2.2).
 
@@ -580,7 +598,7 @@ class CardBuilder(private val name: String) {
     fun staticAbility(init: StaticAbilityBuilder.() -> Unit) {
         val builder = StaticAbilityBuilder()
         builder.init()
-        staticAbilities.add(builder.build())
+        staticAbilities.addAll(builder.build())
     }
 
     // =========================================================================
@@ -987,13 +1005,14 @@ class CardBuilder(private val name: String) {
             classLevels = classLevelsList.toList(),
             sagaChapters = sagaChaptersList.toList(),
             selfExileOnResolve = spellBuilder?.exilesOnResolve ?: false,
-            selfShuffleIntoLibraryOnResolve = spellBuilder?.shufflesIntoLibraryOnResolve ?: false,
+            selfExileTimeCounters = spellBuilder?.exileTimeCounters ?: 0,
+            selfLibraryPlacementOnResolve = spellBuilder?.libraryPlacementOnResolve,
             paradigm = spellBuilder?.isParadigm ?: false,
             returnTransformedFromGraveyardOnResolve = spellBuilder?.returnTransformedFromGraveyardMarker,
             selfAlternativeCost = selfAlternativeCost,
             xManaRestriction = spellBuilder?.xManaRestriction ?: emptySet(),
             xMaximum = spellBuilder?.xMaximum,
-            mayStartOnBattlefield = mayStartOnBattlefield,
+            beginOnBattlefield = beginOnBattlefield,
             openingHandReveal = openingHandReveal,
             castTimeCaptures = spellBuilder?.castTimeCaptures ?: emptyList()
         )
@@ -1025,6 +1044,13 @@ class CardBuilder(private val name: String) {
             if (evoke != null) add(KeywordAbility.Evoke(ManaCost.parse(evoke!!)))
         }
 
+        // "Exile <name> with N time counters on it." lands the card suspended (CR 702.62b), which
+        // needs the card to have suspend — every card printing the clause does.
+        require((spellBuilder?.exileTimeCounters ?: 0) == 0 || finalKeywordAbilities.any { it is KeywordAbility.Suspend }) {
+            "$name uses selfExile(timeCounters) without a printed suspend keyword; a card exiled with " +
+                "time counters is only suspended if it has suspend (CR 702.62b)"
+        }
+
         // Derive simple keywords from parameterized keyword abilities
         val derivedKeywords = finalKeywordAbilities.mapNotNull { it.keyword }.toSet()
         // Paradigm is a display keyword whose behavior is driven by the spell's `paradigm` flag.
@@ -1049,7 +1075,13 @@ class CardBuilder(private val name: String) {
             keywordAbilities = finalKeywordAbilities,
             script = script,
             equipCost = equipCost,
-            startingLoyalty = startingLoyalty,
+            startingLoyalty = if (loyaltyIsX) {
+                require(startingLoyalty == null || startingLoyalty == 0) {
+                    "'$name' has loyalty X; leave startingLoyalty unset"
+                }
+                0
+            } else startingLoyalty,
+            loyaltyIsX = loyaltyIsX,
             startingDefense = startingDefense,
             metadata = metadata,
             colorIdentityOverride = parsedColorIdentity,
@@ -1092,18 +1124,26 @@ class SpellBuilder(private val declaredTargets: TargetList = TargetList()) : Tar
     /** "X can't be greater than [xMaximum]" — checked once, as X is announced (null = no cap). */
     var xMaximum: DynamicAmount? = null
     private var selfExileOnResolve: Boolean = false
+    private var selfExileTimeCounters: Int = 0
 
     /**
      * Mark this spell to exile itself on resolution instead of going to the graveyard.
      * Used for cards that say "Exile <card name>."
+     *
+     * [timeCounters] is "Exile <card name> with N time counters on it." — the card lands in exile
+     * suspended (CR 702.62b), so it needs a printed `KeywordAbility.suspend(...)`; the card build
+     * rejects it otherwise. See [com.wingedsheep.sdk.model.CardScript.selfExileTimeCounters].
      */
-    fun selfExile() {
+    fun selfExile(timeCounters: Int = 0) {
+        require(timeCounters >= 0) { "selfExile(timeCounters) must be non-negative" }
         selfExileOnResolve = true
+        selfExileTimeCounters = timeCounters
     }
 
     internal val exilesOnResolve: Boolean get() = selfExileOnResolve
+    internal val exileTimeCounters: Int get() = selfExileTimeCounters
 
-    private var selfShuffleIntoLibraryOnResolve: Boolean = false
+    private var selfLibraryPlacementOnResolve: ZonePlacement? = null
 
     /**
      * Mark this spell to shuffle itself into its owner's library on resolution instead of going to
@@ -1114,27 +1154,38 @@ class SpellBuilder(private val declaredTargets: TargetList = TargetList()) : Tar
      *
      * Does not outrank flashback (CR 702.34a) or harmonize (CR 702.180a): those replace "anywhere
      * else any time it would leave the stack" rather than naming the graveyard, so a flashbacked
-     * spell with this clause is exiled. See [com.wingedsheep.sdk.model.CardScript.selfShuffleIntoLibraryOnResolve].
+     * spell with this clause is exiled. See [com.wingedsheep.sdk.model.CardScript.selfLibraryPlacementOnResolve].
      */
     fun selfShuffleIntoLibrary() {
-        selfShuffleIntoLibraryOnResolve = true
+        selfLibraryPlacementOnResolve = ZonePlacement.Shuffled
     }
 
-    internal val shufflesIntoLibraryOnResolve: Boolean get() = selfShuffleIntoLibraryOnResolve
+    /**
+     * Mark this spell to put itself on the bottom of its owner's library on resolution instead of
+     * going to the graveyard, without shuffling. Used for cards that say "Put <card name> on the
+     * bottom of its owner's library." (Sanguine Sacrament). Same seam and precedence as
+     * [selfShuffleIntoLibrary]; see [com.wingedsheep.sdk.model.CardScript.selfLibraryPlacementOnResolve].
+     */
+    fun selfPutOnBottomOfLibrary() {
+        selfLibraryPlacementOnResolve = ZonePlacement.Bottom
+    }
+
+    internal val libraryPlacementOnResolve: ZonePlacement? get() = selfLibraryPlacementOnResolve
 
     /**
-     * A card prints "Exile <card name>." or "Shuffle <card name> into its owner's library.", never
-     * both — they are two spellings of the same slot, the CR 608.2n destination. Setting both is a
+     * A card prints "Exile <card name>." or "Shuffle <card name> into its owner's library." (or "Put
+     * <card name> on the bottom of its owner's library."), never both — they are two spellings of the same slot, the CR 608.2n destination. Setting both is a
      * card-authoring mistake, and without this it resolves silently to whichever clause
      * `StackResolver` happens to check first. Order-independent, so it also catches
-     * [paradigm] (which implies [selfExile]) paired with [selfShuffleIntoLibrary] either way round.
+     * [paradigm] (which implies [selfExile]) paired with [selfShuffleIntoLibrary] / [selfPutOnBottomOfLibrary]
+     * either way round.
      *
      * [com.wingedsheep.sdk.model.CardScript]'s own `init` rejects the same pair; this one runs first
      * for anything built through the DSL, purely so the message can name the offending card.
      */
     internal fun validateResolutionDestination(cardName: String) {
-        require(!(selfExileOnResolve && selfShuffleIntoLibraryOnResolve)) {
-            "$cardName sets both selfExile() and selfShuffleIntoLibrary(); a spell has one " +
+        require(!(selfExileOnResolve && selfLibraryPlacementOnResolve != null)) {
+            "$cardName sets both selfExile() and a self-to-library clause; a spell has one " +
                 "CR 608.2n destination, so pick the clause the card actually prints"
         }
     }
@@ -1842,6 +1893,11 @@ class ActivatedAbilityBuilder(private val declaredTargets: TargetList = TargetLi
     }
     /** Colors that may be spent on the `{X}` portion of this ability's cost (empty = any). */
     var xManaRestriction: Set<Color> = emptySet()
+    /**
+     * "Spend only mana of the chosen color to activate this ability" — every generic symbol of the
+     * cost must be paid with mana of this color set. See [ActivatedAbility.payOnlyWithManaOf].
+     */
+    var payOnlyWithManaOf: ManaColorSet? = null
     /** Minimum legal value for `{X}` in this ability's cost (set to 1 for "X can't be 0"). */
     var minimumXValue: Int = 0
     /**
@@ -1909,6 +1965,7 @@ class ActivatedAbilityBuilder(private val declaredTargets: TargetList = TargetLi
             genericCostReduction = genericCostReduction,
             conditionalCostReduction = conditionalCostReduction,
             xManaRestriction = xManaRestriction,
+            payOnlyWithManaOf = payOnlyWithManaOf,
             minimumXValue = minimumXValue,
             xDefinedAs = xDefinedAs,
             cantBeCopied = cantBeCopied
@@ -1942,10 +1999,20 @@ class StaticAbilityBuilder {
      * permanent's ordinary static. "As long as this card is in your graveyard, …" (Anger, Wonder)
      * is `setOf(Zone.GRAVEYARD)`, which wraps the ability in a [ZoneScopedStaticAbility]: on in
      * the graveyard, off on the battlefield. The twin of [TriggeredAbility.activeZones].
+     *
+     * A set naming the battlefield *and* other zones — eminence, "as long as The Ur-Dragon is in
+     * the command zone or on the battlefield" is `setOf(Zone.BATTLEFIELD, Zone.COMMAND)` — builds
+     * two abilities: the bare one, read by every battlefield scanner, and a
+     * [ZoneScopedStaticAbility] over the remaining zones. A card is in one zone at a time, so the
+     * two never function together.
      */
     var activeZones: Set<Zone> = setOf(Zone.BATTLEFIELD)
 
-    fun build(): StaticAbility {
+    /**
+     * The static abilities this block defines — one, or two when [activeZones] names the
+     * battlefield and another zone (see [activeZones]).
+     */
+    fun build(): List<StaticAbility> {
         val baseAbility = requireNotNull(ability) {
             "staticAbility { } requires `ability = <StaticAbility>`"
         }
@@ -1956,8 +2023,12 @@ class StaticAbilityBuilder {
         } else {
             baseAbility
         }
-        return if (activeZones == setOf(Zone.BATTLEFIELD)) gated
-        else ZoneScopedStaticAbility(gated, activeZones)
+        require(activeZones.isNotEmpty()) { "staticAbility { } activeZones must name at least one zone" }
+        val elsewhere = activeZones - Zone.BATTLEFIELD
+        return buildList {
+            if (Zone.BATTLEFIELD in activeZones) add(gated)
+            if (elsewhere.isNotEmpty()) add(ZoneScopedStaticAbility(gated, elsewhere))
+        }
     }
 }
 
@@ -2072,7 +2143,7 @@ class ClassLevelBuilder(private val level: Int, private val costString: String) 
     fun staticAbility(init: StaticAbilityBuilder.() -> Unit) {
         val builder = StaticAbilityBuilder()
         builder.init()
-        staticAbilities.add(builder.build())
+        staticAbilities.addAll(builder.build())
     }
 
     /**
@@ -2207,6 +2278,7 @@ class CardFaceBuilder(private val name: String) {
     private val stateTriggeredAbilities: MutableList<StateTriggeredAbility> = mutableListOf()
     private val activatedAbilities: MutableList<ActivatedAbility> = mutableListOf()
     private val staticAbilities: MutableList<StaticAbility> = mutableListOf()
+    private val replacementEffects: MutableList<ReplacementEffect> = mutableListOf()
     private val additionalCostsList: MutableList<AdditionalCost> = mutableListOf()
     private var spellBuilder: SpellBuilder? = null
 
@@ -2241,7 +2313,17 @@ class CardFaceBuilder(private val name: String) {
     fun staticAbility(init: StaticAbilityBuilder.() -> Unit) {
         val builder = StaticAbilityBuilder()
         builder.init()
-        staticAbilities.add(builder.build())
+        staticAbilities.addAll(builder.build())
+    }
+
+    /**
+     * A replacement effect on this face. For a Room face it applies only while the door is unlocked
+     * (CR 709.5; the engine folds unlocked-face replacement effects via `RoomFaceStatics`) —
+     * Torture Pit: "If a source you control would deal noncombat damage to an opponent, it deals
+     * that much damage plus 2 instead."
+     */
+    fun replacementEffect(effect: ReplacementEffect) {
+        replacementEffects.add(effect)
     }
 
     /**
@@ -2268,6 +2350,9 @@ class CardFaceBuilder(private val name: String) {
             rawSpellEffect
         }
         spellBuilder?.validateResolutionDestination(name)
+        require((spellBuilder?.exileTimeCounters ?: 0) == 0) {
+            "$name: selfExile(timeCounters) is a whole-card clause (suspend), not supported on a face"
+        }
         val script = CardScript(
             spellEffect = spellEffect,
             targetRequirements = spellBuilder?.targetRequirements ?: emptyList(),
@@ -2275,9 +2360,10 @@ class CardFaceBuilder(private val name: String) {
             stateTriggeredAbilities = stateTriggeredAbilities.toList(),
             activatedAbilities = activatedAbilities.toList(),
             staticAbilities = staticAbilities.toList(),
+            replacementEffects = replacementEffects.toList(),
             additionalCosts = additionalCostsList.toList(),
             selfExileOnResolve = spellBuilder?.exilesOnResolve ?: false,
-            selfShuffleIntoLibraryOnResolve = spellBuilder?.shufflesIntoLibraryOnResolve ?: false,
+            selfLibraryPlacementOnResolve = spellBuilder?.libraryPlacementOnResolve,
             paradigm = spellBuilder?.isParadigm ?: false,
         )
         return CardFace(

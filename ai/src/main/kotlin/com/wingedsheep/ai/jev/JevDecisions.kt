@@ -10,7 +10,7 @@ internal class JevDecisions(private val q: JevChoices, private val label: (Entit
 
     fun answer(d: PendingDecision): DecisionResponse = when (d) {
         is PlayCardDecision -> PlayCardResponse(d.id, requireNotNull(playCard)(d))
-        is YesNoDecision -> YesNoResponse(d.id, q.pick(d.prompt, listOf(true, false)) { if (it) d.yesText else d.noText })
+        is YesNoDecision -> YesNoResponse(d.id, q.pick(d.prompt, listOfNotNull(true.takeIf { d.yesAvailable }, false)) { if (it) d.yesText else d.noText })
         is BatchYesNoDecision -> BatchYesNoResponse(d.id,
             q.pick(d.prompt, listOf(true, false)) { if (it) d.yesText else d.noText }, applyToAll = false)
         is ChooseOptionDecision -> OptionChosenResponse(d.id, q.pick(d.prompt, d.options.indices.toList()) { d.options[it] })
@@ -50,12 +50,11 @@ internal class JevDecisions(private val q: JevChoices, private val label: (Entit
             ReplacementChosenResponse(d.id, from, to)
         }
         is FlipOntoBattlefieldDecision -> {
-            // Aim at a permanent's centre with a clean release, or throw it off the table.
+            // Flick cleanly at a permanent's centre, or throw it off the table.
             val aims = d.table.cards.filter { it.eligible }
             val aim = q.pick("${d.prompt}: aim at", aims + listOf(null)) { it?.let { c -> c.name ?: "a face-down permanent" } ?: "Off the table" }
-            val release = d.release.sweetSpot
-            if (aim == null) FlipThrowResponse(d.id, d.table.width / 2, -2 * d.table.height, release)
-            else FlipThrowResponse(d.id, aim.x, aim.y, release)
+            if (aim == null) FlipThrowResponse.toward(d.id, d.table, d.table.width / 2, -2 * d.table.height)
+            else FlipThrowResponse.toward(d.id, d.table, aim.x, aim.y)
         }
         is BudgetModalDecision -> {
             var budget = d.budget

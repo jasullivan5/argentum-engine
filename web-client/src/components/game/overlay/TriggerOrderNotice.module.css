@@ -1,0 +1,124 @@
+/* "The game ordered your triggers" — a one-off tip under the top bar, see TriggerOrderNotice.tsx. */
+
+.notice {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: max-content;
+  max-width: min(680px, calc(100vw - 32px));
+  padding: 8px 8px 8px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: rgba(14, 13, 20, 0.95);
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55), 0 0 14px rgba(251, 191, 36, 0.12);
+  color: #e8ecf5;
+  animation: triggerOrderNoticeIn 240ms ease-out;
+}
+
+@keyframes triggerOrderNoticeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(251, 191, 36, 0.14);
+  color: var(--color-highlight);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.headline {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.detail {
+  color: #94a3b8;
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+.actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+}
+
+.primary,
+.secondary {
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.primary {
+  border: 1px solid rgba(251, 191, 36, 0.7);
+  background: rgba(251, 191, 36, 0.16);
+  color: #fde68a;
+}
+
+.primary:hover,
+.primary:focus-visible {
+  background: rgba(251, 191, 36, 0.28);
+  border-color: var(--color-highlight);
+}
+
+.secondary {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #94a3b8;
+}
+
+.secondary:hover,
+.secondary:focus-visible {
+  border-color: rgba(148, 163, 184, 0.4);
+  color: #e8ecf5;
+}
+
+.done {
+  padding-right: 14px;
+}
+
+.done .icon {
+  background: rgba(74, 222, 128, 0.14);
+  color: #4ade80;
+}
+
+@media (max-width: 639px) {
+  .notice {
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: 8px 10px;
+  }
+
+  .text {
+    flex: 1 1 0;
+  }
+
+  .actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}

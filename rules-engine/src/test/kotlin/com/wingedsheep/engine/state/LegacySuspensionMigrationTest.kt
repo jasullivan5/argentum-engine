@@ -37,6 +37,9 @@ class LegacySuspensionMigrationTest : ScenarioTestBase() {
                 var state = json.decodeFromString<GameState>(original.toString())
                 state.zoneReturns shouldBe emptyList()
                 state.playerActionPermissions shouldBe emptyList()
+                state.damageReplacementChoices shouldBe emptyList()
+                state.damageReplacementRevealOriginals shouldBe emptyMap()
+                state.damageReplacementRevealTimestamp shouldBe null
                 state.nextRoutingId shouldBe original.getValue("nextRoutingId").jsonPrimitive.content.toLong()
                 state.pendingDecision shouldBe json.decodeFromString<PendingDecision>(original.getValue("pendingDecision").toString())
 
@@ -95,13 +98,24 @@ class LegacySuspensionMigrationTest : ScenarioTestBase() {
             val action = json.decodeFromString<List<GameAction>>(fixtureText(fixture, "actions.json")).single()
             val result = actionProcessor.process(state, action).result
             result.error shouldBe null
-            result.state.copy(controlAtTurnStart = null, untappedAtTurnStart = null) shouldBe
+            result.state.copy(controlAtTurnStart = null, untappedAtTurnStart = null, controlAtUpkeepStart = emptyMap()) shouldBe
                 json.decodeFromString<GameState>(fixtureText(fixture, "after-1.json"))
             result.events shouldBe json.decodeFromString<List<GameEvent>>(fixtureText(fixture, "events-1.json"))
             result.state.pendingDecision shouldBe null
             result.state.continuationStack shouldBe emptyList()
             result.state.getHand(action.playerId).size shouldBe 1
             result.state.getLibrary(action.playerId).size shouldBe 1
+        }
+
+        test("a retired mana-value target cap lifts to the property-general total cap") {
+            val amount = JsonObject(mapOf("type" to JsonPrimitive("Fixed"), "amount" to JsonPrimitive(6)))
+            val script = RetiredSdkTypeLift.lift(JsonObject(mapOf("totalManaValueAtMost" to amount))).jsonObject
+            script shouldBe JsonObject(mapOf("totalAtMost" to JsonObject(mapOf(
+                "property" to JsonPrimitive("MANA_VALUE"), "amount" to amount,
+            ))))
+            val pause = RetiredSdkTypeLift.lift(JsonObject(mapOf("totalManaValueAtMost" to JsonPrimitive(6)))).jsonObject
+            pause shouldBe JsonObject(mapOf("totalCap" to JsonPrimitive(6), "totalCapLabel" to JsonPrimitive("mana value")))
+            RetiredSdkTypeLift.lift(JsonObject(mapOf("totalManaValueAtMost" to JsonNull))) shouldBe JsonObject(emptyMap())
         }
 
         test("legacy active answer still requires its response identity") {
@@ -281,13 +295,19 @@ class LegacySuspensionMigrationTest : ScenarioTestBase() {
      * independently verifies their capture, retention after departure and serialization.
      */
     private fun normalizeRouting(value: JsonElement, root: Boolean = false): JsonElement = when (value) {
-        is JsonObject -> JsonObject(((if (root) value - "controlAtTurnStart" - "untappedAtTurnStart" else value) - "targetObjectRefs" - "referencedObjects" - "manaUnits" -
+        is JsonObject -> JsonObject(((if (root) value - "controlAtTurnStart" - "untappedAtTurnStart" - "controlAtUpkeepStart" else value) - "targetObjectRefs" - "referencedObjects" - "manaUnits" -
             // The graveyard turn history (Crawling Sensation) postdates the capture, as does the
             // per-card stamp on a resolved spell; CardsPutIntoGraveyardThisTurnTrackerTest pins both.
             "com.wingedsheep.engine.state.components.player.CardsPutIntoGraveyardThisTurnComponent" -
+            // Its per-origin count (Cruel Calculations, Welcome the Dead) too.
+            "com.wingedsheep.engine.state.components.player.CardsPutIntoGraveyardByOriginThisTurnComponent" -
             // So does the per-owner card-type record of permanents put into a graveyard from the
             // battlefield; KamiOfTransienceScenarioTest pins it.
             "com.wingedsheep.engine.state.components.player.CardTypesPutIntoGraveyardFromBattlefieldThisTurnComponent" -
+            // Its hand-destination sibling too; MilesOBrienTransporterOpsScenarioTest pins it.
+            "com.wingedsheep.engine.state.components.player.CardTypesReturnedToHandFromBattlefieldThisTurnComponent" -
+            // The game-long spell count postdates the capture too; SpellsCastThisGameTest pins it.
+            "com.wingedsheep.engine.state.components.player.SpellsCastThisGameComponent" -
             "com.wingedsheep.engine.state.components.identity.PutIntoGraveyardThisTurnComponent").mapValues { (key, child) ->
             when {
                 // Captured ownership also postdates these traces; SourceOwnerLastKnownTest pins it.
@@ -312,8 +332,8 @@ class LegacySuspensionMigrationTest : ScenarioTestBase() {
 
     /**
      * Added copiable rules data postdates the capture; old identities must default those lists empty.
-     * Likewise a may-play permission's later `colorlessAsAnyColor` / `withAnyManaColor` / `castColorCount` riders and the card's later
-     * `hasCycling` flag must default false.
+     * Likewise a may-play permission's later `spendAsAnyColor` / `withAnyManaColor` / `castColorCount` riders and the card's later
+     * `hasCycling` / `hasKicker` flags must default false, and its `startingLoyaltyOverride` null.
      */
     private fun withoutPostCaptureCardDefaults(value: JsonElement): JsonElement = when (value) {
         is JsonObject -> {
@@ -328,7 +348,9 @@ class LegacySuspensionMigrationTest : ScenarioTestBase() {
                 value.getValue("copyActivatedAbilities") shouldBe JsonArray(emptyList())
                 value.getValue("manaSpendingGrants") shouldBe JsonArray(emptyList())
                 value.getValue("hasCycling") shouldBe JsonPrimitive(false)
-                value - "copyStaticAbilities" - "copyNumericKeywords" - "flipSide" - "copyWardCosts" - "copyTriggeredAbilities" - "copyActivatedAbilities" - "manaSpendingGrants" - "hasCycling"
+                value.getValue("hasKicker") shouldBe JsonPrimitive(false)
+                value.getValue("startingLoyaltyOverride") shouldBe JsonNull
+                value - "startingLoyaltyOverride" - "copyStaticAbilities" - "copyNumericKeywords" - "flipSide" - "copyWardCosts" - "copyTriggeredAbilities" - "copyActivatedAbilities" - "manaSpendingGrants" - "hasCycling" - "hasKicker"
             } else if (value["type"] == JsonPrimitive(
                     "com.wingedsheep.engine.state.components.player.ManaPoolComponent"
                 )) {
@@ -344,19 +366,20 @@ class LegacySuspensionMigrationTest : ScenarioTestBase() {
                 // The direct lands-played count postdates the capture.
                 value.getValue("playedThisTurn") shouldBe JsonPrimitive(0)
                 value - "playedThisTurn"
-            } else if ("colorlessAsAnyColor" in value && "playsRemaining" in value) {
+            } else if ("spendAsAnyColor" in value && "playsRemaining" in value) {
                 // MayPlayPermission's any-color, colorless-as-any-color, face-down, once-per-turn,
-                // color-count, play-cap and step-keyed expiry riders postdate the capture.
+                // color-count, spell-type, play-cap and step-keyed expiry riders postdate the capture.
                 value.getValue("playsRemaining") shouldBe JsonNull
                 value.getValue("expiresAtStep") shouldBe JsonNull
                 value.getValue("withAnyManaColor") shouldBe JsonPrimitive(false)
-                value.getValue("colorlessAsAnyColor") shouldBe JsonPrimitive(false)
+                value.getValue("spendAsAnyColor") shouldBe JsonNull
                 value.getValue("castFaceDown") shouldBe JsonPrimitive(false)
                 value.getValue("turnsFaceUpInstead") shouldBe JsonPrimitive(false)
                 value.getValue("oncePerTurn") shouldBe JsonPrimitive(false)
                 value.getValue("castColorCount") shouldBe JsonNull
-                value - "withAnyManaColor" - "colorlessAsAnyColor" - "castFaceDown" - "turnsFaceUpInstead" - "oncePerTurn" -
-                    "castColorCount" - "playsRemaining" - "expiresAtStep"
+                value.getValue("castSpellTypes") shouldBe JsonNull
+                value - "withAnyManaColor" - "spendAsAnyColor" - "castFaceDown" - "turnsFaceUpInstead" - "oncePerTurn" -
+                    "castColorCount" - "castSpellTypes" - "playsRemaining" - "expiresAtStep"
             } else if (value["type"] == JsonPrimitive(
                     "com.wingedsheep.engine.state.components.stack.SpellOnStackComponent"
                 )) {
@@ -379,12 +402,14 @@ class LegacySuspensionMigrationTest : ScenarioTestBase() {
                 value.getValue("expiresAtStep") shouldBe JsonNull
                 value - "expiresAfterTurn" - "expiryControllerId" - "expiresAtStep"
             } else if (value["type"] == JsonPrimitive("MoveToZone")) {
-                // The entering-attack defender choice (ninjutsu, CR 702.49c) postdates the capture.
+                // The entering-attack defender choice (ninjutsu, CR 702.49c) and the as-it-enters
+                // characteristics (Dance of the Manse) postdate the capture.
                 value.getValue("attackDefender") shouldBe JsonPrimitive("JOIN_SOURCE")
+                value.getValue("entersWith") shouldBe JsonNull
                 // The captured single entry counter (`addCounterType`/`addCounterIf`, both null
                 // here) is now the `entryCounters` list; RetiredSdkTypeLift rewrote it on load.
                 value.getValue("entryCounters") shouldBe JsonArray(emptyList())
-                JsonObject(value - "attackDefender" - "entryCounters" +
+                JsonObject(value - "attackDefender" - "entersWith" - "entryCounters" +
                     ("addCounterType" to JsonNull) + ("addCounterIf" to JsonNull))
             } else value
             JsonObject(fields.mapValues { withoutPostCaptureCardDefaults(it.value) })
@@ -411,12 +436,20 @@ class LegacySuspensionMigrationTest : ScenarioTestBase() {
     /**
      * Fields these captures carry that the engine has since retired. A may-play permission's
      * `singleUse` flag became the `playsRemaining` cap; every captured permission is uncapped, so the
-     * flag is false and drops out (its replacement defaults to null).
+     * flag is false and drops out (its replacement defaults to null). Its `landEntersTapped` flag
+     * became the `entersTapped` filter; every captured permission's flag is false, which is a null
+     * filter. A target pause's `totalManaValueAtMost` cap became `totalCap`; every captured one is
+     * uncapped (null), which drops out.
      */
     private fun withoutRetiredFields(value: JsonElement): JsonElement = when (value) {
         is JsonObject -> {
             if ("singleUse" in value) value.getValue("singleUse") shouldBe JsonPrimitive(false)
-            JsonObject((value - "singleUse").mapValues { (_, child) -> withoutRetiredFields(child) })
+            val lifted = if ("landEntersTapped" in value) {
+                value.getValue("landEntersTapped") shouldBe JsonPrimitive(false)
+                JsonObject(value - "landEntersTapped" + ("entersTapped" to JsonNull))
+            } else value
+            if ("totalManaValueAtMost" in value) value.getValue("totalManaValueAtMost") shouldBe JsonNull
+            JsonObject((lifted - "singleUse" - "totalManaValueAtMost").mapValues { (_, child) -> withoutRetiredFields(child) })
         }
         is JsonArray -> JsonArray(value.map { withoutRetiredFields(it) })
         else -> value
@@ -431,11 +464,13 @@ class LegacySuspensionMigrationTest : ScenarioTestBase() {
         private val POST_CAPTURE_FIELDS = setOf(
             "playerActionPermissions",
             "objectIdentities", "nextObjectGeneration", "zoneReturns", "pendingTriggers", "triggersBeingPlaced",
-            "controlAtTurnStart", "untappedAtTurnStart",
+            "controlAtTurnStart", "untappedAtTurnStart", "controlAtUpkeepStart",
             "playersDealtNoncombatDamageThisTurn", "playersDealtNoncombatDamageLastTurn", "playersWhoLostLifeLastTurn",
             "playersWithPermanentDealtExcessDamageThisTurn",
             "pendingReplacementRiders", "playersDealtCombatDamageSinceTheirLastTurn", "roundNumber", "monarch",
-            "initiative", "pendingAnyManaTypeSpells", "departedSpells",
+            "initiative", "pendingAnyManaTypeSpells", "departedSpells", "departedAbilities",
+            "damageReplacementChoices", "damageReplacementRevealOriginals", "damageReplacementRevealTimestamp",
+            "pendingCyclingDiscardIds", "previousTurnSpellCountsByPlayer", "pendingNextSpellResolveDestinations",
         )
     }
 }

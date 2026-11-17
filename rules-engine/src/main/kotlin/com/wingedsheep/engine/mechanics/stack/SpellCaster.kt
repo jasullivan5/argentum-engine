@@ -82,7 +82,7 @@ internal class SpellCaster(
         additionalCostChoices: Map<ChoiceSlot, Int> = emptyMap(),
         wasBlightPaid: Boolean = false,
         wasWaterbendPaid: Boolean = false,
-        additionalEntryCounters: com.wingedsheep.engine.state.components.stack.AdditionalEntryCounters? = null,
+        additionalEntryCounters: List<com.wingedsheep.engine.state.components.stack.AdditionalEntryCounters> = emptyList(),
         giftRecipient: EntityId? = null,
         wasWarped: Boolean = false,
         wasDashed: Boolean = false,
@@ -105,10 +105,12 @@ internal class SpellCaster(
         totalManaSpent: Int = 0,
         beheldCards: List<EntityId> = emptyList(),
         convokedCreatures: Map<EntityId, Long> = emptyMap(),
+        delvedCards: Map<EntityId, Long> = emptyMap(),
         discardedAsCostCards: List<EntityId> = emptyList(),
         revealedAsCostSnapshots: List<EntitySnapshot> = emptyList(),
         exiledAsCostCards: List<EntityId> = emptyList(),
         exiledAsCostSnapshots: List<EntitySnapshot> = emptyList(),
+        tappedPermanents: List<EntityId> = emptyList(),
         chosenEntitySnapshots: List<EntitySnapshot> = emptyList(),
         manaSpentWhite: Int = 0,
         manaSpentBlue: Int = 0,
@@ -253,10 +255,12 @@ internal class SpellCaster(
             wasMayhem = wasMayhem,
             beheldCards = beheldCards,
             convokedCreatures = convokedCreatures,
+            delvedCards = delvedCards,
             discardedAsCostCards = discardedAsCostCards,
             revealedAsCostSnapshots = revealedAsCostSnapshots,
             exiledAsCostCards = exiledAsCostCards,
             exiledAsCostSnapshots = exiledAsCostSnapshots,
+            tappedPermanents = tappedPermanents,
             chosenEntitySnapshots = chosenEntitySnapshots,
             manaSpentWhite = manaSpentWhite,
             manaSpentBlue = manaSpentBlue,
@@ -267,6 +271,7 @@ internal class SpellCaster(
             manaSpentBySubtype = spentManaProvenance.bySubtype,
             manaSpentByCardType = spentManaProvenance.byCardType,
             manaSpentSnow = spentManaProvenance.snow,
+            manaSpentSnowColors = spentManaProvenance.snowColors,
             manaSpentOnXByColor = manaSpentOnXByColor,
             phyrexianLifePips = phyrexianLifePips,
             faceIndex = faceIndex,
@@ -310,6 +315,9 @@ internal class SpellCaster(
         val objectOnStack = newState.objectRef(cardId)
 
         newState = consumeCastPermissions(newState, cardId, casterId, castFaceDown)
+        // The spell is a new object (CR 400.7): it is no longer the card its owner discarded this turn
+        // (Mayhem's gate, Shadow of the Grave's filter), wherever it resolves to.
+        newState = com.wingedsheep.engine.handlers.effects.ZoneTransitionService.untrackDiscardedCard(newState, cardId)
         if (castFromZone == Zone.EXILE && objectBeforeCast != null) {
             newState = endGrantsUntilCastFromExile(newState, objectBeforeCast)
         }
@@ -366,6 +374,13 @@ internal class SpellCaster(
                 sacrificedAsCostNames = sacrificedPermanents.mapNotNull { it.name }
             )
         )
+
+        // Choosing the modes of a (true) modal spell is facing a dilemma; gift-style ModalEffects
+        // report zero modes here and don't.
+        val (afterDilemma, dilemmaEvents) =
+            com.wingedsheep.engine.mechanics.modal.Dilemmas.face(newState, casterId, spellName, reportedChosenModesCount)
+        newState = afterDilemma
+        events.addAll(1, dilemmaEvents)
 
         newState = announceTargets(newState, cardId, casterId, spellName, effectiveTargets, events)
         addPermissionRiderEvents(state, castFromZone, cardId, casterId, events)
@@ -507,6 +522,7 @@ internal class SpellCaster(
                 updated = updated.without<PlayWithoutPayingCostComponent>()
             }
             updated = updated.without<com.wingedsheep.engine.state.components.identity.PlayWithCostIncreaseComponent>()
+            updated = updated.without<com.wingedsheep.engine.state.components.identity.PlayWithCostReductionComponent>()
             updated = updated.without<com.wingedsheep.engine.state.components.identity.PlayWithFixedAlternativeManaCostComponent>()
             // A runtime substitute/additional cost (Cruelclaw's discard, Amped Raptor's energy) was
             // owed by this cast and has been paid; it must not be owed again by a later one.
@@ -775,6 +791,9 @@ internal class SpellCaster(
                         it.without<com.wingedsheep.engine.state.components.battlefield.SuspendedComponent>()
                             .without<com.wingedsheep.engine.state.components.identity.ExiledFromZoneComponent>()
                             .without<com.wingedsheep.engine.state.components.battlefield.CountersComponent>()
+                            // Foretold-ness was read at cast (ChoiceSlot.FORETOLD); the card is a
+                            // new object once it leaves exile (CR 400.7).
+                            .without<com.wingedsheep.engine.state.components.identity.ForetoldComponent>()
                     }
                 return com.wingedsheep.engine.handlers.effects.ZoneMovementUtils
                     .unlinkFromAllLinkedExiles(removed, cardId)

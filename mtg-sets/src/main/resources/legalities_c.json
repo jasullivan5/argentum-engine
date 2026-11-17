@@ -7774,7 +7774,8 @@
     "OATHBREAKER",
     "PREDH",
     "TIMELESS",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Chalice of the Void // Chalice of the Void": [],
   "Chalk Outline": [
@@ -8991,7 +8992,8 @@
     "VINTAGE"
   ],
   "Channel": [
-    "GLADIATOR"
+    "GLADIATOR",
+    "VINTAGE_RESTRICTED"
   ],
   "Channel Harm": [
     "COMMANDER",

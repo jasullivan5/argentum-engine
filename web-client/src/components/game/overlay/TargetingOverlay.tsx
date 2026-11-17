@@ -15,6 +15,16 @@ import { ManaSymbol } from '@/components/ui/ManaSymbols'
 import { parseManaCost } from '@/utils/manaCost'
 
 /**
+ * The zone picker's heading. A cost's prompt arrives as a sentence-cased instruction ("Exile any
+ * number of creature cards from your graveyard — …", "Discard a card"), shown verbatim; a target
+ * description ("target creature card") reads as what to select.
+ */
+function selectionHeading(description: string): string {
+  const first = description.charAt(0)
+  return first !== first.toLowerCase() ? description : `Select ${description}`
+}
+
+/**
  * Cross-zone card targeting overlay — shows when targeting mode requires selecting card(s) from a
  * card zone (graveyard or exile), possibly a union of both (Sorceress's Schemes). Cards are grouped
  * into tabs by (owner, zone) so e.g. "Your Graveyard" and "Your Exile" are distinct, browsable
@@ -230,7 +240,7 @@ function ZoneCardTargetingOverlay({
           }}
         >
           {targetingState.targetDescription
-            ? `Select ${targetingState.targetDescription}`
+            ? selectionHeading(targetingState.targetDescription)
             : 'Choose Target'}
         </h2>
         {targetingState.sourceCardName && (
@@ -571,6 +581,8 @@ export function TargetingOverlay() {
   const isDiscard = targetingState.isDiscardSelection
   const isReveal = targetingState.isRevealSelection
   const isBehold = targetingState.isBeholdSelection
+  // A cost paid from hand ("exile a green card from your hand") is a card pick, not a permanent.
+  const isHandPick = targetingState.targetZone === 'Hand'
 
   // Split the server's valid targets by how the player can physically reach them: a graveyard or
   // exile pile isn't individually clickable on the board, so those cards need the cross-zone
@@ -648,7 +660,10 @@ export function TargetingOverlay() {
   const promptText = isBehold
     ? `${targetingState.targetDescription ?? 'Behold a card'} (${targetDisplay})`
     : isDiscard
-      ? `Select card to discard (${targetDisplay})`
+      ? // A variable discard ("Discard X cards") names its range rather than a fixed count.
+        targetingState.targetDescription && minTargets !== maxTargets
+        ? `${targetingState.targetDescription}: choose ${minTargets}–${maxTargets} (${selectedCount} selected)`
+        : `Select card to discard (${targetDisplay})`
       : isReveal
         ? `Select card to reveal (${targetDisplay})`
         : isTapPermanent
@@ -685,7 +700,7 @@ export function TargetingOverlay() {
     ? isBehold ? 'Card selected' : isDiscard ? 'Card selected' : isReveal ? 'Card selected' : isTapPermanent ? 'Permanents selected' : isBounce ? 'Creature selected' : isSacrifice ? 'Selected' : 'Maximum targets selected'
     : hasEnoughTargets
       ? 'Click Confirm or select more'
-      : isBehold ? `Click a highlighted card on the battlefield or in your hand` : isDiscard ? 'Click a card in your hand' : isReveal ? 'Click a card in your hand' : isTapPermanent ? 'Click a highlighted permanent' : isBounce ? 'Click an attacking creature you control' : isSacrifice ? 'Click a highlighted permanent you control' : 'Click a highlighted target'
+      : isBehold ? `Click a highlighted card on the battlefield or in your hand` : isDiscard ? 'Click a card in your hand' : isReveal ? 'Click a card in your hand' : isTapPermanent ? 'Click a highlighted permanent' : isBounce ? 'Click a highlighted permanent to return' : isHandPick ? 'Click a highlighted card in your hand' : isSacrifice ? 'Click a highlighted permanent you control' : 'Click a highlighted target'
   // On a mixed union the board is only half the answer — say so, since the other half lives
   // behind the button below and there is nothing on the board to hint at it.
   const hintText = isMixedZoneTargeting && !hasMaxTargets

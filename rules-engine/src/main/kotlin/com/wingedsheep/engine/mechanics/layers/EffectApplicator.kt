@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.mechanics.layers
 
+import com.wingedsheep.engine.state.components.battlefield.entitiesChoice
 import com.wingedsheep.engine.state.components.battlefield.chosenLandType
 import com.wingedsheep.engine.state.components.battlefield.chosenColor
 import com.wingedsheep.engine.state.components.battlefield.chosenCreatureType
@@ -40,15 +41,20 @@ internal class EffectApplicator(
      * printed toxic 2 plus a granted toxic 2 — would otherwise collapse to one and lose the N the
      * readers sum (CR 702.164b's total toxic value, `KeywordValue`).
      *
-     * Crew is the exception: each `CREW_<n>` is a separate crew ability, not a share of one total
-     * (a Vehicle with crew 3 that gains crew 1 can be crewed for 1, not 4), so distinct Ns sit side
-     * by side and the crew readers take the cheapest.
+     * Crew and renown are the exceptions: each `CREW_<n>` / `RENOWN_<n>` is a separate ability,
+     * not a share of one total (a Vehicle with crew 3 that gains crew 1 can be crewed for 1, not 4;
+     * renown 1 twice is two triggers, CR 702.112c, not one renown 2), so distinct Ns sit side by
+     * side. Renown grants are also tallied in [MutableProjectedValues.grantedKeywordInstances],
+     * because the set alone can't tell one "has renown 1" grant from two — and unlike crew, the
+     * number of renown instances matters.
      */
-    private fun addKeyword(keywords: MutableSet<String>, keyword: String) {
+    private fun addKeyword(values: MutableProjectedValues, keyword: String) {
+        val keywords = values.keywords
         val split = keyword.lastIndexOf('_')
         val n = if (split > 0) keyword.substring(split + 1).toIntOrNull() else null
-        if (n == null || keyword.startsWith(CREW_PREFIX)) {
+        if (n == null || keyword.startsWith(CREW_PREFIX) || keyword.startsWith(RENOWN_PREFIX)) {
             keywords.add(keyword)
+            if (keyword.startsWith(RENOWN_PREFIX)) values.grantedKeywordInstances.merge(keyword, 1, Int::plus)
             return
         }
         val prefix = keyword.substring(0, split + 1)
@@ -77,6 +83,14 @@ internal class EffectApplicator(
                 fallbackControllerId = effect.controllerId
             )
             if (!conditionEvaluator.evaluate(state, sourceCondition, ctx)) return
+        }
+        val grantedBy = effect.grantedBy
+        if (grantedBy != null) {
+            val granterValues = projectedValues[grantedBy]
+            if (granterValues?.lostAllAbilities == true) return
+            val grantCondition = effect.grantCondition
+            if (grantCondition != null && !conditionEvaluator.evaluate(state, grantCondition,
+                    ConditionEvaluationContext.Projection(grantedBy, granterValues, projectedValues))) return
         }
 
         for (entityId in effect.affectedEntities) {
@@ -149,7 +163,7 @@ internal class EffectApplicator(
                     values.name = mod.name
                 }
                 is Modification.GrantKeyword -> {
-                    addKeyword(values.keywords, mod.keyword)
+                    addKeyword(values, mod.keyword)
                     // Changeling grants all creature types (Rule 702.73)
                     if (mod.keyword == Keyword.CHANGELING.name) {
                         values.subtypes.addAll(com.wingedsheep.sdk.core.Subtype.ALL_CREATURE_TYPES)
@@ -162,6 +176,7 @@ internal class EffectApplicator(
                 }
                 is Modification.RemoveKeyword -> {
                     values.keywords.remove(mod.keyword)
+                    values.grantedKeywordInstances.remove(mod.keyword)
                     // CR 702.22b: losing banding loses every "bands with other" ability too, and
                     // the family name itself means "loses all 'bands with other' abilities".
                     if (mod.keyword == Keyword.BANDING.name ||
@@ -227,6 +242,10 @@ internal class EffectApplicator(
                     values.types.remove(mod.type)
                     values.removedCardTypes.add(mod.type)
                 }
+                is Modification.RemoveSubtype -> {
+                    values.types.removeAll { it.equals(mod.subtype, ignoreCase = true) }
+                    values.subtypes.removeAll { it.equals(mod.subtype, ignoreCase = true) }
+                }
                 is Modification.SetCreatureSubtypes -> {
                     val creatureTypes = com.wingedsheep.sdk.core.Subtype.ALL_CREATURE_TYPES.toSet()
                     values.subtypes.removeAll { it in creatureTypes }
@@ -236,7 +255,7 @@ internal class EffectApplicator(
                 }
                 is Modification.SetCreatureSubtypesFrom -> {
                     // "Has the creature types of [that object]" (Duplicant). Same replace-only-the-
-                    // creature-types semantics as SetCreatureSubtypes above (CR 205.1b — non-creature
+                    // creature-types semantics as SetCreatureSubtypes above (CR 205.1a — non-creature
                     // subtypes are untouched), but the set is read from the referenced object on every
                     // projection pass instead of being baked in at conversion time.
                     //
@@ -272,9 +291,11 @@ internal class EffectApplicator(
                     values.types.addAll(newTypes)
                 }
                 is Modification.SetBasicLandTypes -> {
-                    val basicLandTypes = com.wingedsheep.sdk.core.Subtype.ALL_BASIC_LAND_TYPES
-                    values.subtypes.removeAll { it in basicLandTypes }
-                    values.types.removeAll { it in basicLandTypes }
+                    // Rule 305.7: the land loses *all* its old land types (Desert, Gate, Urza's…),
+                    // not only the basic ones; non-land subtypes (Dryad Arbor's Dryad) stay.
+                    val landTypes = com.wingedsheep.sdk.core.Subtype.ALL_LAND_TYPES
+                    values.subtypes.removeAll { it in landTypes }
+                    values.types.removeAll { it in landTypes }
                     values.subtypes.addAll(mod.subtypes)
                     values.types.addAll(mod.subtypes)
                     // The new type's intrinsic mana ability survives a same-source lose-all-
@@ -285,9 +306,9 @@ internal class EffectApplicator(
                     val chosenLandType = state.getEntity(effect.sourceId)
                         ?.chosenLandType()
                     if (chosenLandType != null) {
-                        val basicLandTypes = com.wingedsheep.sdk.core.Subtype.ALL_BASIC_LAND_TYPES
-                        values.subtypes.removeAll { it in basicLandTypes }
-                        values.types.removeAll { it in basicLandTypes }
+                        val landTypes = com.wingedsheep.sdk.core.Subtype.ALL_LAND_TYPES
+                        values.subtypes.removeAll { it in landTypes }
+                        values.types.removeAll { it in landTypes }
                         values.subtypes.add(chosenLandType)
                         values.types.add(chosenLandType)
                         values.basicLandTypesSetByEffect = true
@@ -295,8 +316,20 @@ internal class EffectApplicator(
                 }
                 is Modification.SetCardTypes -> {
                     val cardTypeStrings = setOf("CREATURE", "ARTIFACT", "ENCHANTMENT", "LAND", "PLANESWALKER", "INSTANT", "SORCERY", "BATTLE", "KINDRED")
+                    val lostAType = values.types.any { it in cardTypeStrings && it !in mod.types }
                     values.types.removeAll { it in cardTypeStrings }
                     values.types.addAll(mod.types)
+                    // CR 205.1a: subtypes correlated with a removed card type go with it, unless they
+                    // are also subtypes of a type the object still has (an enchantment creature
+                    // turned into an enchantment keeps Aura/Saga, loses its creature types).
+                    if (lostAType) {
+                        val orphaned = values.subtypes.filter { subtype ->
+                            val owners = com.wingedsheep.sdk.core.Subtype.correlatedCardTypes(subtype)
+                            owners.isNotEmpty() && owners.none { it.name in values.types }
+                        }
+                        values.subtypes.removeAll(orphaned.toSet())
+                        values.types.removeAll(orphaned.toSet())
+                    }
                 }
                 is Modification.SetAllSubtypes -> {
                     values.subtypes.clear()
@@ -335,6 +368,11 @@ internal class EffectApplicator(
                 }
                 is Modification.GrantProtectionFrom -> {
                     values.keywords.addAll(mod.keywords)
+                }
+                is Modification.GrantProtectionFromChosenCardType -> {
+                    com.wingedsheep.engine.mechanics.targeting.ProtectionKeywords
+                        .chosenCardTypeKeyword(state.getEntity(effect.sourceId), mod.slot)
+                        ?.let { values.keywords.add(it) }
                 }
                 is Modification.GrantProtectionFromControlledColors -> {
                     // Protection from the colors of permanents the source's controller controls
@@ -379,6 +417,14 @@ internal class EffectApplicator(
                         }
                         KeywordCardPool.CARDS_EXILED_WITH_SOURCE ->
                             LinkedExileLookup.exiledCards(state, effect.sourceId)
+                        // Soulflayer: the payment record, wherever those cards are now ("was
+                        // exiled" is history). "Creature card" is the card's own type line.
+                        KeywordCardPool.CREATURE_CARDS_EXILED_WITH_DELVE ->
+                            state.getEntity(effect.sourceId)
+                                ?.entitiesChoice(com.wingedsheep.sdk.scripting.ChoiceSlot.DELVED_CARDS)
+                                ?.entityIds
+                                ?.filter { state.getEntity(it)?.get<CardComponent>()?.typeLine?.isCreature == true }
+                                .orEmpty()
                     }
                     val landwalk = KeywordFamily.LANDWALK in mod.families
                     val hexproof = KeywordFamily.HEXPROOF in mod.families
@@ -408,6 +454,9 @@ internal class EffectApplicator(
                 is Modification.SetAttacksWithoutTapping -> {
                     values.attacksWithoutTapping = true
                 }
+                is Modification.SetLethalDamageByPower -> {
+                    values.lethalDamageByPower = true
+                }
                 is Modification.SetSuspected -> {
                     values.isSuspected = true
                 }
@@ -423,6 +472,10 @@ internal class EffectApplicator(
                 is Modification.SetMustAttackPlayer -> {
                     values.mustAttack = true
                     values.mustAttackPlayer = true
+                }
+                is Modification.SetMustAttackOtherThan -> {
+                    values.mustAttack = true
+                    values.mustAttackOtherThan.add(mod.playerId)
                 }
                 is Modification.SetMustBlock -> {
                     values.mustBlock = true
@@ -462,10 +515,17 @@ internal class EffectApplicator(
                 }
                 is Modification.RemoveAllAbilities -> {
                     values.keywords.clear()
+                    values.grantedKeywordInstances.clear()
                     values.staticAbilities.clear()
                     values.staticAbilitySourceIds.clear()
                     values.manaAbilityLifeTax = 0
+                    // Mana abilities survive only while every removal so far spared them: a full
+                    // removal before or after "except mana abilities" takes them too.
+                    values.keepsManaAbilities = mod.exceptManaAbilities &&
+                        (!values.lostAllAbilities || values.keepsManaAbilities)
                     values.lostAllAbilities = true
+                    values.lostAllAbilitiesTimestamp =
+                        maxOf(values.lostAllAbilitiesTimestamp ?: effect.timestamp, effect.timestamp)
                     values.hasExileOnDeathAbility = false
                 }
                 is Modification.GrantExileOnDeathAbility -> {
@@ -511,3 +571,6 @@ internal class EffectApplicator(
 
 /** Prefix of a granted crew keyword ([com.wingedsheep.sdk.scripting.KeywordAbility.grantedCrew]); see `addKeyword`. */
 private val CREW_PREFIX = "${com.wingedsheep.sdk.core.Keyword.CREW.name}_"
+
+/** Prefix of a granted renown keyword ([com.wingedsheep.sdk.scripting.KeywordAbility.grantedRenown]); see `addKeyword`. */
+private val RENOWN_PREFIX = "${com.wingedsheep.sdk.core.Keyword.RENOWN.name}_"

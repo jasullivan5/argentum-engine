@@ -1,5 +1,6 @@
 package com.wingedsheep.ai.engine.knowledge
 
+import com.wingedsheep.engine.core.CastSpell
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.legalactions.utils.CastPermissionUtils
 import com.wingedsheep.engine.mechanics.mana.ManaSolver
@@ -7,12 +8,14 @@ import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.engine.state.ComponentContainer
+import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.RoomComponent
 import com.wingedsheep.engine.state.components.identity.RoomFaceId
 import com.wingedsheep.engine.state.components.stack.AbilityOnStackComponent
 import com.wingedsheep.engine.state.components.stack.ActivatedAbilityOnStackComponent
 import com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComponent
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.scripting.AbilityCost
 import com.wingedsheep.sdk.scripting.AbilityId
@@ -47,6 +50,14 @@ class IntentCatalog private constructor(private val registry: CardRegistry?) {
      */
     val predicates: PredicateEvaluator? by lazy { registry?.let(::PredicateEvaluator) }
 
+    /**
+     * The simulator behind [com.wingedsheep.ai.engine.evaluation.CreatureValuation.growthPotential]:
+     * what a permanent's recurring +1/+1-counter triggers will still add. Null for [NONE].
+     */
+    val growth: com.wingedsheep.ai.engine.evaluation.GrowthPotential? by lazy {
+        registry?.let { com.wingedsheep.ai.engine.evaluation.GrowthPotential.of(it) }
+    }
+
     private val manaSolver: ManaSolver? by lazy {
         val registry = registry ?: return@lazy null
         predicates?.let { ManaSolver(registry, it) }
@@ -76,6 +87,21 @@ class IntentCatalog private constructor(private val registry: CardRegistry?) {
      */
     fun forName(name: String): CardIntent? {
         val definition = registry?.getCard(name) ?: return null
+        return CardIntentAnalyzer.analyze(definition)
+    }
+
+    /**
+     * The intent of casting the card called [cardName] the way [cast] does: for a modal spell with
+     * its modes chosen, what *those* modes do ([CardIntentAnalyzer.analyzeModes]); otherwise the
+     * card's own reading, exactly [forName]. The reading every "is this the window?" question about
+     * a materialized cast should ask — a charm's union of modes answers "what is it worth in hand",
+     * not "what does this cast do".
+     */
+    fun forCast(cardName: String, cast: CastSpell): CardIntent? {
+        val definition = registry?.getCard(cardName) ?: return null
+        if (cast.faceIndex == null && !cast.castFused) {
+            CardIntentAnalyzer.analyzeModes(definition, cast.chosenModes)?.let { return it }
+        }
         return CardIntentAnalyzer.analyze(definition)
     }
 
@@ -111,10 +137,23 @@ class IntentCatalog private constructor(private val registry: CardRegistry?) {
      * [com.wingedsheep.engine.state.components.identity.RoomFaceStatics] tests it — by [RoomFaceId]
      * against the card definition's faces — so the two cannot drift on which door is open.
      */
-    fun forPermanent(container: ComponentContainer, cardName: String): List<CardIntent> {
+    fun forPermanent(
+        container: ComponentContainer,
+        cardName: String,
+        /** Leave out its "when this enters" triggers — see [CardIntentAnalyzer.analyzeInPlay]. */
+        entrySpent: Boolean = false,
+    ): List<CardIntent> {
         val definition = registry?.getCard(cardName) ?: return emptyList()
         val room = container.get<RoomComponent>()
-            ?: return listOf(CardIntentAnalyzer.analyzeSelf(definition))
+            ?: return listOf(
+                if (entrySpent && definition.sagaChapters.isNotEmpty()) {
+                    CardIntentAnalyzer.analyzeSagaInPlay(
+                        definition,
+                        container.get<CountersComponent>()?.getCount(CounterType.LORE) ?: 0,
+                    )
+                } else if (entrySpent) CardIntentAnalyzer.analyzeInPlay(definition)
+                else CardIntentAnalyzer.analyzeSelf(definition),
+            )
         return definition.cardFaces
             .filter { RoomFaceId(it.name) in room.unlocked }
             .map { CardIntentAnalyzer.analyzeFace(definition, it) }
@@ -260,10 +299,19 @@ class IntentCatalog private constructor(private val registry: CardRegistry?) {
      * [TargetPolarity] of each of [requirements], read off [effect] — a triggered ability being put
      * on the stack, whose effect and requirements travel on its continuation rather than on a card
      * the catalog can look up. Empty when the catalog is off.
+     *
+     * [sourceName] names the permanent the ability comes from, when known: Embercleave's "attach it
+     * to target creature you control" is read off what that Equipment does to the creature it equips.
      */
-    fun effectTargetPolarities(effect: Effect, requirements: List<TargetRequirement>): List<TargetPolarity> =
+    fun effectTargetPolarities(
+        effect: Effect,
+        requirements: List<TargetRequirement>,
+        sourceName: String? = null,
+    ): List<TargetPolarity> =
         if (!isEnabled) emptyList()
-        else TargetPolarityAnalyzer.forRequirements(effect, requirements, ::tokenDefinition)
+        else TargetPolarityAnalyzer.forRequirements(
+            effect, requirements, ::tokenDefinition, source = sourceName?.let(::tokenDefinition),
+        )
 
     /**
      * [TargetPolarity] of each target slot of the printed activated ability [abilityId] on the card
@@ -274,6 +322,30 @@ class IntentCatalog private constructor(private val registry: CardRegistry?) {
         val ability = activatedAbility(cardName, abilityId) ?: return emptyList()
         return TargetPolarityAnalyzer.forAbility(definition, ability, ::tokenDefinition)
     }
+
+    /**
+     * The target slots of the card called [cardName] cast as a spell whose graveyard card ends up
+     * under our control whoever owns it — see [TargetPolarityAnalyzer.takenSlots]. Empty when the
+     * catalog is off or the name is not a real card.
+     */
+    fun spellTakenSlots(cardName: String): Set<Int> =
+        registry?.getCard(cardName)?.let(TargetPolarityAnalyzer::takenSlotsForSpell).orEmpty()
+
+    /** [spellTakenSlots] for the printed activated ability [abilityId] on the card called [cardName]. */
+    fun abilityTakenSlots(cardName: String, abilityId: AbilityId): Set<Int> =
+        activatedAbility(cardName, abilityId)
+            ?.let { TargetPolarityAnalyzer.takenSlots(it.effect, it.targetRequirements) }.orEmpty()
+
+    /** [spellTakenSlots] for [effect] over [requirements] — a triggered ability being put on the stack. */
+    fun effectTakenSlots(effect: Effect, requirements: List<TargetRequirement>): Set<Int> =
+        if (!isEnabled) emptySet() else TargetPolarityAnalyzer.takenSlots(effect, requirements)
+
+    /**
+     * The per-candidate side of the Aura called [cardName] when what it does turns on the
+     * creature type of what it enchants (Sea Legs) — see [HostSplit]. Null for every other card.
+     */
+    fun spellHostSplit(cardName: String): HostSplit? =
+        registry?.getCard(cardName)?.let { TargetPolarityAnalyzer.hostSplit(it, ::tokenDefinition) }
 
     /**
      * What the printed activated ability [abilityId] on the card called [cardName] does to the

@@ -105,7 +105,7 @@ data class PayDynamicManaCostEffect(
  * payoff.
  *
  * Distinct from [Gate.MayPayX], which is one *variable-size* generic payment binding X (no cap, no
- * repeat unit, no colored pips): here the unit cost is fixed and repeated, so `{G}` three times
+ * repeat unit; coloured pips only in its once-paid `additionalManaCost`): here the unit cost is fixed and repeated, so `{G}` three times
  * costs `{G}{G}{G}` and cannot be paid with three colorless.
  *
  * @property cost One repetition's cost. Repeated with `ManaCost.times`, so colored pips repeat too.
@@ -316,71 +316,50 @@ data class AddManaOfChoiceEffect(
  *
  * @property amountSource What determines the amount of mana to add
  * @property allowedColors The colors of mana that can be produced (player chooses distribution)
+ * @property expiry When the produced mana leaves the pool — [ManaExpiry.KEPT_UNTIL_END_OF_TURN] for
+ *   "Until end of turn, you don't lose this mana as steps and phases end" (Klauth, Unrivaled Ancient).
+ *   Mirrors [AddManaEffect.expiry].
+ * @property differentColors "Add two mana of different colors" (Firemind Vessel, Guild Globe,
+ *   Interplanar Beacon): every unit must be a different color from [allowedColors], so one
+ *   resolution can never add two of the same color. The executor prompts pip-by-pip and drops each
+ *   chosen color from the next prompt; the auto-payer treats the excess units as "any color not
+ *   already made by this activation". Requires `amount <= allowedColors.size` to produce the full
+ *   amount; any units past that are lost (no colors remain to choose).
  */
 @SerialName("AddDynamicMana")
 @Serializable
 data class AddDynamicManaEffect(
     val amountSource: DynamicAmount,
     val allowedColors: Set<Color>,
-    val restriction: ManaRestriction? = null
+    val restriction: ManaRestriction? = null,
+    val expiry: ManaExpiry = ManaExpiry.END_OF_TURN,
+    val differentColors: Boolean = false,
 ) : Effect {
     override val description: String = buildString {
-        append("Add X mana in any combination of ")
-        append(allowedColors.joinToString(" and/or ") { "{${it.symbol}}" })
-        append(", where X is ${amountSource.description}")
-        if (restriction != null) append(". ${restriction.description}")
+        if (differentColors) {
+            val amountText = (amountSource as? DynamicAmount.Fixed)?.let { com.wingedsheep.sdk.scripting.util.numberToWord(it.amount) }
+                ?: amountSource.description
+            append("Add $amountText mana of different colors")
+            if (allowedColors.size < Color.entries.size) {
+                append(" among ")
+                append(allowedColors.sorted().joinToString(", ") { "{${it.symbol}}" })
+            }
+        } else {
+            append("Add X mana in any combination of ")
+            append(allowedColors.joinToString(" and/or ") { "{${it.symbol}}" })
+            append(", where X is ${amountSource.description}")
+        }
+        if (restriction != null && restriction.description.isNotEmpty()) append(". ${restriction.description}")
+        when (expiry) {
+            ManaExpiry.END_OF_COMBAT -> append(". Until end of combat, you don't lose this mana as steps and phases end")
+            ManaExpiry.KEPT_UNTIL_END_OF_TURN -> append(". Until end of turn, you don't lose this mana as steps and phases end")
+            ManaExpiry.END_OF_TURN -> Unit
+        }
     }
 
     override fun applyTextReplacement(replacer: TextReplacer): Effect {
         val newAmount = amountSource.applyTextReplacement(replacer)
         return if (newAmount !== amountSource) copy(amountSource = newAmount) else this
-    }
-}
-
-/**
- * Add one mana of any color, restricted to spells (and optionally activated abilities)
- * of the source's chosen subtype, optionally carrying spell riders.
- *
- * Examples:
- *  - Unclaimed Territory: `AddAnyColorManaSpendOnChosenTypeEffect()` —
- *    "Spend this mana only to cast a spell of the chosen type or activate an ability of a
- *    source of the chosen type."
- *  - Cavern of Souls: `AddAnyColorManaSpendOnChosenTypeEffect(creatureOnly = true,
- *    riders = setOf(ManaSpellRider.MakesSpellUncounterable))` —
- *    "Spend this mana only to cast a creature spell of the chosen type, and that spell
- *    can't be countered."
- *
- * At resolution, the executor reads the source's CastChoicesComponent,
- * prompts the player to choose a color, and adds restricted mana whose
- * [ManaRestriction] is a freshly-minted [ManaRestriction.SubtypeSpellsOrAbilitiesOnly]
- * carrying that subtype (and [creatureOnly]), with [riders] propagated. If no creature
- * type has been chosen, no mana is produced.
- */
-@SerialName("AddAnyColorManaSpendOnChosenType")
-@Serializable
-data class AddAnyColorManaSpendOnChosenTypeEffect(
-    val amount: DynamicAmount = DynamicAmount.Fixed(1),
-    val creatureOnly: Boolean = false,
-    val riders: Set<ManaSpellRider> = emptySet()
-) : Effect {
-    constructor(amount: Int) : this(DynamicAmount.Fixed(amount))
-    constructor(
-        amount: Int,
-        creatureOnly: Boolean = false,
-        riders: Set<ManaSpellRider> = emptySet()
-    ) : this(DynamicAmount.Fixed(amount), creatureOnly, riders)
-
-    override val description: String = buildString {
-        append(when (val a = amount) {
-            is DynamicAmount.Fixed -> if (a.amount == 1) "Add one mana of any color" else "Add ${a.amount} mana of any color"
-            else -> "Add ${a.description} mana of any color"
-        })
-        if (creatureOnly) {
-            append(". Spend this mana only to cast a creature spell of the chosen type")
-        } else {
-            append(". Spend this mana only to cast a spell of the chosen type or activate an ability of a source of the chosen type")
-        }
-        for (rider in riders) append(". ${rider.description}")
     }
 }
 

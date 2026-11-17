@@ -2077,7 +2077,10 @@
                     "type": "Fixed",
                     "amount": 1
                 },
-                "onlyIfTargetIsSource": true
+                "targeting": {
+                    "baseFilter": "permanent",
+                    "scope": "Self"
+                }
             }
         ]
     },
@@ -4563,7 +4566,7 @@
                 "mustBeYouControl": false
             },
             {
-                "type": "SuppressEntersTriggers",
+                "type": "SuppressZoneChangeTriggers",
                 "filter": "permanent",
                 "abilitiesOf": {
                     "cardPredicates": [
@@ -9266,7 +9269,8 @@
                         },
                         "descriptionOverride": "Whenever a Mountain you control enters, this emblem deals 4 damage to any target."
                     },
-                    "descriptionOverride": "Whenever a Mountain you control enters, this emblem deals 4 damage to any target."
+                    "descriptionOverride": "Whenever a Mountain you control enters, this emblem deals 4 damage to any target.",
+                    "emblem": true
                 },
                 "timing": "SorcerySpeed",
                 "isPlaneswalkerAbility": true,
@@ -12893,31 +12897,49 @@
                     }
                 },
                 "onPrevented": {
-                    "type": "ReflexiveTrigger",
-                    "action": {
-                        "type": "Composite",
-                        "effects": []
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "Compare",
+                            "left": {
+                                "type": "ContextProperty",
+                                "key": "PREVENTED_DAMAGE_AMOUNT"
+                            },
+                            "operator": "GT",
+                            "right": {
+                                "type": "Fixed",
+                                "amount": 0
+                            }
+                        }
                     },
-                    "optional": false,
-                    "reflexiveEffect": {
-                        "type": "DealDamage",
-                        "amount": {
-                            "type": "ContextProperty",
-                            "key": "PREVENTED_DAMAGE_AMOUNT"
+                    "then": {
+                        "type": "ReflexiveTrigger",
+                        "action": {
+                            "type": "Composite",
+                            "effects": []
                         },
-                        "target": {
-                            "type": "BoundVariable",
-                            "name": "t0"
-                        }
-                    },
-                    "reflexiveTargetRequirements": [
-                        {
-                            "type": "TargetOther",
-                            "baseRequirement": "AnyTarget",
-                            "id": "t0"
-                        }
-                    ],
-                    "descriptionOverride": "this creature deals that much damage to any other target"
+                        "optional": false,
+                        "reflexiveEffect": {
+                            "type": "DealDamage",
+                            "amount": {
+                                "type": "ContextProperty",
+                                "key": "PREVENTED_DAMAGE_AMOUNT"
+                            },
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        "reflexiveTargetRequirements": [
+                            {
+                                "type": "TargetOther",
+                                "baseRequirement": "AnyTarget",
+                                "id": "t0"
+                            }
+                        ],
+                        "descriptionOverride": "this creature deals that much damage to any other target"
+                    }
                 }
             }
         ]
@@ -15841,7 +15863,10 @@
                         },
                         {
                             "type": "PlayAdditionalLands",
-                            "count": 1
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 1
+                            }
                         }
                     ]
                 }

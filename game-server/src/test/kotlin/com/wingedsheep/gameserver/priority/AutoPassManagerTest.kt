@@ -79,7 +79,8 @@ class AutoPassManagerTest : FunSpec({
         defendingPlayerId: EntityId? = null,
         hasAttackers: Boolean = false,
         stackAbilityIdentity: com.wingedsheep.sdk.scripting.AbilityIdentity? = null,
-        priorityPlayerYieldsToStack: Boolean = false
+        priorityPlayerYieldsToStack: Boolean = false,
+        emptyLibraries: Boolean = false,
     ): GameState {
         val state = mockk<GameState>(relaxed = true)
         // Persistent-yield lookup (backlog §C): default off so existing cases are unaffected.
@@ -104,6 +105,8 @@ class AutoPassManagerTest : FunSpec({
         every { state.sharedTurnTeam(player1) } returns listOf(player1)
         every { state.sharedTurnTeam(player2) } returns listOf(player2)
         every { state.isActiveSideGone } returns false
+        // A relaxed mock's library would be empty — the decking-draw window. Give both a card.
+        every { state.getLibrary(any()) } returns if (emptyLibraries) emptyList() else listOf(EntityId.generate())
 
         // Mock BlockersDeclaredThisCombatComponent on defender if blockers have been declared
         if (blockersHaveBeenDeclared) {
@@ -285,6 +288,13 @@ class AutoPassManagerTest : FunSpec({
         actionType = "CastFaceDown",
         description = "Cast Krosan Cloudscraper face-down",
         action = CastSpell(playerId, EntityId.generate(), castFaceDown = true),
+        isAffordable = affordable
+    )
+
+    fun pumpAbilityAction(playerId: EntityId, affordable: Boolean = true) = LegalActionInfo(
+        actionType = "ActivateAbility",
+        description = "{2}: +1/+0 until end of turn",
+        action = ActivateAbility(playerId, EntityId.generate(), AbilityId("pump")),
         isAffordable = affordable
     )
 
@@ -518,6 +528,27 @@ class AutoPassManagerTest : FunSpec({
             autoPassManager.shouldAutoPass(state, player2, actions) shouldBe true
         }
 
+        test("STOP during opponent's declare attackers when player can pay for an activated ability") {
+            val state = createMockState(player2, player1, Step.DECLARE_ATTACKERS, hasAttackers = true)
+            val actions = listOf(
+                passPriorityAction(player2),
+                pumpAbilityAction(player2)
+            )
+
+            autoPassManager.shouldAutoPass(state, player2, actions) shouldBe false
+        }
+
+        test("Auto-pass during opponent's declare attackers when the only activated ability is unaffordable") {
+            // "{2}: +1/+0" with no untapped mana is offered greyed out — nothing to stop for (#3672).
+            val state = createMockState(player2, player1, Step.DECLARE_ATTACKERS, hasAttackers = true)
+            val actions = listOf(
+                passPriorityAction(player2),
+                pumpAbilityAction(player2, affordable = false)
+            )
+
+            autoPassManager.shouldAutoPass(state, player2, actions) shouldBe true
+        }
+
         test("Auto-pass during opponent's declare attackers with no instant-speed responses") {
             val state = createMockState(player2, player1, Step.DECLARE_ATTACKERS, hasAttackers = true)
             val actions = listOf(
@@ -657,6 +688,19 @@ class AutoPassManagerTest : FunSpec({
             )
 
             autoPassManager.shouldAutoPass(state, player1, actions) shouldBe true
+        }
+
+        test("STOP during my upkeep with an empty library when holding an instant") {
+            // The last window before the draw that loses (CR 704.5b) — a Paradox Shaper activation
+            // there is what saves the game.
+            val state = createMockState(player1, player1, Step.UPKEEP, emptyLibraries = true)
+            val actions = listOf(
+                passPriorityAction(player1),
+                instantSpellAction(player1)
+            )
+
+            autoPassManager.shouldAutoPass(state, player1, actions) shouldBe false
+            autoPassManager.shouldAutoPass(state, player1, listOf(passPriorityAction(player1))) shouldBe true
         }
 
         test("Auto-pass during my draw step even with instants") {

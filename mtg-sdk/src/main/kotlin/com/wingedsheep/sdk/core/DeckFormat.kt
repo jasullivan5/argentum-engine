@@ -8,7 +8,10 @@ import kotlinx.serialization.Serializable
  * A card's [com.wingedsheep.sdk.model.CardDefinition.legalFormats] is the set of formats in
  * which the card is currently legal (i.e. not banned and printed in a legal set). Format-
  * specific deck-construction rules beyond per-card legality (Commander singleton/100, Vintage
- * restricted-list, etc.) are enforced separately by the deck validator.
+ * restricted-list, Canadian Highlander points, etc.) are enforced separately by the deck validator.
+ *
+ * The two Highlander formats are the exception to "sourced from Scryfall": Scryfall publishes no
+ * legality for them, so their per-card legality is derived from Vintage's (see [scryfallKey]).
  */
 @Serializable
 enum class DeckFormat {
@@ -21,23 +24,46 @@ enum class DeckFormat {
     BRAWL,            // 100-card singleton (Arena/Historic Brawl). Scryfall key: "brawl".
     STANDARD_BRAWL,   // 60-card singleton, Standard pool.            Scryfall key: "standardbrawl".
     PAUPER,
-    PREMODERN;
+    PREMODERN,
+
+    /**
+     * 100-card-minimum singleton, 1v1, 20 life, no commander, over the Vintage card pool (every
+     * card Vintage allows, restricted ones included — a singleton deck can't exceed the restricted
+     * list's one copy). No points list: that is [CANADIAN_HIGHLANDER].
+     */
+    HIGHLANDER,
+
+    /**
+     * Canadian Highlander (<https://www.canadianhighlander.ca/>): [HIGHLANDER]'s shape plus the
+     * format's points list — powerful cards cost points and a deck may spend at most
+     * [CanadianHighlanderPoints.POINT_CAP]. No sideboards.
+     */
+    CANADIAN_HIGHLANDER;
 
     /**
      * Lower-case identifier matching Scryfall's `legalities.<key>` field. Most enum names map
      * directly (`STANDARD` → `"standard"`); `STANDARD_BRAWL` is special-cased because Scryfall
-     * concatenates words.
+     * concatenates words. Null for the Highlander formats, which Scryfall doesn't track: their
+     * legality is derived from Vintage's at load time.
      */
-    val scryfallKey: String get() = when (this) {
+    val scryfallKey: String? get() = when (this) {
         STANDARD_BRAWL -> "standardbrawl"
+        HIGHLANDER, CANADIAN_HIGHLANDER -> null
         else -> name.lowercase()
     }
 
     /** Human-readable label for UI surfaces. */
     val displayName: String get() = when (this) {
         STANDARD_BRAWL -> "Standard Brawl"
+        CANADIAN_HIGHLANDER -> "Canadian Highlander"
         else -> name.lowercase().replaceFirstChar { it.uppercase() }
     }
+
+    /**
+     * True for the 100-card singleton formats played without a commander. They take the
+     * constructed baseline's life total and table, and differ from it only in deck construction.
+     */
+    val isHighlanderShape: Boolean get() = this == HIGHLANDER || this == CANADIAN_HIGHLANDER
 
     /**
      * True for singleton formats with a designated commander (Commander, Brawl, Standard Brawl).

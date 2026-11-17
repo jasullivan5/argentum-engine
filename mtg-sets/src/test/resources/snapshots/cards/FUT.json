@@ -1,3 +1,39 @@
+// Aven Mindcensor
+{
+    "name": "Aven Mindcensor",
+    "manaCost": "{2}{W}",
+    "typeLine": "Creature — Bird Wizard",
+    "oracleText": "Flash\nFlying\nIf an opponent would search a library, that player searches the top four cards of that library instead.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 1
+    },
+    "keywords": [
+        "FLASH",
+        "FLYING"
+    ],
+    "script": {
+        "replacementEffects": [
+            {
+                "type": "LimitLibrarySearch",
+                "appliesTo": {
+                    "player": "EachOpponent"
+                },
+                "topCount": 4
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "18",
+        "rarity": "UNCOMMON",
+        "artist": "Rebecca Guay",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/b/5b8ede8a-5317-4662-b964-a9bd202a4aab.jpg?1783943127"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Blade of the Sixth Pride
 {
     "name": "Blade of the Sixth Pride",
@@ -33,6 +69,159 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Boldwyr Intimidator
+{
+    "name": "Boldwyr Intimidator",
+    "manaCost": "{5}{R}{R}",
+    "typeLine": "Creature — Giant Warrior",
+    "oracleText": "Cowards can't block Warriors.\n{R}: Target creature becomes a Coward until end of turn.\n{2}{R}: Target creature becomes a Warrior until end of turn.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Boldwyr Intimidator:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{R}"
+                    }
+                },
+                "effect": {
+                    "type": "SetCreatureSubtypes",
+                    "subtypes": [
+                        "Coward"
+                    ],
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "duration": "EndOfTurn"
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{R}: Target creature becomes a Coward until end of turn."
+            },
+            {
+                "id": "Boldwyr Intimidator:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}{R}"
+                    }
+                },
+                "effect": {
+                    "type": "SetCreatureSubtypes",
+                    "subtypes": [
+                        "Warrior"
+                    ],
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t1"
+                    },
+                    "duration": "EndOfTurn"
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature"
+                        },
+                        "id": "t1"
+                    }
+                ],
+                "descriptionOverride": "{2}{R}: Target creature becomes a Warrior until end of turn."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "CantBeBlockedBy",
+                "blockerFilter": {
+                    "cardPredicates": [
+                        "IsCreature",
+                        {
+                            "type": "HasSubtype",
+                            "subtype": "Coward"
+                        }
+                    ]
+                },
+                "filter": {
+                    "baseFilter": "creature Warrior"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "111",
+        "rarity": "UNCOMMON",
+        "artist": "Esad Ribic",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/7/179bec14-2e22-43eb-8854-b70a97dd023b.jpg?1783943103",
+        "rulings": [
+            {
+                "date": "2007-05-01",
+                "text": "Each of the activated abilities replaces all creature types the affected creature may have had."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Dakmor Salvage
+{
+    "name": "Dakmor Salvage",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "This land enters tapped.\n{T}: Add {B}.\nDredge 2 (If you would draw a card, you may mill two cards instead. If you do, return this card from your graveyard to your hand.)",
+    "keywords": [
+        "DREDGE"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Dredge",
+            "amount": 2
+        }
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Dakmor Salvage:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "BLACK"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ],
+        "replacementEffects": [
+            "EntersTapped"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "169",
+        "rarity": "UNCOMMON",
+        "artist": "John Avon",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/f/8f7f06e8-d8ee-435c-965c-8e1302a8ec10.jpg?1783943090"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -90,6 +279,106 @@
     ]
 }
 
+// Fleshwrither
+{
+    "name": "Fleshwrither",
+    "manaCost": "{2}{B}{B}",
+    "typeLine": "Creature — Horror",
+    "oracleText": "Transfigure {1}{B}{B} ({1}{B}{B}, Sacrifice this creature: Search your library for a creature card with the same mana value as this creature, put that card onto the battlefield, then shuffle. Transfigure only as a sorcery.)",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Fleshwrither:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}{B}{B}"
+                            }
+                        },
+                        "CostSacrificeSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Library",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "IsCreature",
+                                        {
+                                            "type": "ManaValueEqualsDynamic",
+                                            "amount": {
+                                                "type": "EntityProperty",
+                                                "entity": "SacrificedAsCost",
+                                                "numericProperty": "ManaValue"
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "storeAs": "searchable",
+                            "search": true
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "searchable",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "found",
+                            "prompt": "Search your library for a creature card with mana value equal to the sacrificed creature's mana value to put onto the battlefield",
+                            "selectedLabel": "Put onto the battlefield"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "found",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Battlefield"
+                            }
+                        },
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
+                    ]
+                },
+                "timing": "SorcerySpeed",
+                "descriptionOverride": "Transfigure {1}{B}{B} — Sacrifice Fleshwrither to search for a creature card with the same mana value and put it onto the battlefield."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "84",
+        "rarity": "UNCOMMON",
+        "artist": "Dave Allsop",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/8/08e1a646-6925-4a53-a99c-8951af016a7a.jpg?1783943112",
+        "rulings": [
+            {
+                "date": "2007-05-01",
+                "text": "Transfigure is similar to Transmute, though it can be activated only if the permanent with Transfigure is on the battlefield, and it can fetch only a creature."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Fomori Nomad
 {
     "name": "Fomori Nomad",
@@ -141,6 +430,131 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Graven Cairns
+{
+    "name": "Graven Cairns",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "{T}: Add {C}.\n{B/R}, {T}: Add {B}{B}, {B}{R}, or {R}{R}.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Graven Cairns:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Graven Cairns:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{B/R}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "AddMana",
+                    "color": "BLACK",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Graven Cairns:3",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{B/R}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "AddMana",
+                            "color": "BLACK"
+                        },
+                        {
+                            "type": "AddMana",
+                            "color": "RED"
+                        }
+                    ]
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Graven Cairns:4",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{B/R}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "AddMana",
+                    "color": "RED",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "175",
+        "rarity": "RARE",
+        "artist": "Anthony S. Waters",
+        "flavorText": "Shamans of Kar-Sengir claim that their sun sets because it can no longer bear the gaze of those pain-carved cliffs.",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/1/81e7d329-ef6a-45f3-82b6-37a3606c00bc.jpg?1783943089",
+        "rulings": [
+            {
+                "date": "2007-05-01",
+                "text": "\"{B/R}, {T}\" is the same as saying \"{B}, {T}\" or \"{R}, {T}\"."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
     ]
 }
 
@@ -214,6 +628,80 @@
     ]
 }
 
+// Llanowar Empath
+{
+    "name": "Llanowar Empath",
+    "manaCost": "{3}{G}",
+    "typeLine": "Creature — Elf Shaman",
+    "oracleText": "When this creature enters, scry 2, then reveal the top card of your library. If it's a creature card, put it into your hand.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Llanowar Empath:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "Scry",
+                            "count": 2
+                        },
+                        {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "GatherCards",
+                                    "source": {
+                                        "type": "TopOfLibrary",
+                                        "count": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        }
+                                    },
+                                    "storeAs": "gathered0"
+                                },
+                                {
+                                    "type": "RevealCollection",
+                                    "from": "gathered0"
+                                },
+                                {
+                                    "type": "FilterCollection",
+                                    "from": "gathered0",
+                                    "filter": "creature",
+                                    "storeMatching": "matching2"
+                                },
+                                {
+                                    "type": "MoveCollection",
+                                    "from": "matching2",
+                                    "destination": {
+                                        "type": "ToZone",
+                                        "zone": "Hand"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "130",
+        "artist": "Warren Mahy",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/f/bf831ed3-d3ae-43ac-82ca-4984c05dde86.jpg?1783943099"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Mass of Ghouls
 {
     "name": "Mass of Ghouls",
@@ -230,6 +718,70 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// Narcomoeba
+{
+    "name": "Narcomoeba",
+    "manaCost": "{1}{U}",
+    "typeLine": "Creature — Illusion",
+    "oracleText": "Flying\nWhen this card is put into your graveyard from your library, you may put it onto the battlefield.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Narcomoeba:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Library",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.MayDecide",
+                        "prompt": "Put Narcomoeba onto the battlefield?",
+                        "sourceRequiredZone": "Graveyard"
+                    },
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": "Self",
+                        "destination": "Battlefield",
+                        "fromZone": "Graveyard"
+                    }
+                },
+                "activeZones": [
+                    "Graveyard"
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "54",
+        "rarity": "UNCOMMON",
+        "artist": "Matt Stewart",
+        "flavorText": "It was created by the Iquati as a living memory—one that objects to being forgotten.",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/7/f76b3746-2e2c-4560-a2d2-e7b5b92833b2.jpg?1783943117",
+        "rulings": [
+            {
+                "date": "2024-01-12",
+                "text": "If Narcomoeba is revealed or looked at while moving from your library to your graveyard (such as with Mind Funeral), its ability will trigger when it's put into your graveyard. It was still in your library while it was revealed or being looked at."
+            },
+            {
+                "date": "2024-01-12",
+                "text": "If Narcomoeba is removed from your graveyard before its ability resolves, you can't put it onto the battlefield."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 
@@ -299,6 +851,80 @@
     ]
 }
 
+// Pact of Negation
+{
+    "name": "Pact of Negation",
+    "manaCost": "{0}",
+    "typeLine": "Instant",
+    "oracleText": "Counter target spell.\nAt the beginning of your next upkeep, pay {3}{U}{U}. If you don't, you lose the game.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                "Counter",
+                {
+                    "type": "CreateDelayedTrigger",
+                    "step": "UPKEEP",
+                    "effect": {
+                        "type": "PayOrSuffer",
+                        "cost": {
+                            "type": "PayAtom",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{3}{U}{U}"
+                            }
+                        },
+                        "suffer": "LoseGame",
+                        "consequenceDescription": "lose the game"
+                    },
+                    "timing": "NextTurn",
+                    "fireOnPlayer": {
+                        "type": "PlayerRef",
+                        "player": "You"
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": {},
+                    "zone": "Stack"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "42",
+        "rarity": "RARE",
+        "artist": "Jason Chan",
+        "flavorText": "Those who expect betrayal at every turn are seldom disappointed.",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/c/cca467a2-a2b3-4bdf-9d60-62979f675347.jpg?1783943120",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "If Pact of Negation is countered or otherwise doesn't resolve (perhaps because its target became illegal), the delayed triggered ability that threatens you with a game loss won't trigger at the beginning of your next upkeep."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "If Pact of Negation resolves with a legal target but fails to counter that spell (most likely because that spell can't be countered), the delayed triggered ability will still trigger at the beginning of your next upkeep and you will have to pay. Or else."
+            },
+            {
+                "date": "2013-06-07",
+                "text": "Although originally printed with a characteristic-defining ability that defined its color, this card now has a color indicator. This color indicator can't be affected by text-changing effects (such as the one created by Crystal Spray), although color-changing effects can still overwrite it."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ],
+    "colorIndicator": [
+        "BLUE"
+    ]
+}
+
 // Rites of Flourishing
 {
     "name": "Rites of Flourishing",
@@ -351,6 +977,159 @@
     "colorIdentityOverride": [
         "GREEN"
     ]
+}
+
+// Sprout Swarm
+{
+    "name": "Sprout Swarm",
+    "manaCost": "{1}{G}",
+    "typeLine": "Instant",
+    "oracleText": "Convoke (Your creatures can help cast this spell. Each creature you tap while casting this spell pays for {1} or one mana of that creature's color.)\nBuyback {3} (You may pay an additional {3} as you cast this spell. If you do, put this card into your hand as it resolves.)\nCreate a 1/1 green Saproling creature token.",
+    "keywords": [
+        "CONVOKE"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Kicker",
+            "manaCost": "{3}",
+            "displayPrefix": "Buyback",
+            "branchesEffect": false,
+            "declaredSlot": "BOUGHT_BACK"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "CreateToken",
+            "power": 1,
+            "toughness": 1,
+            "colors": [
+                "GREEN"
+            ],
+            "creatureTypes": [
+                "Saproling"
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "138",
+        "artist": "Chippy",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/b/0b915355-4e98-44df-81bd-961a3d3c86b8.jpg?1783943098"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Sword of the Meek
+{
+    "name": "Sword of the Meek",
+    "manaCost": "{2}",
+    "typeLine": "Artifact — Equipment",
+    "oracleText": "Equipped creature gets +1/+2.\nEquip {2}\nWhenever a 1/1 creature you control enters, you may return this card from your graveyard to the battlefield, then attach it to that creature.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Sword of the Meek:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature pow=1 tou=1 ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "Gated",
+                        "gate": {
+                            "type": "Gate.DoAction",
+                            "action": {
+                                "type": "MoveToZone",
+                                "target": "Self",
+                                "destination": "Battlefield",
+                                "fromZone": "Graveyard"
+                            }
+                        },
+                        "then": {
+                            "type": "AttachEquipment",
+                            "target": "TriggeringEntity"
+                        }
+                    }
+                },
+                "activeZones": [
+                    "Graveyard"
+                ],
+                "descriptionOverride": "Whenever a 1/1 creature you control enters, you may return this card from your graveyard to the battlefield, then attach it to that creature."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Sword of the Meek:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}"
+                    }
+                },
+                "effect": {
+                    "type": "AttachEquipment",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "creature you control"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        },
+                        "id": "creature you control"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "isEquipAbility": true
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 2
+            }
+        ]
+    },
+    "equipCost": "{2}",
+    "metadata": {
+        "collectorNumber": "165",
+        "rarity": "UNCOMMON",
+        "artist": "Franz Vohwinkel",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/9/e9f13705-6ede-4c29-a2b4-a082bf69e9c5.jpg?1783943091",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "Sword of the Meek's last ability triggers only if it's in your graveyard immediately after the 1/1 creature enters the battlefield."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "If a creature is entering the battlefield under your control, consider static abilities to determine whether its power and toughness are both 1. Spells, activated abilities, and triggered abilities can't be used to raise or lower the creature's power and toughness in time to have the last ability trigger or to stop it from triggering."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "Once the last ability has triggered, changing the power or toughness of the creature won't stop you from returning Sword of the Meek and attaching it to the creature."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "Any creature can be equipped with Sword of the Meek, not just 1/1 creatures."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "If Sword of the Meek can't be attached to the creature that caused its last ability to trigger, most likely because that creature has left the battlefield, Sword of the Meek returns to the battlefield and remains unattached."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
 }
 
 // Tarmogoyf
@@ -435,5 +1214,66 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Venser, Shaper Savant
+{
+    "name": "Venser, Shaper Savant",
+    "manaCost": "{2}{U}{U}",
+    "typeLine": "Legendary Creature — Human Wizard",
+    "oracleText": "Flash (You may cast this spell any time you could cast an instant.)\nWhen Venser enters, return target spell or permanent to its owner's hand.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Venser, Shaper Savant:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ReturnSpellOrPermanentToOwnersHand",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetSpellOrPermanent",
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "46",
+        "rarity": "RARE",
+        "artist": "Aleksi Briclot",
+        "flavorText": "His marvels of artifice pale in comparison to the developing machinery of his mind.",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/e/0e84fc99-4045-4518-b588-512a675f2933.jpg?1783943119",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "If Venser's triggered ability targets a spell cast with flashback, that spell will be exiled instead of returning to its owner's hand."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "If a spell is returned to its owner's hand, it's removed from the stack and thus will not resolve. The spell isn't countered; it just no longer exists. This works even against a spell that can't be countered."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "If a copy of a spell is returned to its owner's hand, it's moved there, then it will cease to exist as a state-based action. It can't be recast."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }

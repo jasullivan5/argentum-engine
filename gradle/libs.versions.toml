@@ -3,17 +3,17 @@
 # https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
 
 [versions]
-kotlin = "2.4.0"
+kotlin = "2.4.21"
 kotlinxDatetime = "0.8.0"
-kotlinxSerializationJSON = "1.11.0"
+kotlinxSerializationJSON = "1.12.0"
 kotlinxCoroutines = "1.11.0"
-kotest = "6.2.1"
+kotest = "6.2.6"
 mockk = "1.14.11"
-springBoot = "4.1.0"
-springdocOpenapi = "3.0.3"
-kover = "0.9.8"
-classgraph = "4.8.184"
-testcontainers = "1.20.4"
+springBoot = "4.1.2"
+springdocOpenapi = "3.2.0"
+kover = "0.9.11"
+classgraph = "6.0.1"
+testcontainers = "2.0.5"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -26,7 +26,7 @@ kotestProperty = { module = "io.kotest:kotest-property", version.ref = "kotest" 
 kotestExtensionsSpring = { module = "io.kotest:kotest-extensions-spring", version.ref = "kotest" }
 kotlinxCoroutinesTest = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
-slf4jApi = { module = "org.slf4j:slf4j-api", version = "2.0.18" }
+slf4jApi = { module = "org.slf4j:slf4j-api", version = "2.0.20" }
 classgraph = { module = "io.github.classgraph:classgraph", version.ref = "classgraph" }
 
 # Spring Boot dependencies
@@ -44,8 +44,8 @@ springBootFlyway = { module = "org.springframework.boot:spring-boot-flyway", ver
 flywayCore = { module = "org.flywaydb:flyway-core" }
 flywayPostgresql = { module = "org.flywaydb:flyway-database-postgresql" }
 postgresql = { module = "org.postgresql:postgresql" }
-testcontainersPostgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
-testcontainersJunit = { module = "org.testcontainers:junit-jupiter", version.ref = "testcontainers" }
+testcontainersPostgresql = { module = "org.testcontainers:testcontainers-postgresql", version.ref = "testcontainers" }
+testcontainersJunit = { module = "org.testcontainers:testcontainers-junit-jupiter", version.ref = "testcontainers" }
 
 # SpringDoc OpenAPI (Swagger UI)
 springdocOpenapi = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdocOpenapi" }

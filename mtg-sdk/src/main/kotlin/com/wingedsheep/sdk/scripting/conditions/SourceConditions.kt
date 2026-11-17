@@ -3,6 +3,7 @@ package com.wingedsheep.sdk.scripting.conditions
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.scripting.events.DamageType
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.text.TextReplacer
 import kotlinx.serialization.SerialName
@@ -29,20 +30,45 @@ data object YouControlSource : Condition {
 }
 
 /**
- * Condition: the effect's source dealt damage — combat or noncombat — to [player] this turn.
- * Reads the source's per-recipient damage memory, so it answers for the source *as the current
- * object*: a permanent that left the battlefield and returned has dealt damage to nobody (CR 400.7).
+ * Condition: the effect's source dealt damage of [damageType] to [player] this turn —
+ * [DamageType.Any] (the default) for combat or noncombat alike, [DamageType.Combat] /
+ * [DamageType.NonCombat] for one kind. Reads the source's per-recipient damage memory, so it
+ * answers for the source *as the current object*: a permanent that left the battlefield and
+ * returned has dealt damage to nobody (CR 400.7), while an ability that outlives it — including
+ * one whose cost sacrificed it — reads its last known record.
  *
  * As a player-target restriction ([player] = `Player.Candidate`, via
  * `Conditions.candidateWasDealtDamageBySourceThisTurn()`) it backs "target player dealt damage by
- * this creature this turn" (Wicked Akuba).
+ * this creature this turn" (Wicked Akuba) and, with [DamageType.Combat], "target player who was
+ * dealt combat damage by this creature this turn" (Hope of Ghirapur).
  */
 @SerialName("SourceDealtDamageToPlayerThisTurn")
 @Serializable
 data class SourceDealtDamageToPlayerThisTurn(
+    val player: Player,
+    val damageType: DamageType = DamageType.Any
+) : Condition {
+    override val description: String =
+        "if this dealt ${damageType.description.let { if (it.isEmpty()) "" else "$it " }}damage to ${player.description} this turn"
+}
+
+/**
+ * Condition: the effect's source — a creature — was declared attacking [player] this turn
+ * (CR 508.1). Only a player chosen directly as the defender counts: attacking a planeswalker or
+ * battle doesn't attack its controller or protector. The record belongs to the creature as the
+ * current object and survives it leaving combat; a returned creature has attacked nobody
+ * (CR 400.7), while an ability that outlives the creature reads its last known record (CR 608.2h).
+ *
+ * Inside `ForEachPlayer(Player.Each)`, `SourceAttackedPlayerThisTurn(Player.You)` asks the
+ * question of each player in turn — "each player this creature attacked this turn loses the
+ * game" (Angel of Destiny).
+ */
+@SerialName("SourceAttackedPlayerThisTurn")
+@Serializable
+data class SourceAttackedPlayerThisTurn(
     val player: Player
 ) : Condition {
-    override val description: String = "if this dealt damage to ${player.description} this turn"
+    override val description: String = "if this attacked ${player.description} this turn"
 }
 
 /**
@@ -207,26 +233,51 @@ data object NoManaSpentToCastEntered : Condition {
 }
 
 /**
- * Condition: "if one or more of them entered from exile or was cast from exile."
+ * Condition: "if one or more of them entered from [zone] or was cast from [zone]."
  *
  * The batch-enters, any-of counterpart of
- * [com.wingedsheep.sdk.scripting.conditions.TriggeringEntityEnteredOrWasCastFromGraveyard]:
+ * [com.wingedsheep.sdk.scripting.conditions.TriggeringEntityEnteredOrWasCastFrom]:
  * evaluated over the permanents a batch-enters trigger captured (the
  * `Triggers.oneOrMore(filter).enter()` batch, exposed as the `trigger.captured` pipeline
- * collection), it is true iff **at least one** captured permanent came from exile — either put
- * onto the battlefield directly from exile or cast from exile. An empty capture is false.
+ * collection), it is true iff **at least one** captured permanent came from [zone] — either put
+ * onto the battlefield directly from it or cast from it. An empty capture is false.
  *
- * Note the quantifier: [NoManaSpentToCastEntered] is an *every* over the batch ("if **none** of
- * them …"), this one is an *any* ("if **one or more** of them …").
+ * [zone] is any of [PROVENANCE_ZONES] (hand, library, graveyard, exile), the zones the engine
+ * stamps entry and cast provenance for. Note the quantifier: [NoManaSpentToCastEntered] is an *every* over the batch
+ * ("if **none** of them …"), this one is an *any* ("if **one or more** of them …").
  *
- * Used by **Extraordinary Journey** as a real intervening-"if" (CR 603.4) rather than a
- * resolution-time gate, which matters because the ability also carries `oncePerTurn`: a batch with
- * no exile arrivals must not trigger at all, or it would burn the turn's single firing.
+ * Works as a real intervening-"if" (CR 603.4) as well as a resolution-time gate, which matters
+ * when the ability also carries `oncePerTurn`: a batch with no qualifying arrivals must not trigger
+ * at all, or it would burn the turn's single firing.
+ * - **Extraordinary Journey** — `AnyEnteredOrWasCastFrom(Zone.EXILE)`, once each turn.
+ * - **Kotis, Sibsig Champion** — `AnyEnteredOrWasCastFrom(Zone.GRAVEYARD)`.
  */
-@SerialName("AnyEnteredOrWasCastFromExile")
+@SerialName("AnyEnteredOrWasCastFrom")
 @Serializable
-data object AnyEnteredOrWasCastFromExile : Condition {
-    override val description: String = "one or more of them entered from exile or was cast from exile"
+data class AnyEnteredOrWasCastFrom(val zone: Zone) : Condition {
+    init {
+        require(zone in PROVENANCE_ZONES) {
+            "AnyEnteredOrWasCastFrom tracks ${PROVENANCE_ZONES.joinToString()} provenance, not $zone"
+        }
+    }
+
+    override val description: String =
+        "one or more of them entered from ${provenanceZoneText(zone)} or was cast from ${provenanceZoneText(zone)}"
+}
+
+/**
+ * The zones the engine stamps entry and cast provenance for — where a permanent can have come
+ * from before it entered the battlefield, directly or by resolving as a spell.
+ */
+internal val PROVENANCE_ZONES: Set<Zone> = setOf(Zone.HAND, Zone.LIBRARY, Zone.GRAVEYARD, Zone.EXILE)
+
+/** "a graveyard" / "exile" / "a library" / "a hand" — the Oracle wording of a provenance zone. */
+internal fun provenanceZoneText(zone: Zone): String = when (zone) {
+    Zone.EXILE -> "exile"
+    Zone.GRAVEYARD -> "a graveyard"
+    Zone.LIBRARY -> "a library"
+    Zone.HAND -> "a hand"
+    else -> zone.name.lowercase()
 }
 
 /**
@@ -483,6 +534,7 @@ data class CastChoiceMade(val slot: com.wingedsheep.sdk.scripting.ChoiceSlot) : 
         com.wingedsheep.sdk.scripting.ChoiceSlot.FIRST_KICKER -> "if it was kicked with its first kicker"
         com.wingedsheep.sdk.scripting.ChoiceSlot.SECOND_KICKER -> "if it was kicked with its second kicker"
         com.wingedsheep.sdk.scripting.ChoiceSlot.BARGAINED -> "if it was bargained"
+        com.wingedsheep.sdk.scripting.ChoiceSlot.ENTWINED -> "if this spell was entwined"
         com.wingedsheep.sdk.scripting.ChoiceSlot.EVIDENCE_COLLECTED -> "if evidence was collected"
         com.wingedsheep.sdk.scripting.ChoiceSlot.ADDITIONAL_COST_PAID -> "if this spell's additional cost was paid"
         com.wingedsheep.sdk.scripting.ChoiceSlot.SNEAK -> "if its sneak cost was paid"
@@ -490,6 +542,9 @@ data class CastChoiceMade(val slot: com.wingedsheep.sdk.scripting.ChoiceSlot) : 
         com.wingedsheep.sdk.scripting.ChoiceSlot.MAYHEM_CAST -> "if this spell's mayhem cost was paid"
         com.wingedsheep.sdk.scripting.ChoiceSlot.WATERBEND_PAID -> "if its waterbend cost was paid"
         com.wingedsheep.sdk.scripting.ChoiceSlot.GIFT_PROMISED -> "if the gift was promised"
+        com.wingedsheep.sdk.scripting.ChoiceSlot.FORETOLD -> "if this spell was foretold"
+        com.wingedsheep.sdk.scripting.ChoiceSlot.MADNESS_CAST -> "if this spell's madness cost was paid"
+        com.wingedsheep.sdk.scripting.ChoiceSlot.SURGE_CAST -> "if its surge cost was paid"
         else -> "if a ${slot.name.lowercase().replace('_', ' ')} was chosen"
     }
 }

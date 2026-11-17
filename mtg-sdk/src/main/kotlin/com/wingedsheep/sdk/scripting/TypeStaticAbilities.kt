@@ -4,6 +4,7 @@ import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
 import com.wingedsheep.sdk.scripting.text.TextReplacer
+import com.wingedsheep.sdk.scripting.references.Player
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -18,6 +19,11 @@ import kotlinx.serialization.Serializable
  * MUST pass `Filters.EnchantedCreature` explicitly, or it will silently grant the subtype to
  * itself and leave the enchanted creature untouched — the failure is invisible without a
  * scenario test that asserts the subtype on the *host*.
+ *
+ * With the default source filter, printed at the top of the card's own script and unconditional,
+ * this is the "[this] is also a [subtype]" characteristic-defining ability (CR 604.3 — Tajuru
+ * Paragon). It then functions in every zone: see
+ * [com.wingedsheep.sdk.model.CardDefinition.selfDefinedSubtypes].
  *
  * @property subtype The creature subtype to add (e.g., "Knight")
  * @property filter What this ability applies to; defaults to the source, NOT the enchanted creature
@@ -121,7 +127,7 @@ data class IsAllCreatureTypes(
 
 /**
  * The permanents matching [filter] **have the creature types of the object [source] names**,
- * replacing their own (CR 205.1b) while keeping every non-creature subtype.
+ * replacing their own (CR 205.1a) while keeping every non-creature subtype.
  *
  * The type half of the "copy some characteristics of another object" family: [source] is an
  * ordinary [com.wingedsheep.sdk.scripting.targets.EffectTarget.SingleEntity], so the same static reads a card
@@ -267,6 +273,66 @@ data class GrantColor(
 }
 
 /**
+ * "[filter] are [colors]" — a Layer 5 color-*setting* effect (CR 613.1e): the affected objects'
+ * colors become exactly [colors], replacing whatever they were; an empty set is "are colorless".
+ * Its siblings [GrantColor] / [GrantChosenColor] *add* a color ("in addition to its other
+ * colors") and can't express replacing or removing them.
+ *
+ * [filter] is the battlefield half. [offBattlefield] extends the effect past the battlefield to
+ * the spells [offBattlefield] controls and the cards they own in every other zone (hand, library,
+ * graveyard, exile, command), read relative to this permanent's controller — `null` (the default)
+ * is battlefield-only, [Player.You] is "the same is true for spells you control and cards you own
+ * that aren't on the battlefield", [Player.Each] is every player's (Mycosynth Lattice: "All cards
+ * that aren't on the battlefield, spells, and permanents are colorless"). The card predicates of
+ * [filter] (e.g. nonland) also qualify which off-battlefield objects are reached, matched against
+ * their printed characteristics. Off the battlefield the effect is an overlay the color read-sites
+ * consult (`ProjectedState.colorsOf`), since layer projection iterates only permanents.
+ *
+ * Printed with `filter = GroupFilter.source()` and no [offBattlefield] reach, it is the card's own
+ * characteristic-defining ability — "Sphinx of the Guildpact is all colors" (CR 604.3a). Such an
+ * ability is folded into `CardDefinition.colors` (`selfDefinedColors`), so the card has those colors
+ * in every zone, and is not projected again as a timestamped layer-5 effect (CR 613.3).
+ */
+@SerialName("SetColors")
+@Serializable
+data class SetColors(
+    val colors: Set<Color>,
+    val filter: GroupFilter,
+    val offBattlefield: Player? = null
+) : StaticAbility {
+    init {
+        require(offBattlefield == null || offBattlefield == Player.You || offBattlefield == Player.Each || offBattlefield == Player.EachOpponent) {
+            "SetColors.offBattlefield must be null, You, Each or EachOpponent, was $offBattlefield"
+        }
+    }
+
+    override val description: String = buildString {
+        append(filter.description)
+        // "[This] is all colors" (Sphinx of the Guildpact) reads singular; a group reads plural.
+        append(if (filter.scope is com.wingedsheep.sdk.scripting.filters.unified.Scope.Self) " is" else " are")
+        append(when {
+            colors.isEmpty() -> " colorless"
+            colors.size == com.wingedsheep.sdk.core.Color.entries.size -> " all colors"
+            else -> " ${colors.joinToString(" and ") { it.name.lowercase() }}"
+        })
+    }
+
+    /**
+     * True for the self-colour CDA shape — the source itself, battlefield-only reach. Printed at the
+     * top of a card's script it is folded into `CardDefinition.colors` (`selfDefinedColors`) and not
+     * projected again; the one test both sides read.
+     */
+    val isSelfColorShape: Boolean
+        get() = offBattlefield == null && filter == GroupFilter.source()
+
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
+        val newFilter = filter.applyTextReplacement(replacer)
+        val newColors = colors.mapTo(linkedSetOf()) { replacer.replaceColor(it) }
+        return if (newFilter === filter && newColors == colors) this else copy(colors = newColors, filter = newFilter)
+    }
+}
+
+/**
  * Adds the chosen color (resolved from the source's `CastChoicesComponent`) to the target.
  * Used for auras like Shimmerwilds Growth: "Enchanted land is the chosen color."
  *
@@ -356,14 +422,22 @@ data class AddLandTypeByCounter(
  * This is a Layer 6 (ABILITY) continuous effect that clears all keywords and
  * suppresses activated, triggered, and static abilities.
  *
+ * [exceptManaAbilities] is "lose all abilities except mana abilities" (Blood Sun): keywords,
+ * statics, triggered and non-mana activated abilities go, but each affected object keeps its
+ * mana abilities (CR 605.1a — abilities that produce mana, not ones that cost it). A full
+ * removal applied alongside it still takes the mana abilities too.
+ *
  * @property filter What this ability applies to (typically AttachedCreature for auras)
+ * @property exceptManaAbilities Whether the affected objects keep their mana abilities
  */
 @SerialName("LoseAllAbilities")
 @Serializable
 data class LoseAllAbilities(
-    val filter: GroupFilter = GroupFilter.attachedCreature()
+    val filter: GroupFilter = GroupFilter.attachedCreature(),
+    val exceptManaAbilities: Boolean = false
 ) : StaticAbility {
-    override val description: String = "loses all abilities"
+    override val description: String =
+        if (exceptManaAbilities) "loses all abilities except mana abilities" else "loses all abilities"
 }
 
 /**
@@ -484,7 +558,7 @@ data class GrantAdditionalTypesToGroup(
  *
  * This lowers to two continuous effects (see `StaticAbilityHandler.convertSetLandTypesForGroup`):
  * - Layer 4 (TYPE): [com.wingedsheep.engine.mechanics.layers.Modification.SetBasicLandTypes] —
- *   removes the old basic land subtypes and adds [landTypes] (CR 305.7).
+ *   removes every old land type (CR 205.3i) and adds [landTypes] (CR 305.7).
  * - Layer 6 (ABILITY): [com.wingedsheep.engine.mechanics.layers.Modification.RemoveAllAbilities] —
  *   removes the lands' printed abilities. The new basic land type's intrinsic mana ability
  *   (e.g. "{T}: Add {R}" for Mountain) is *not* removed: it is derived from the projected
@@ -492,7 +566,12 @@ data class GrantAdditionalTypesToGroup(
  *
  * @property filter Which lands are affected (e.g. all nonbasic lands — [GroupFilter] over
  *   `GameObjectFilter.NonbasicLand`, both players' lands).
- * @property landTypes The basic land type(s) to set (e.g. {"Mountain"}), replacing all others.
+ * An empty [landTypes] is "loses all land types and abilities" — every land type is removed and
+ * none is added (Lithoform Blight, with an `AttachedTo`-scoped land filter for the
+ * enchanted land). Non-land subtypes and all card types / supertypes are kept.
+ *
+ * @property landTypes The basic land type(s) to set (e.g. {"Mountain"}), replacing every land type
+ *   the lands had (basic or not, CR 205.3i); empty to remove them all.
  */
 @SerialName("SetLandTypesForGroup")
 @Serializable
@@ -502,9 +581,13 @@ data class SetLandTypesForGroup(
 ) : StaticAbility {
     override val description: String = buildString {
         append(filter.description)
-        append(" are ")
-        append(landTypes.joinToString(" "))
-        append(" (they lose all other land types and abilities)")
+        if (landTypes.isEmpty()) {
+            append(" lose all land types and abilities")
+        } else {
+            append(" are ")
+            append(landTypes.joinToString(" "))
+            append(" (they lose all other land types and abilities)")
+        }
     }
 
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
@@ -565,13 +648,22 @@ data class AnimateLandGroup(
  * Note: Combine with LoseAllAbilities and GrantActivatedAbility
  * separately for ability removal/granting.
  *
- * @property setCardTypes Card types to set (replaces ALL existing card types)
+ * @property setCardTypes Card types to set (replaces ALL existing card types). The subtypes of every
+ *   card type the object loses go with it unless a remaining type shares them (CR 205.1a) — the engine
+ *   prunes them, so "loses all other card types" needs no [setSubtypes].
  * @property setSubtypes Subtypes to set (replaces ALL existing subtypes). A non-empty set
  *   replaces all subtypes; an empty set leaves subtypes unchanged unless [clearSubtypes] is set.
  * @property setColors Colors to set (null = don't change, empty = colorless)
  * @property setName Name to set (null = don't change). Per CR 612.8 the object "loses any
  *   names it had and has only the specified name" — applied at Layer 3 (TEXT), before the
  *   type/color layers. Used by Witness Protection ("named Legitimate Businessperson").
+ * @property setCreatureSubtypes Creature types to set, replacing only the existing **creature** types
+ *   and leaving every card type, supertype and non-creature subtype in place (CR 205.1a). This is the
+ *   "is a [creature type]" wording with no card type named — Ichthyomorphosis's "is a blue Fish",
+ *   Lignify's "is a Treefolk": an enchanted artifact creature stays an artifact, an Equipment keeps
+ *   its Equipment subtype. Use it *instead of* `setCardTypes = {"CREATURE"}` + [setSubtypes], which
+ *   is the "is a [type] creature" wording that loses all other card types (Eaten by Piranhas).
+ *   Empty = don't change creature types.
  * @property clearSubtypes When true, removes all subtypes (used with `setSubtypes = emptySet()`
  *   to express "has no subtypes" — e.g. the Enduring cycle's enchantment-only return, which
  *   strips Sheep/Glimmer). Distinguishes "clear subtypes" from "don't change subtypes".
@@ -585,17 +677,26 @@ data class TransformPermanent(
     val setColors: Set<Color>? = null,
     val setName: String? = null,
     val clearSubtypes: Boolean = false,
-    val filter: GroupFilter = GroupFilter.attachedCreature()
+    val filter: GroupFilter = GroupFilter.attachedCreature(),
+    val setCreatureSubtypes: Set<String> = emptySet()
 ) : StaticAbility {
     override val description: String = buildString {
         append("is ")
         if (setColors?.isEmpty() == true) append("a colorless ")
         else if (setColors != null) append("a ${setColors.joinToString("/") { it.name.lowercase() }} ")
         if (setSubtypes.isNotEmpty()) append(setSubtypes.joinToString(" "))
+        if (setCreatureSubtypes.isNotEmpty()) append(setCreatureSubtypes.joinToString(" "))
         if (setCardTypes.isNotEmpty()) {
-            if (setSubtypes.isNotEmpty()) append(" ")
+            if (setSubtypes.isNotEmpty() || setCreatureSubtypes.isNotEmpty()) append(" ")
             append(setCardTypes.joinToString(" ") { it.lowercase() })
         }
         if (setName != null) append(" named $setName")
+    }
+
+    override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
+        val newFilter = filter.applyTextReplacement(replacer)
+        val newCreatureSubtypes = setCreatureSubtypes.map { replacer.replaceCreatureType(it) }.toSet()
+        return if (newFilter !== filter || newCreatureSubtypes != setCreatureSubtypes)
+            copy(filter = newFilter, setCreatureSubtypes = newCreatureSubtypes) else this
     }
 }

@@ -4,6 +4,7 @@ import type { EntityId, SelectCardsDecision } from '@/types'
 import { calculateFittingCardWidth, type ResponsiveSizes } from '@/hooks/useResponsive.ts'
 import { getCardImageUrl } from '@/utils/cardImages.ts'
 import { DecisionCard, DecisionCardPreview } from './DecisionComponents'
+import { CardPoolBrowser, LARGE_POOL_THRESHOLD, type PoolCard } from './CardPoolBrowser'
 import styles from './DecisionUI.module.css'
 
 /** Known MTG card types used for OnePerCardType restriction enforcement. */
@@ -139,6 +140,11 @@ export function CardSelectionDecision({
     45
   )
 
+  // A big pool (a sideboard, "a card from outside the game") can't fit one screen at a readable
+  // size, so it gets a scrolling, searchable browser instead of ever-shrinking cards.
+  const isLargePool = totalCardCount > LARGE_POOL_THRESHOLD
+  const poolCardWidth = responsive.isMobile ? 76 : 118
+
   /** A card's card types, from the decision's card info (hidden zones) or gameState. */
   const cardTypesFor = (cardId: EntityId): string[] =>
     extractCardTypes(decision.cardInfo?.[cardId]?.typeLine ?? gameState?.cards[cardId]?.typeLine ?? '')
@@ -220,6 +226,13 @@ export function CardSelectionDecision({
     return manaValueFromCost(typeof cost === 'string' ? cost : '')
   }
 
+  // OnePerManaValue: the mana values already claimed by selected cards.
+  const claimedManaValues = useMemo(() => {
+    if (!decision.onePerManaValue) return new Set<number>()
+    return new Set(selectedCards.map(manaValueForCard))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [decision.onePerManaValue, decision.cardInfo, selectedCards, gameState?.cards])
+
   // Running sum of selected cards' mana values — used by both the `maxTotalManaValue` cap
   // (Scout for Survivors) and the `minTotalManaValue` floor (collect evidence N, CR 701.59a).
   const totalManaValueSelected = useMemo(() => {
@@ -282,17 +295,24 @@ export function CardSelectionDecision({
       // A card with no fixed power can't be kept; one sharing a claimed power is blocked.
       if (power == null || claimedPowers.has(power)) return true
     }
+    if (decision.onePerManaValue && claimedManaValues.has(manaValueForCard(cardId))) return true
     return false
   }
+
+  const hasRestrictions =
+    decision.onePerCardType || decision.onePerCardName || decision.onePerColor ||
+    decision.onePerBasicLandType || decision.onePerPower || decision.onePerManaValue ||
+    decision.maxTotalManaValue != null || decision.maxTotalPower != null
 
   const toggleCard = (cardId: EntityId) => {
     setSelectedCards((prev) => {
       if (prev.includes(cardId)) {
         return prev.filter((id) => id !== cardId)
       }
-      // Don't allow selecting more than max
+      // Don't allow selecting more than max — except a single pick, where clicking another card
+      // swaps it in (restrictions are judged against the current pick, so they keep the old rule).
       if (prev.length >= decision.maxSelections) {
-        return prev
+        return decision.maxSelections === 1 && !hasRestrictions ? [cardId] : prev
       }
       // Block cards an active restriction (e.g. OnePerCardType) rules out
       if (isCardDisabled(cardId)) {
@@ -301,6 +321,15 @@ export function CardSelectionDecision({
       return [...prev, cardId]
     })
   }
+
+  const poolCardFor = (cardId: EntityId, nonSelectable: boolean): PoolCard => ({
+    id: cardId,
+    name: nameForCard(cardId) ?? 'Unknown Card',
+    typeLine: decision.cardInfo?.[cardId]?.typeLine ?? gameState?.cards[cardId]?.typeLine ?? '',
+    imageUri: decision.cardInfo?.[cardId]?.imageUri || gameState?.cards[cardId]?.imageUri,
+    manaValue: manaValueForCard(cardId),
+    nonSelectable,
+  })
 
   const handleConfirm = () => {
     submitDecision(decision.id, selectedCards)
@@ -330,7 +359,7 @@ export function CardSelectionDecision({
         <img
           src={sourceCardImageUrl}
           alt={`Source: ${sourceCardName ?? 'card'}`}
-          className={styles.bannerCardImage}
+          className={isLargePool ? styles.bannerCardImageSmall : styles.bannerCardImage}
           onMouseEnter={() => setIsHoveringSource(true)}
           onMouseLeave={() => setIsHoveringSource(false)}
         />
@@ -461,6 +490,21 @@ export function CardSelectionDecision({
       )}
 
       {/* Card options */}
+      {isLargePool ? (
+        <CardPoolBrowser
+          cards={[
+            ...decision.options.map((id) => poolCardFor(id, false)),
+            ...nonSelectableOptions.map((id) => poolCardFor(id, true)),
+          ]}
+          selectedCards={selectedCards}
+          isDisabled={isCardDisabled}
+          onAdd={toggleCard}
+          onRemove={(id) => setSelectedCards((prev) => prev.filter((c) => c !== id))}
+          cardWidth={poolCardWidth}
+          isMobile={responsive.isMobile}
+          onHover={setHoveredCardId}
+        />
+      ) : (
       <div className={styles.cardContainer} style={{ gap }}>
         {decision.options.map((cardId) => {
           // For hidden cards (e.g., opponent's library), use cardInfo from decision
@@ -506,6 +550,7 @@ export function CardSelectionDecision({
           )
         })}
       </div>
+      )}
 
       {/* Action buttons */}
       <div className={styles.optionButtonRow}>

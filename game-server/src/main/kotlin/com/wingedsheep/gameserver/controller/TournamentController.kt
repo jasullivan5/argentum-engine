@@ -35,7 +35,23 @@ class TournamentController(
         val setNames: List<String>,
         val boosterCount: Int,
         val gamesPerMatch: Int,
-        val deckFormat: String? = null
+        /** Games per match: 1, or 3 for a best-of-three. */
+        val bestOf: Int = 1,
+        val deckFormat: String? = null,
+        val hostName: String? = null,
+        /** The host's account avatar id, or null for a guest — drawn beside "Hosted by". */
+        val hostAvatar: String? = null,
+        /** Seated human players, host first. AI seats are counted in [playerCount] and [aiPlayerCount]. */
+        val playerNames: List<String> = emptyList(),
+        /** How many of [playerCount]'s seats are held by AI players, so the list can tell them apart from people. */
+        val aiPlayerCount: Int = 0,
+        /** TOURNAMENT (bracket), FREE_FOR_ALL, TWO_HEADED_GIANT or TEAM_VS_TEAM. */
+        val gameMode: String = "TOURNAMENT",
+        val ranked: Boolean = false,
+        /** Name of the cube the packs come from, when it isn't a set. */
+        val cubeName: String? = null,
+        /** Seconds the lobby has been open, measured on the server so client clock skew can't distort it. */
+        val openSeconds: Long = 0,
     )
 
     data class LiveTournamentMatchDTO(
@@ -68,6 +84,7 @@ class TournamentController(
 
     @GetMapping("/public")
     fun listPublic(): ResponseEntity<List<PublicTournamentDTO>> {
+        val now = System.currentTimeMillis()
         val publicLobbies = lobbyRepository.findAllLobbies()
             .filter { lobby ->
                 lobby.isPublic &&
@@ -76,6 +93,8 @@ class TournamentController(
             }
             .sortedBy { it.lobbyId }
             .map { lobby ->
+                val host = lobby.hostPlayerId?.let { lobby.players[it]?.identity }
+                val humans = lobby.players.values.map { it.identity }.filter { !it.isAi }
                 PublicTournamentDTO(
                     lobbyId = lobby.lobbyId,
                     state = lobby.state.name,
@@ -85,7 +104,16 @@ class TournamentController(
                     setNames = lobby.setNames,
                     boosterCount = lobby.boosterCount,
                     gamesPerMatch = lobby.gamesPerMatch,
-                    deckFormat = lobby.deckFormat?.name
+                    bestOf = lobby.bestOf,
+                    deckFormat = lobby.deckFormat?.name,
+                    hostName = host?.playerName,
+                    hostAvatar = host?.avatar,
+                    playerNames = humans.sortedBy { if (it.playerId == host?.playerId) 0 else 1 }.map { it.playerName },
+                    aiPlayerCount = lobby.playerCount - humans.size,
+                    gameMode = lobby.gameMode.name,
+                    ranked = lobby.ranked,
+                    cubeName = lobby.cube?.name,
+                    openSeconds = (now - lobby.createdAt).coerceAtLeast(0) / 1000,
                 )
             }
 

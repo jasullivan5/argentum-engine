@@ -2,7 +2,10 @@ package com.wingedsheep.ai.engine.knowledge
 
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.scripting.references.Player
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
+import com.wingedsheep.sdk.scripting.values.ContextPropertyKey
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
+import com.wingedsheep.sdk.scripting.values.EntityNumericProperty
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
@@ -26,9 +29,22 @@ class AmountSignTest : FunSpec({
         AmountSign.of(DynamicAmount.IfPositive(DynamicAmount.Subtract(count, count))) shouldBe AmountSign.GAIN
     }
 
+    test("a power is floored at zero (CR 107.1b): a gain, its negation a loss, a difference unknown") {
+        val power = DynamicAmount.EntityProperty(EffectTarget.Self, EntityNumericProperty.Power)
+        AmountSign.of(power) shouldBe AmountSign.GAIN
+        AmountSign.of(DynamicAmount.Multiply(power, -1)) shouldBe AmountSign.LOSS
+        AmountSign.of(DynamicAmount.Subtract(DynamicAmount.Fixed(5), power)) shouldBe AmountSign.UNKNOWN
+    }
+
     test("a life total or a pipeline variable is not assumed non-negative") {
         AmountSign.of(DynamicAmount.YourLifeTotal) shouldBe AmountSign.UNKNOWN
         AmountSign.of(DynamicAmount.VariableReference("x")) shouldBe AmountSign.UNKNOWN
+    }
+
+    test("a trigger-context amount is a magnitude, so +X/+X off it is a gain") {
+        // Hurska Sweet-Tooth: "target creature gets +X/+X …, where X is the amount of life you gained".
+        AmountSign.of(DynamicAmount.ContextProperty(ContextPropertyKey.TRIGGER_LIFE_GAINED)) shouldBe AmountSign.GAIN
+        AmountSign.of(DynamicAmount.Multiply(DynamicAmount.ContextProperty(ContextPropertyKey.TRIGGER_DAMAGE_AMOUNT), -1)) shouldBe AmountSign.LOSS
     }
 
     test("a modifier pair is a gain only when neither side can lower a stat") {
@@ -36,5 +52,11 @@ class AmountSignTest : FunSpec({
         statsSign(count, DynamicAmount.Fixed(0)) shouldBe AmountSign.GAIN
         statsSign(DynamicAmount.Fixed(2), DynamicAmount.Fixed(-2)) shouldBe AmountSign.UNKNOWN
         statsSign(DynamicAmount.Multiply(count, -1), DynamicAmount.Multiply(count, -1)) shouldBe AmountSign.LOSS
+    }
+    test("the distance between two values, max(a - b, b - a), is never negative") {
+        val power = DynamicAmount.EntityProperty(EffectTarget.Self, EntityNumericProperty.Power)
+        val toughness = DynamicAmount.EntityProperty(EffectTarget.Self, EntityNumericProperty.Toughness)
+        AmountSign.of(DynamicAmount.Max(DynamicAmount.Subtract(toughness, power), DynamicAmount.Subtract(power, toughness))) shouldBe AmountSign.GAIN
+        AmountSign.of(DynamicAmount.Max(DynamicAmount.Subtract(toughness, power), DynamicAmount.Subtract(power, count))) shouldBe AmountSign.UNKNOWN
     }
 })

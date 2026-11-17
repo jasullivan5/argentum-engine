@@ -6,6 +6,7 @@ import com.wingedsheep.engine.core.ExecutionResult
 import com.wingedsheep.engine.core.OrderTriggersDecision
 import com.wingedsheep.engine.core.TriggerOrderContinuation
 import com.wingedsheep.engine.core.TriggerToOrder
+import com.wingedsheep.engine.core.TriggersOrderedAutomaticallyEvent
 import com.wingedsheep.engine.core.suspendForDecision
 import com.wingedsheep.engine.event.PendingTrigger
 import com.wingedsheep.engine.state.GameState
@@ -69,6 +70,20 @@ object TriggerOrdering {
             TriggerOrderContinuation(player)
         )
     }
+
+    /**
+     * A [TriggersOrderedAutomaticallyEvent] for each player in [wave] whose abilities automatic
+     * ordering will place although their order could matter — the players [ask] skips only because
+     * they leave the order to the game. Their client uses it to show that the choice exists.
+     */
+    fun automaticallyOrdered(state: GameState, wave: List<PendingTrigger>): List<TriggersOrderedAutomaticallyEvent> =
+        wave.map { it.controllerId }.distinct().mapNotNull { player ->
+            val own = wave.filter { it.controllerId == player }
+            if (state.ordersOwnTriggers(player) || state.getEntity(player)?.has<PlayerLostComponent>() == true ||
+                !hasChoice(state, own)
+            ) null
+            else TriggersOrderedAutomaticallyEvent(player, own.size)
+        }
 
     /**
      * Put [player]'s abilities in the waiting wave in [resolutionOrder]: positions in their

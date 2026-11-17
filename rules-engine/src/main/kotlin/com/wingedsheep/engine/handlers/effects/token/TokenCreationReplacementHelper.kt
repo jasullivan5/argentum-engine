@@ -40,6 +40,7 @@ import com.wingedsheep.sdk.scripting.EventPattern as SdkGameEvent
 import com.wingedsheep.sdk.scripting.ModifyTokenCount
 import com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithAttachedCopy
 import com.wingedsheep.sdk.scripting.ReplaceTokenCreationWithToken
+import com.wingedsheep.sdk.scripting.RedirectTokenCreationController
 import com.wingedsheep.sdk.scripting.effects.CreateTokenEffect
 import com.wingedsheep.sdk.scripting.effects.CopyExceptions
 import com.wingedsheep.sdk.scripting.effects.Effect
@@ -66,6 +67,15 @@ data class TokenSubstitutionChoice(
     val effect: ReplaceTokenCreationWithToken,
     val key: String
 ) : TokenSubstitutionLookup
+
+/** What [TokenCreationReplacementHelper.redirectController] decided for a token-creation event. */
+sealed interface TokenControllerRedirect {
+    /** The player the tokens are created under — the would-be controller when nothing redirects. */
+    data class Resolved(val controllerId: EntityId) : TokenControllerRedirect
+
+    /** A player has to pick which redirect applies first; [result] is the paused effect. */
+    data class Ask(val result: EffectResult) : TokenControllerRedirect
+}
 
 /**
  * The parts of a token-creating instruction that aren't the tokens' characteristics — "tapped",
@@ -349,6 +359,16 @@ object TokenCreationReplacementHelper {
                     }
 
                     newState = newState.withEntity(tokenId, tokenContainer)
+                    newState = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy.applyBeforeEntry(newState, tokenId, cardRegistry, predicateEvaluator)
+                    // A battlefield-entry replacement sends it elsewhere instead (Hallowed Moonlight).
+                    val diverted = TokenEntryRedirect.divert(newState, tokenId, state, predicateEvaluator, cardRegistry)
+                    if (diverted != null) {
+                        newState = diverted.state
+                        events.add(diverted.event)
+                        // Still part of the would-be creation the next rider judges (CR 701.7b).
+                        batch += tokenId
+                        return@repeat
+                    }
                     newState = com.wingedsheep.engine.handlers.effects.BattlefieldEntry
                         .place(newState, tokenControllerId, tokenId)
                     // Honor global "[filter] enter tapped" replacements on the added token too.
@@ -376,6 +396,131 @@ object TokenCreationReplacementHelper {
 
         return newState to events
     }
+
+    /**
+     * The player tokens are actually created under, after [RedirectTokenCreationController]s
+     * ("each token that would be created under an opponent's control is created under your control
+     * instead" — Crafty Cutpurse). Every token-creating executor calls this where it resolves the
+     * player it creates for, *before* any other token replacement, so doublers, additional tokens,
+     * substitutions and attached-copy offers all judge the event under the new controller (the
+     * Cutpurse ruling: it applies before anything that modifies how the token enters).
+     *
+     * Printed and granted redirects are both read ([ActiveReplacements]). One applies when its
+     * `appliesTo` controller matches the current would-be controller relative to the redirect's
+     * own controller, and that controller isn't already the would-be one. When several apply, the
+     * would-be controller chooses one (CR 616.1); the new would-be controller then chooses among
+     * the rest, each applying at most once (CR 614.5) — so in two-player both players' redirects
+     * bring the tokens back to their original controller. A choice is only asked when the answer
+     * can change the final controller (every order is explored up front); otherwise the first
+     * applicable redirect applies silently. The answer is a `ChooseOptionDecision` resumed by
+     * [com.wingedsheep.engine.core.TokenSubstitutionChoiceContinuation], which re-runs [rootEffect]
+     * from the top with the answer recorded — nothing has been created yet. [pauseState] is the
+     * state that question pauses on (a caller that already drew randomness passes the state before).
+     */
+    fun redirectController(
+        state: GameState,
+        wouldBeControllerId: EntityId,
+        context: EffectContext,
+        rootEffect: Effect,
+        predicateEvaluator: PredicateEvaluator,
+        pauseState: GameState = state,
+    ): TokenControllerRedirect {
+        val eligible = TokenCreationBatch.sources(context)
+        val candidates = ActiveReplacements.all(state) { it is RedirectTokenCreationController }
+            .filter { eligible == null || it.sourceId in eligible }
+        if (candidates.isEmpty()) return TokenControllerRedirect.Resolved(wouldBeControllerId)
+
+        var current = wouldBeControllerId
+        var remaining = candidates
+        var step = 0
+        while (remaining.isNotEmpty()) {
+            val applicable = remaining.filter { redirectApplies(state, it, current, predicateEvaluator) }
+            if (applicable.isEmpty()) break
+            val pick = if (applicable.size == 1 ||
+                reachableControllers(state, current, remaining, predicateEvaluator).size == 1
+            ) {
+                applicable.first()
+            } else {
+                val key = "$REDIRECT_CHOICE_PREFIX${wouldBeControllerId.value}:$step"
+                context.pipeline.chosenValues[key]?.toIntOrNull()?.let(applicable::getOrNull)
+                    ?: return TokenControllerRedirect.Ask(
+                        askForRedirect(pauseState, current, applicable, key, rootEffect, context)
+                    )
+            }
+            current = pick.controllerId
+            remaining = remaining - pick
+            step++
+        }
+        return TokenControllerRedirect.Resolved(current)
+    }
+
+    private fun redirectApplies(
+        state: GameState,
+        active: ActiveReplacement,
+        currentControllerId: EntityId,
+        predicateEvaluator: PredicateEvaluator
+    ): Boolean {
+        if (active.controllerId == currentControllerId) return false
+        val event = (active.effect as? RedirectTokenCreationController)?.appliesTo
+            as? SdkGameEvent.TokenCreationEvent ?: return false
+        // Like the count replacements: a filtered event would need a would-be token to match.
+        if (event.tokenFilter != null) return false
+        return controllerMatches(event.controller, state, active.controllerId, currentControllerId, predicateEvaluator)
+    }
+
+    /** Every player the tokens could end up under, over all orders the choosers could apply [remaining] in. */
+    private fun reachableControllers(
+        state: GameState,
+        current: EntityId,
+        remaining: List<ActiveReplacement>,
+        predicateEvaluator: PredicateEvaluator
+    ): Set<EntityId> {
+        val applicable = remaining.filter { redirectApplies(state, it, current, predicateEvaluator) }
+        if (applicable.isEmpty()) return setOf(current)
+        return applicable.flatMapTo(mutableSetOf()) {
+            reachableControllers(state, it.controllerId, remaining - it, predicateEvaluator)
+        }
+    }
+
+    private fun askForRedirect(
+        state: GameState,
+        chooserId: EntityId,
+        applicable: List<ActiveReplacement>,
+        key: String,
+        rootEffect: Effect,
+        context: EffectContext
+    ): EffectResult {
+        fun playerName(id: EntityId) =
+            state.getEntity(id)?.get<com.wingedsheep.engine.state.components.identity.PlayerComponent>()?.name ?: "that player"
+        val options = applicable.map { active ->
+            val sourceName = state.getEntity(active.sourceId)?.get<CardComponent>()?.name ?: "Redirect"
+            "$sourceName: create the tokens under ${playerName(active.controllerId)}'s control"
+        }
+        val decision = { decisionId: String ->
+            com.wingedsheep.engine.core.ChooseOptionDecision(
+                id = decisionId,
+                playerId = chooserId,
+                prompt = "Choose which effect puts the tokens under another player's control",
+                context = DecisionContext(
+                    sourceId = context.sourceId,
+                    sourceName = context.sourceId?.let { state.getEntity(it)?.get<CardComponent>()?.name },
+                    phase = DecisionPhase.RESOLUTION
+                ),
+                options = options,
+                optionCardIds = applicable.withIndex()
+                    .associate { (index, active) -> index to listOf(active.sourceId) }
+            )
+        }
+        val continuation = com.wingedsheep.engine.core.TokenSubstitutionChoiceContinuation(
+            originalEffect = rootEffect,
+            effectContext = context,
+            choiceKey = key,
+            substituteCount = applicable.size
+        )
+        return EffectResult.from(state.suspendForDecision(decision, continuation, emptyList()))
+    }
+
+    private const val REDIRECT_CHOICE_PREFIX = "__tokenControllerRedirect:"
 
     /**
      * Find a [ReplaceTokenCreationWithToken] ("if one or more artifact tokens would be created under
@@ -465,6 +610,9 @@ object TokenCreationReplacementHelper {
 
     private const val SUBSTITUTION_CHOICE_PREFIX = "__tokenSubstitution:"
 
+    /** Records an accepted attached-copy offer across a token-substitution question's re-run. */
+    private const val ATTACHED_COPY_ACCEPTED = "__attachedCopyAccepted"
+
     /** The answer recorded for a declined optional substitution. */
     const val SUBSTITUTION_DECLINED = "declined"
 
@@ -512,6 +660,57 @@ object TokenCreationReplacementHelper {
     }
 
     /**
+     * The token-substitution gate for the token paths that don't build [CreateTokenEffect] tokens
+     * themselves — token copies of the source, of a chosen permanent or of the equipped creature,
+     * Aura tokens such as Roles, and tokens minted from a bare card definition. "If one or more
+     * tokens would be created under your control, that many … are created instead" (Holo-Engineer)
+     * replaces *every* token-creation event, whatever the instruction that creates them.
+     *
+     * Looks up a [ReplaceTokenCreationWithToken] that applies to [count] tokens with [prospective]'s
+     * characteristics under [tokenControllerId]. When one applies, creates the substitutes through
+     * the one creature-token path ([CreateTokenExecutor.createSubstituteTokens]) — or pauses to ask
+     * its controller ([askForSubstitution]), after which [rootEffect] runs again from the top with
+     * the answer in [context] — and returns that result. Returns null when nothing applies, so the
+     * caller creates its own tokens. [pauseState] is the state that question pauses on — the
+     * re-run starts from it (a caller that already drew randomness passes the state before the draw).
+     */
+    fun substituteIfReplaced(
+        state: GameState,
+        prospective: CardComponent,
+        tokenControllerId: EntityId,
+        count: Int,
+        context: EffectContext,
+        rootEffect: Effect,
+        predicateEvaluator: PredicateEvaluator,
+        staticAbilityHandler: StaticAbilityHandler?,
+        cardRegistry: CardRegistry?,
+        riders: TokenRiders = TokenRiders(),
+        pauseState: GameState = state,
+    ): EffectResult? {
+        if (count <= 0) return null
+        val lookup = findTokenSubstitution(
+            state, tokenControllerId, prospective,
+            predicateEvaluator = predicateEvaluator,
+            eligibleSources = TokenCreationBatch.sources(context),
+            choices = context.pipeline.chosenValues,
+        ) ?: return null
+        val tokenCount = com.wingedsheep.engine.core.GameLimits.cappedTokenCount(count, "substituted tokens")
+        return when (lookup) {
+            // The substitutes replace the accepted attached copies; they mustn't become them again.
+            is TokenSubstitution ->
+                CreateTokenExecutor(predicateEvaluator.conditions.amounts, staticAbilityHandler, cardRegistry)
+                    .createSubstituteTokens(
+                        state, lookup,
+                        context.copy(pipeline = context.pipeline.copy(
+                            chosenValues = context.pipeline.chosenValues - ATTACHED_COPY_ACCEPTED
+                        )),
+                        tokenCount, tokenControllerId, riders, rootEffect
+                    )
+            is TokenSubstitutionChoice -> askForSubstitution(pauseState, lookup, rootEffect, context, tokenCount)
+        }
+    }
+
+    /**
      * Check if any permanent controlled by the token creator has a
      * ReplaceTokenCreationWithAttachedCopy replacement effect that applies
      * (e.g., Mirrormind Crown, Moonlit Meditation).
@@ -532,12 +731,21 @@ object TokenCreationReplacementHelper {
 
         val controllerId = tokenControllerId
 
+        // Re-run after a token-substitution question about copies an accepted offer was making:
+        // the offer was already taken (and marked used), so make those copies again.
+        context.pipeline.chosenValues[ATTACHED_COPY_ACCEPTED]?.let { attachedId ->
+            return createAttachedPermanentCopies(
+                state, EntityId(attachedId), controllerId, tokenCount, cardRegistry, staticAbilityHandler,
+                predicateEvaluator = predicateEvaluator, rootEffect = effect, context = context
+            )
+        }
+
         for (entityId in state.getBattlefield()) {
             val container = state.getEntity(entityId) ?: continue
             val entityController = container.get<ControllerComponent>()?.playerId ?: continue
             if (entityController != controllerId) continue
 
-            val replacementComponent = container.get<ReplacementEffectSourceComponent>() ?: continue
+            val replacementComponent = state.activeReplacementSource(entityId) ?: continue
 
             for (re in replacementComponent.replacementEffects) {
                 if (re !is ReplaceTokenCreationWithAttachedCopy) continue
@@ -577,7 +785,8 @@ object TokenCreationReplacementHelper {
                         attachedPermanentId = attachedTo.targetId,
                         originalEffect = effect,
                         tokenCount = tokenCount,
-                        effectContext = context
+                        effectContext = context,
+                        tokenControllerId = controllerId
                     )
 
                     return EffectResult.from(newState.suspendForDecision(decision, continuation, emptyList()))
@@ -586,7 +795,7 @@ object TokenCreationReplacementHelper {
                     return createAttachedPermanentCopies(
                         newState, attachedTo.targetId, controllerId, tokenCount,
                         cardRegistry, staticAbilityHandler,
-                        predicateEvaluator = predicateEvaluator
+                        predicateEvaluator = predicateEvaluator, rootEffect = effect, context = context
                     )
                 }
             }
@@ -612,13 +821,25 @@ object TokenCreationReplacementHelper {
         count: Int,
         cardRegistry: CardRegistry? = null,
         staticAbilityHandler: StaticAbilityHandler? = null,
-        predicateEvaluator: PredicateEvaluator
+        predicateEvaluator: PredicateEvaluator,
+        rootEffect: Effect,
+        context: EffectContext,
     ): EffectResult {
         val attachedContainer = state.getEntity(attachedPermanentId)
             ?: return EffectResult.success(state)
 
         val attachedCard = attachedContainer.copiableCardComponent()
             ?: return EffectResult.success(state)
+
+        // The copies are still tokens being created: a token substitution (Holo-Engineer) gets a
+        // look at them (CR 616.2). A question re-runs [rootEffect] with the accepted offer remembered.
+        val remembered = context.copy(pipeline = context.pipeline.copy(
+            chosenValues = context.pipeline.chosenValues + (ATTACHED_COPY_ACCEPTED to attachedPermanentId.value)
+        ))
+        substituteIfReplaced(
+            state, attachedCard.copy(ownerId = controllerId, isDoubleFaced = false), controllerId, count,
+            remembered, rootEffect, predicateEvaluator, staticAbilityHandler, cardRegistry,
+        )?.let { return it }
 
         var newState = state
         val events = mutableListOf<com.wingedsheep.engine.core.GameEvent>()
@@ -655,6 +876,14 @@ object TokenCreationReplacementHelper {
                 container = staticAbilityHandler.addReplacementEffectComponent(container)
             }
             newState = newState.withEntity(tokenId, container)
+            if (cardRegistry != null) newState = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy.applyBeforeEntry(newState, tokenId, cardRegistry, predicateEvaluator)
+            // A battlefield-entry replacement sends it elsewhere instead (Hallowed Moonlight).
+            val diverted = TokenEntryRedirect.divert(newState, tokenId, state, predicateEvaluator, cardRegistry)
+            if (diverted != null) {
+                newState = diverted.state
+                events.add(diverted.event)
+                return@repeat
+            }
             newState = com.wingedsheep.engine.handlers.effects.BattlefieldEntry
                 .place(newState, controllerId, tokenId)
             // Honor global "[filter] enter tapped" replacements on the copy too.

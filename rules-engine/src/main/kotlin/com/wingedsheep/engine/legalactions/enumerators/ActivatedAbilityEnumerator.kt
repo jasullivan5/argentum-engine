@@ -1,6 +1,10 @@
 package com.wingedsheep.engine.legalactions.enumerators
 
+import com.wingedsheep.engine.handlers.actions.ability.tapXExcludedSource
+import com.wingedsheep.engine.mechanics.cost.SacrificeCostAssignment
 import com.wingedsheep.engine.handlers.actions.ability.extractVariablePermanentsCost
+import com.wingedsheep.engine.handlers.actions.ability.extractDiscardXCost
+import com.wingedsheep.engine.handlers.actions.ability.targetsFollowCostChoice
 import com.wingedsheep.engine.state.LifePaymentPurpose
 
 import com.wingedsheep.engine.handlers.effects.AnnouncedDivision
@@ -33,6 +37,7 @@ import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.*
 import com.wingedsheep.sdk.scripting.costs.CostAtom
+import com.wingedsheep.sdk.scripting.values.DynamicAmount
 import com.wingedsheep.sdk.scripting.costs.manaCostOrNull
 import com.wingedsheep.sdk.scripting.effects.*
 
@@ -79,14 +84,20 @@ class ActivatedAbilityEnumerator(
             val isFaceDown = container.has<FaceDownComponent>()
 
             // Activated abilities of permanents matching a PreventActivatedAbilities filter
-            // (Cursed Totem etc.) can't be activated — applies to both mana and non-mana
-            // abilities, including those granted by static effects.
-            if (context.castPermissionUtils.isActivationPrevented(state, entityId)) continue
-
-            // PlayersCantActivateAbilities (Grand Abolisher etc.) blocks abilities scoped by who
-            // is activating and when — e.g. "During your turn, your opponents can't activate
-            // abilities of artifacts, creatures, or enchantments."
-            if (context.castPermissionUtils.isActivationPreventedForPlayer(state, entityId, playerId)) continue
+            // (Cursed Totem etc.) can't be activated, including those granted by static effects;
+            // PlayersCantActivateAbilities (Grand Abolisher etc.) additionally scopes by who is
+            // activating and when. Either one's ability scope can split a planeswalker's
+            // abilities by kind (The Immortal Sun forbids only loyalty abilities, Overwhelming
+            // Splendor all but them), so both are asked once per kind, below.
+            val nonLoyaltyPrevented =
+                context.castPermissionUtils.isActivationPrevented(state, entityId) ||
+                    context.castPermissionUtils.isActivationPreventedForPlayer(state, entityId, playerId)
+            val loyaltyPrevented by lazy {
+                context.castPermissionUtils.isActivationPrevented(state, entityId, abilityIsLoyaltyAbility = true) ||
+                    context.castPermissionUtils.isActivationPreventedForPlayer(
+                        state, entityId, playerId, abilityIsLoyaltyAbility = true
+                    )
+            }
 
             // Resolve by definition id, never by name. A copy effect may rename the copy
             // (CR 707.9 — Absorbing Man "becomes a copy of …, except his name is Absorbing Man"),
@@ -133,6 +144,7 @@ class ActivatedAbilityEnumerator(
             val textReplacement = TextChanges.merge(context.globalTextChanges, container.get<TextReplacementComponent>())
 
             for (ability in nonManaAbilities) {
+                if (if (ability.isPlaneswalkerAbility) loyaltyPrevented else nonLoyaltyPrevented) continue
                 // Sorcery-speed abilities: skip during non-main phases / opponent's turn.
                 // Equip abilities are exempt while the controller has an active instant-speed-equip
                 // permission (Forge Anew "During your turn …", Leonin Shikari) — CR 702.6e timing lifted.
@@ -156,11 +168,13 @@ class ActivatedAbilityEnumerator(
                     ) continue
                     val tracker = container.get<AbilityActivatedThisTurnComponent>()
                     if (tracker != null && tracker.loyaltyActivationCount > 0) {
-                        val maxActivations = context.castPermissionUtils.getMaxLoyaltyActivations(state, playerId, entityId)
-                        if (tracker.hasReachedLoyaltyLimit(maxActivations)) continue
+                        val allowance = context.castPermissionUtils.getLoyaltyAllowance(state, playerId, entityId)
+                        if (tracker.hasReachedLoyaltyLimit(allowance)) continue
                     }
-                    // Check loyalty cost payability for negative costs
-                    val loyaltyCost = ability.cost as? AbilityCost.Loyalty
+                    // Check loyalty cost payability for negative costs — as totalled, so Carth
+                    // the Lion's [+1] surcharge lets a [−3] go with two loyalty.
+                    val loyaltyCost = context.castPermissionUtils
+                        .applyLoyaltyCostSurcharge(state, ability.cost, playerId, xValue = null) as? AbilityCost.Loyalty
                     if (loyaltyCost != null && loyaltyCost.change < 0) {
                         val counters = container.get<CountersComponent>()
                         val currentLoyalty = counters?.getCount(CounterType.LOYALTY) ?: 0
@@ -184,27 +198,36 @@ class ActivatedAbilityEnumerator(
                 // A cost naming a mana cost (Merseine's "enchanted creature's mana cost") is priced
                 // first, so the reductions below see the mana they apply to — as the totaller does.
                 val costWithDefinedX = context.castPermissionUtils.applyDefinedXValue(
-                    context.castPermissionUtils.lowerReferencedManaCost(state, entityId, rawCost),
+                    context.castPermissionUtils.lowerReferencedManaCost(
+                        state, entityId,
+                        // Carth the Lion's [+1] surcharge, as the totaller applies it.
+                        context.castPermissionUtils.applyLoyaltyCostSurcharge(state, rawCost, playerId, xValue = null)
+                    ),
                     ability, state, entityId, playerId
                 )
-                val effectiveCost = context.castPermissionUtils.relaxAbilityCostColorsIfAny(
+                val effectiveCost = context.castPermissionUtils.applyPayOnlyWithManaOf(context.castPermissionUtils.relaxAbilityCostColorsIfAny(
                     state, entityId,
                     context.castPermissionUtils.applyFreeFirstEquipDiscount(
                         context.castPermissionUtils.applyEquipCostReduction(
                             context.castPermissionUtils.applyActivatedAbilityCostReduction(
                                 AbilityCostReduction.apply(costWithDefinedX, ability, state, entityId, playerId, context.targetUtils, predicateEvaluator = predicateEvaluator),
-                                state, entityId, playerId, ability.isExhaust, ability.isPowerUp, ability.isManaAbility,
+                                state, entityId, playerId, ability.onceOnlyKind, ability.isManaAbility,
                                 // Targets are chosen after this offer; a targeted ability is priced
-                                // optimistically for a "that target this creature" reduction.
+                                // optimistically: a `targeting` reduction applies, a `targeting` tax
+                                // (Kopala) is left off until the targets are known at payment.
                                 chosenTargetIds = if (ability.targetRequirements.isEmpty()) emptyList() else null,
                                 abilityKeyword = ability.keyword,
+                                isLoyaltyAbility = ability.isPlaneswalkerAbility,
                             ),
                             ability, state, playerId, abilitySourceId = entityId
                         ),
                         ability, state, playerId
                     ),
                     playerId
-                )
+                ), ability, state, entityId, playerId)
+                    // "Spend only mana of the chosen color" with no mana that qualifies (no color
+                    // chosen, or a pip only other mana pays): never a matter of affordability.
+                    ?: continue
 
                 // Description shown to the player. When the effective cost differs from the printed
                 // cost — a generic cost reduction (Starport Security "{3}{W}…" → "{1}{W}…"), or a
@@ -254,6 +277,15 @@ class ActivatedAbilityEnumerator(
 
                 if (!com.wingedsheep.engine.mechanics.cost.PlayerCounterPayment.canAffordAbility(state, playerId, effectiveCost)) continue
 
+                // Several sacrifice atoms in one cost ("Sacrifice a Swamp and a Forest") need one
+                // disjoint assignment — a lone Swamp Forest dual pays one atom, not both. Each
+                // atom's own count check below can't see that, so gate the whole cost here.
+                val jointSacrifice = SacrificeCostAssignment.isJoint(effectiveCost)
+                if (jointSacrifice && !SacrificeCostAssignment.hasDisjointAssignment(
+                        SacrificeCostAssignment.groups(state, effectiveCost, playerId, entityId, context.predicateEvaluator)
+                    )
+                ) continue
+
                 when (effectiveCost) {
                     is AbilityCost.Tap -> {
                         if (container.has<TappedComponent>()) continue
@@ -283,6 +315,10 @@ class ActivatedAbilityEnumerator(
                     // the whole granted ability unactivatable (Fishing Pole).
                     is AbilityCost.TapGrantingPermanent -> {
                         if (!granterIsUntapped(state, granterByAbilityId[ability.id])) continue
+                    }
+                    // "Sacrifice <the granting permanent>" — unpayable while no cost may sacrifice it.
+                    is AbilityCost.SacrificeGrantingPermanent -> {
+                        if (!granterIsSacrificeable(state, granterByAbilityId[ability.id])) continue
                     }
                     // "Remove all aim counters from Hankyu" names the granter just as "Tap Fishing
                     // Pole" does; it must still be there, though with no counters it pays nothing.
@@ -327,8 +363,8 @@ class ActivatedAbilityEnumerator(
                             // Affordable when at least minCount eligible permanents exist; the player
                             // picks which during activation (the handler pauses). Same candidate pool
                             // as a sacrifice cost.
-                            val eligible = context.costUtils.findAbilitySacrificeTargets(
-                                state, playerId, atom.filter, if (atom.excludeSelf) entityId else null, sourceId = entityId
+                            val eligible = context.costUtils.findVariablePermanentCostTargets(
+                                state, playerId, atom, if (atom.excludeSelf) entityId else null, sourceId = entityId
                             )
                             if (eligible.size < atom.minCount) continue
                         }
@@ -401,10 +437,14 @@ class ActivatedAbilityEnumerator(
                         is CostAtom.PayLife -> {
                             if (!com.wingedsheep.engine.handlers.costs.CostAtomAmounts.canPayLife(state, playerId, com.wingedsheep.engine.handlers.costs.CostAtomAmounts.life(state, atom, playerId, predicateEvaluator, entityId), LifePaymentPurpose.ACTIVATE_ABILITY)) continue
                         }
+                        // Putting counters on the source costs nothing the player must have — only
+                        // a source that can't have counters put on it (Solemnity) can't pay it
+                        // (CR 614.17b).
+                        is CostAtom.PutCountersOnSelf -> {
+                            if (!state.projectedState.canReceiveCounters(entityId, atom.counterType)) continue
+                        }
                         // Reveal carries no enumeration-time gate here (validated at payment time).
-                        // Putting counters on the source costs nothing the player must have, so it
-                        // never gates enumeration either.
-                        is CostAtom.RevealFromHand, is CostAtom.PutCountersOnSelf,
+                        is CostAtom.RevealFromHand,
                         // PayCost-only (Tourach's Chant); no activated ability pays it, so there is
                         // nothing to enumerate.
                         is CostAtom.PutCountersOnPermanent,
@@ -413,18 +453,20 @@ class ActivatedAbilityEnumerator(
                         is CostAtom.DiscardHand -> {}
                         // Same for sacrificing every matching permanent: controlling none of them
                         // sacrifices nothing.
-                        is CostAtom.SacrificeAll -> {}
+                        is CostAtom.SacrificeAll -> {
+                            // ...unless one of them is a permanent no cost may sacrifice.
+                            if (!context.costUtils.canPaySacrificeAll(state, playerId, atom, entityId)) continue
+                        }
                         // Gated above, before this `when` — only the chooser is offered the
                         // ability at all — and it takes no enumeration-time selection.
                         is CostAtom.RevealNotedCreatureType -> {}
                         // "Unattach this Equipment" (Sunforger). No selection — the source detaches
                         // from whatever it is on — but a *real* affordability gate: the ability is
                         // not offered while the Equipment is unattached (its own 2020-08-07 ruling).
+                        // The granter-scoped form (Toralf's Hammer) gates on the granting
+                        // Equipment instead of the host that has the ability.
                         is CostAtom.Unattach -> {
-                            if (state.getEntity(entityId)
-                                    ?.get<com.wingedsheep.engine.state.components.battlefield.AttachedToComponent>()
-                                    ?.targetId == null
-                            ) continue
+                            if (!unattachSubjectIsAttached(state, atom, entityId, granterByAbilityId[ability.id])) continue
                         }
                         // CR 701.17b — a mill cost is unpayable when the library holds fewer cards.
                         // No selection: the milled cards are the top of the library.
@@ -470,13 +512,21 @@ class ActivatedAbilityEnumerator(
                     }
                     is AbilityCost.SacrificeSelf -> {
                         // Source must be on battlefield (always true when iterating battlefield)
+                        if (!com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality.canSacrificeForCost(state, entityId)) continue
                         sacrificeTargets = listOf(entityId)
                     }
                     is AbilityCost.Blight -> {
                         blightCost = effectiveCost
                         blightCreatures = projected.getBattlefieldControlledBy(playerId)
-                            .filter { projected.isCreature(it) && projected.canReceiveCounters(it) }
+                            .filter { projected.isCreature(it) && projected.canReceiveCounters(it, CounterType.MINUS_ONE_MINUS_ONE) }
                         if (blightCreatures.isEmpty()) continue
+                    }
+                    is AbilityCost.ExileXFromGraveyard -> {
+                        // A bare exile-X cost whose X can't be 0 needs that many matching cards.
+                        if (ability.minimumXValue > 0 && context.costUtils.exileXCandidateCount(
+                                state, playerId, effectiveCost, entityId
+                            ) < ability.minimumXValue
+                        ) continue
                     }
                     is AbilityCost.DiscardLastDrawnThisTurn -> {
                         // No player choice — engine picks the tracked entity at payment. Gate the
@@ -562,8 +612,8 @@ class ActivatedAbilityEnumerator(
                                         // of a composite cost (Fabrication Foundry's {2}{W}, {T},
                                         // Exile …). Affordable when at least minCount eligible
                                         // permanents exist; the player picks which during activation.
-                                        val eligible = context.costUtils.findAbilitySacrificeTargets(
-                                            state, playerId, atom.filter, if (atom.excludeSelf) entityId else null, sourceId = entityId
+                                        val eligible = context.costUtils.findVariablePermanentCostTargets(
+                                            state, playerId, atom, if (atom.excludeSelf) entityId else null, sourceId = entityId
                                         )
                                         if (eligible.size < atom.minCount) {
                                             costCanBePaid = false
@@ -576,7 +626,9 @@ class ActivatedAbilityEnumerator(
                                             state, atom,
                                             context.costUtils.findTapCostTargets(
                                                 state, playerId, atom,
-                                                if (atom.excludeSelf) entityId else null
+                                                // Paying {T} taps the source, so it can't also be one
+                                                // of the "untapped" permanents (cohort, Loam Dryad).
+                                                if (atom.excludeSelf || hasTapCost) entityId else null
                                             )
                                         )
                                         if (tapTargets.size < atom.count) {
@@ -670,21 +722,29 @@ class ActivatedAbilityEnumerator(
                                             break
                                         }
                                     }
-                                    // Reveal / put-counters-on-self carry no enumeration-time gate here.
+                                    // See the top-level branch: a source that can't have counters put on it.
+                                    is CostAtom.PutCountersOnSelf -> {
+                                        if (!state.projectedState.canReceiveCounters(entityId, atom.counterType)) {
+                                            costCanBePaid = false
+                                            break
+                                        }
+                                    }
+                                    // Reveal carries no enumeration-time gate here.
                                     is CostAtom.RevealFromHand,
-                                    is CostAtom.PutCountersOnSelf,
                                     is CostAtom.PutCountersOnPermanent,
                                     // See the top-level branch: always payable, nothing to select.
                                     is CostAtom.DiscardHand -> {}
-                                    is CostAtom.SacrificeAll -> {}
+                                    is CostAtom.SacrificeAll -> {
+                                        if (!context.costUtils.canPaySacrificeAll(state, playerId, atom, entityId)) {
+                                            costCanBePaid = false
+                                            break
+                                        }
+                                    }
                                     // See the top-level branch: gated before the `when`.
                                     is CostAtom.RevealNotedCreatureType -> {}
                                     // See the top-level branch: unpayable while unattached.
                                     is CostAtom.Unattach -> {
-                                        if (state.getEntity(entityId)
-                                                ?.get<com.wingedsheep.engine.state.components.battlefield.AttachedToComponent>()
-                                                ?.targetId == null
-                                        ) {
+                                        if (!unattachSubjectIsAttached(state, atom, entityId, granterByAbilityId[ability.id])) {
                                             costCanBePaid = false
                                             break
                                         }
@@ -749,6 +809,10 @@ class ActivatedAbilityEnumerator(
                                 }
                                 is AbilityCost.SacrificeSelf -> {
                                     // Source must be on battlefield (always true when iterating battlefield)
+                                    if (!com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality.canSacrificeForCost(state, entityId)) {
+                                        costCanBePaid = false
+                                        break
+                                    }
                                     sacrificeTargets = listOf(entityId)
                                 }
                                 is AbilityCost.TapAttachedCreature -> {
@@ -773,6 +837,12 @@ class ActivatedAbilityEnumerator(
                                 // "{1}, {T}, Tap Fishing Pole:".
                                 is AbilityCost.TapGrantingPermanent -> {
                                     if (!granterIsUntapped(state, granterByAbilityId[ability.id])) {
+                                        costCanBePaid = false
+                                        break
+                                    }
+                                }
+                                is AbilityCost.SacrificeGrantingPermanent -> {
+                                    if (!granterIsSacrificeable(state, granterByAbilityId[ability.id])) {
                                         costCanBePaid = false
                                         break
                                     }
@@ -808,7 +878,7 @@ class ActivatedAbilityEnumerator(
                                 is AbilityCost.Blight -> {
                                     blightCost = subCost
                                     blightCreatures = projected.getBattlefieldControlledBy(playerId)
-                                        .filter { projected.isCreature(it) && projected.canReceiveCounters(it) }
+                                        .filter { projected.isCreature(it) && projected.canReceiveCounters(it, CounterType.MINUS_ONE_MINUS_ONE) }
                                     if (blightCreatures.isEmpty()) {
                                         costCanBePaid = false
                                         break
@@ -822,12 +892,24 @@ class ActivatedAbilityEnumerator(
                                     }
                                 }
                                 is AbilityCost.ExileXFromGraveyard -> {
-                                    // ExileXFromGraveyard: validated via maxAffordableX cap below
+                                    // The upper bound is the maxAffordableX cap below. An ability
+                                    // whose X can't be 0 ("Exile one or more creature cards from
+                                    // your graveyard", Corpseweft) also needs that many to exist.
+                                    if (ability.minimumXValue > 0 && context.costUtils.exileXCandidateCount(
+                                            state, playerId, subCost, entityId
+                                        ) < ability.minimumXValue
+                                    ) {
+                                        costCanBePaid = false
+                                        break
+                                    }
                                 }
                                 is AbilityCost.TapXPermanents -> {
                                     // TapXPermanents: validated via maxAffordableX cap below
                                     // Also provide tap targets for the UI
-                                    tapTargets = context.costUtils.findAbilityTapTargets(state, playerId, subCost.filter)
+                                    tapTargets = context.costUtils.findAbilityTapTargets(
+                                        state, playerId, subCost.filter,
+                                        excludeEntityId = ability.cost.tapXExcludedSource(entityId), sourceId = entityId
+                                    )
                                 }
                                 is AbilityCost.Craft -> {
                                     // Combined BF+GY material pool (CR 702.167a-b). Records the cost
@@ -924,6 +1006,14 @@ class ActivatedAbilityEnumerator(
                     else -> emptyList()
                 }
 
+                // A joint sacrifice cost has no single picker the client could fill: the engine asks
+                // atom by atom when the bare action arrives (ActivationChoicePauses), so surface no
+                // sacrifice payload rather than the last atom's pool.
+                if (jointSacrifice) {
+                    sacrificeTargets = null
+                    sacrificeCost = null
+                }
+
                 // Station-style multi-select shortcut (CR 702.184a): a single-creature tap cost
                 // with no chosen targets and a per-activation effect that stacks can be queued
                 // several times in one gesture — the player taps multiple distinct creatures and
@@ -956,8 +1046,9 @@ class ActivatedAbilityEnumerator(
                     craftCost, craftMaterials,
                     exileCost, exileTargets,
                     prebuiltCostInfo,
-                    tapBatchMaxActivations
-                )
+                    tapBatchMaxActivations,
+                    removeCountersAtom
+                ).withFixedCounterRemovalTotal(removeCountersAtom)
 
                 // Forage offers a choice of sub-costs (exile three cards / sacrifice a Food).
                 // [costInfo] holds the primary mode; when both modes are available the emitted
@@ -997,7 +1088,10 @@ class ActivatedAbilityEnumerator(
                 val abilityHasXCost = abilityHasXInManaCost || hasNonManaXCost || hasTapXPermanentsCost
 
                 val abilityMaxAffordableX: Int? = if (abilityHasXCost) {
-                    context.costUtils.calculateMaxAffordableX(state, playerId, ability.cost, abilityManaCost, precomputedSources = context.availableManaSources, sourceId = entityId)
+                    context.costUtils.calculateMaxAffordableX(
+                        state, playerId, ability.cost, abilityManaCost, precomputedSources = context.availableManaSources, sourceId = entityId,
+                        loyaltySurcharge = if (ability.cost == AbilityCost.LoyaltyX) context.castPermissionUtils.loyaltyCostSurcharge(state, playerId) else 0,
+                    )
                 } else null
                 // "X can't be 0" abilities (Gogo, Master of Mimicry) surface a minimum X so the
                 // client's X picker never offers 0. Enforced authoritatively by the X-choice
@@ -1084,14 +1178,29 @@ class ActivatedAbilityEnumerator(
                     // fizzle. Surface a bare action; the handler pauses first for the exile selection,
                     // then for the X-bounded target, in order. (The satisfiability gate above still
                     // applies — no artifact card in the graveyard means no legal target at any X.)
-                    if (costContainsVariablePermanents(effectiveCost)) {
+                    // Kozilek, the Great Distortion ("discard a card with mana value X: counter target
+                    // spell with mana value X") defers its target the same way: the discard is the pick.
+                    if (effectiveCost.targetsFollowCostChoice()) {
                         // A single-permanent cost ("sacrifice an artifact with mana value X" —
                         // Scrap Welder) is unpayable when no pick leaves its X-bounded target a
                         // legal choice; the selection pause offers the same viable picks.
                         val single = effectiveCost.extractVariablePermanentsCost()?.takeIf { it.maxCount == 1 }
+                        val measuredDiscard = effectiveCost.extractDiscardXCost()
+                        val measuredCount = measuredDiscard?.count
+                        if (measuredDiscard != null && measuredCount != null) {
+                            val viable = com.wingedsheep.engine.mechanics.cost.CostDefinedX.viableDiscards(
+                                state, measuredDiscard,
+                                com.wingedsheep.engine.mechanics.cost.CostDefinedX.discardCandidates(
+                                    state, playerId, entityId, measuredDiscard, context.predicateEvaluator
+                                ),
+                                null, targetReqs, playerId, entityId,
+                                com.wingedsheep.engine.handlers.TargetFinder(context.predicateEvaluator)
+                            )
+                            if (viable.size < measuredCount) continue
+                        }
                         if (single != null) {
-                            val eligible = context.costUtils.findAbilitySacrificeTargets(
-                                state, playerId, single.filter, if (single.excludeSelf) entityId else null, sourceId = entityId
+                            val eligible = context.costUtils.findVariablePermanentCostTargets(
+                                state, playerId, single, if (single.excludeSelf) entityId else null, sourceId = entityId
                             )
                             val viable = com.wingedsheep.engine.mechanics.cost.VariablePermanentsCost.viableSinglePicks(
                                 state, single, eligible, targetReqs, playerId, entityId,
@@ -1168,7 +1277,15 @@ class ActivatedAbilityEnumerator(
                         // — the division is part of activating the ability (CR 601.2d), so flag it
                         // here and let the client collect it after targeting, exactly as the cast
                         // path does for spells (Chandra, Flameshaper's −4; Ajani, Sleeper Agent's −3).
-                        val division = AnnouncedDivision.of(ability.effect)
+                        val division = AnnouncedDivision.ofActivation(ability.effect)
+                        // A total that reads the activation's X (Huatli, Warrior Poet's −X: "X damage
+                        // divided as you choose …") can't be priced before X is announced (CR 601.2b
+                        // precedes 601.2d), so the offer carries the total for every X it may take.
+                        val divisionByX = if (division != null && abilityHasXCost && abilityMaxAffordableX != null) {
+                            (abilityMinX..abilityMaxAffordableX).associateWith { x ->
+                                context.castPermissionUtils.divisionTotalAtActivation(state, division, ability, entityId, playerId, chosenX = x)
+                            }.takeIf { byX -> byX.values.distinct().size > 1 }
+                        } else null
                         result.add(LegalAction(
                             actionType = "ActivateAbility",
                             description = displayDescription,
@@ -1200,6 +1317,7 @@ class ActivatedAbilityEnumerator(
                             totalDamageToDistribute = division?.let {
                                 context.castPermissionUtils.divisionTotalAtActivation(state, it, ability, entityId, playerId)
                             },
+                            totalDamageByX = divisionByX,
                             minDamagePerTarget = division?.let(AnnouncedDivision::minPerTarget),
                             distributionUnit = division?.let(AnnouncedDivision::counterUnit),
                             inertReason = abilityInertReason
@@ -1403,6 +1521,19 @@ class ActivatedAbilityEnumerator(
     }
 
     /**
+     * Stamp a fixed "remove N counters from among …" cost's N onto the payload, whichever cost
+     * kind owns it. The client opens its counter-distribution picker only for an X cost or a
+     * positive [AdditionalCostData.distributedCounterRemovalTotal]; without it Lieutenant
+     * Commander Data's "Remove three counters from among creatures you control" skipped the
+     * picker and was refused with "Counter removal total (0) does not match required count (3)".
+     */
+    private fun AdditionalCostData?.withFixedCounterRemovalTotal(atom: CostAtom.RemoveCounters?): AdditionalCostData? {
+        if (this == null || atom == null || atom.self || counterRemovalCreatures.isEmpty()) return this
+        val fixed = (atom.count as? DynamicAmount.Fixed)?.amount ?: return this
+        return if (fixed > 0) copy(distributedCounterRemovalTotal = fixed) else this
+    }
+
+    /**
      * Build additional cost info for sacrifice, tap, bounce, sacrifice-self, or counter removal costs.
      */
     private fun buildAdditionalCostInfo(
@@ -1427,7 +1558,8 @@ class ActivatedAbilityEnumerator(
         exileCost: CostAtom.ExileFrom? = null,
         exileTargets: List<EntityId>? = null,
         prebuiltCostInfo: AdditionalCostData? = null,
-        tapBatchMaxActivations: Int = 1
+        tapBatchMaxActivations: Int = 1,
+        removeCountersAtom: CostAtom.RemoveCounters? = null
     ): AdditionalCostData? {
         // A cost whose resolver builds its own complete payload owns the whole thing when present:
         // the sum-gated graveyard exiles (collect evidence, CR 701.59; and the filtered
@@ -1529,7 +1661,8 @@ class ActivatedAbilityEnumerator(
         }
         if (counterRemovalCreatures.isNotEmpty()) {
             return AdditionalCostData(
-                description = "Remove +1/+1 counters from creatures you control",
+                description = removeCountersAtom?.description?.replaceFirstChar { it.uppercase() }
+                    ?: "Remove counters from permanents you control",
                 costType = "RemoveCounters",
                 counterRemovalCreatures = counterRemovalCreatures
             )
@@ -1573,7 +1706,6 @@ class ActivatedAbilityEnumerator(
      * "real" effect is hidden inside (e.g., Figure of Fable's `Effects.If(... BecomeCreature)`) is
      * also excluded.
      */
-    /** True when [cost] contains a [CostAtom.VariablePermanents] atom (top-level or in a Composite). */
     /**
      * Whether [cost] includes "Reveal the creature type you chose" — the cost only the player who
      * made the source's secret note can pay. Mirrors `ActivateAbilityHandler`'s helper of the same
@@ -1582,12 +1714,6 @@ class ActivatedAbilityEnumerator(
     private fun costRevealsNotedCreatureType(cost: AbilityCost): Boolean = when (cost) {
         is AbilityCost.Atom -> cost.atom is CostAtom.RevealNotedCreatureType
         is AbilityCost.Composite -> cost.costs.any { costRevealsNotedCreatureType(it) }
-        else -> false
-    }
-
-    private fun costContainsVariablePermanents(cost: AbilityCost): Boolean = when (cost) {
-        is AbilityCost.Atom -> cost.atom is CostAtom.VariablePermanents
-        is AbilityCost.Composite -> cost.costs.any { costContainsVariablePermanents(it) }
         else -> false
     }
 
@@ -1632,10 +1758,35 @@ class ActivatedAbilityEnumerator(
     }
 
     /**
+     * The Unattach cost's payability gate (Sunforger's ruling): the permanent it detaches — the
+     * source, or with [CostAtom.Unattach.ofGrantingPermanent] the granter — must be attached to
+     * something. An unresolvable granter can't be unattached.
+     */
+    private fun unattachSubjectIsAttached(
+        state: com.wingedsheep.engine.state.GameState,
+        atom: CostAtom.Unattach,
+        sourceId: EntityId,
+        granterId: EntityId?,
+    ): Boolean {
+        val subjectId = if (atom.ofGrantingPermanent) granterId ?: return false else sourceId
+        return state.getEntity(subjectId)
+            ?.get<com.wingedsheep.engine.state.components.battlefield.AttachedToComponent>()
+            ?.targetId != null
+    }
+
+    /**
      * Is [granterId] a permanent that is on the battlefield and untapped? The payability gate for
      * [AbilityCost.TapGrantingPermanent]; an unresolved granter (null) is treated as unpayable,
      * since the cost names a specific permanent that must still be there to tap (CR 201.5a).
      */
+    /**
+     * Can [granterId] pay an [AbilityCost.SacrificeGrantingPermanent]? An unresolved granter defers
+     * to activation time, as [com.wingedsheep.engine.handlers.CostHandler] does; a known one must be
+     * a permanent a cost may sacrifice.
+     */
+    private fun granterIsSacrificeable(state: com.wingedsheep.engine.state.GameState, granterId: EntityId?): Boolean =
+        granterId == null || com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality.canSacrificeForCost(state, granterId)
+
     private fun granterIsUntapped(state: com.wingedsheep.engine.state.GameState, granterId: EntityId?): Boolean {
         if (granterId == null) return false
         val granter = state.getEntity(granterId) ?: return false

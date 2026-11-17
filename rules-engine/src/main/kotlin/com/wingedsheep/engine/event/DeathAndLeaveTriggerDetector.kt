@@ -185,6 +185,49 @@ class DeathAndLeaveTriggerDetector(
     }
 
     /**
+     * "Whenever one or more counters are removed from this" (Chandra, Fire Artisan) on a permanent
+     * that left the battlefield later in the same batch — combat damage takes a planeswalker's last
+     * loyalty and the combat-damage step applies the SBA that puts it into the graveyard before
+     * triggers are detected. The removal happened while it was still on the battlefield, so it
+     * triggers ("if all of Chandra's loyalty counters are removed, her first ability has her deal
+     * damage even though she's left the battlefield", ruling). The main loop only scans live
+     * permanents, so the departed source's abilities are read off its last-known definition.
+     */
+    fun detectDepartedCounterRemovalTriggers(
+        state: GameState,
+        statics: BattlefieldStaticsIndex,
+        events: List<EngineGameEvent>,
+        triggers: MutableList<PendingTrigger>
+    ) {
+        val battlefield = state.getBattlefield().toSet()
+        for ((index, event) in events.withIndex()) {
+            if (event !is com.wingedsheep.engine.core.CountersRemovedEvent) continue
+            if (event.entityId in battlefield) continue
+            // Only a removal from a permanent that then left the battlefield in this batch.
+            val departure = events.subList(index + 1, events.size).filterIsInstance<ZoneChangeEvent>()
+                .firstOrNull { it.entityId == event.entityId && it.isBattlefieldDeparture } ?: continue
+            val lastKnown = departure.lastKnown
+            if (lastKnown?.lostAllAbilities == true || lastKnown?.wasFaceDown == true) continue
+            val info = resolveDyingEntity(state, departure) ?: continue
+            val controllerId = lastKnown?.controllerId ?: departure.ownerId
+            for (ability in abilityResolver.getDepartedTriggeredAbilities(departure, info.cardDefinitionId, state, statics)) {
+                if (ability.binding != TriggerBinding.SELF) continue
+                if (Zone.BATTLEFIELD !in ability.activeZones) continue
+                if (!matcher.matchesTrigger(ability.trigger, ability.binding, event, event.entityId, controllerId, state)) continue
+                triggers.add(
+                    PendingTrigger(
+                        ability = ability,
+                        sourceId = event.entityId,
+                        sourceName = info.name,
+                        controllerId = controllerId,
+                        triggerContext = TriggerContext.fromEvent(event)
+                    )
+                )
+            }
+        }
+    }
+
+    /**
      * Rule 603.10a look-back for "whenever a creature dealt damage by this creature this turn dies"
      * (SELF shape: Soul Collector, Dread Slaver) when the damaging creature died in the same event as
      * its victim — the combat where they trade, or a source that damaged itself (Dread Slaver ruling,
@@ -273,16 +316,18 @@ class DeathAndLeaveTriggerDetector(
         val auraEntityId = event.entityId
         val info = resolveDyingEntity(state, event) ?: return
         val abilities = abilityResolver.getDepartedTriggeredAbilities(event, info.cardDefinitionId, state, statics)
-        val controllerId = event.lastKnown?.controllerId ?: event.ownerId
+        val controllerId = event.lastKnown.controllerId ?: event.ownerId
 
         for (ability in abilities) {
             if (ability.binding != TriggerBinding.ATTACHED) continue
             val trigger = ability.trigger
             if (trigger !is EventPattern.ZoneChangeEvent) continue
             if (trigger.from != null && trigger.from != Zone.BATTLEFIELD) continue
-            if (trigger.to != null) {
-                // "Dies" trigger: verify creature is actually in graveyard (not exiled or bounced)
-                val inTargetZone = state.turnOrder.any { attachedEntityId in state.getGraveyard(it) }
+            val toZone = trigger.to
+            if (toZone != null) {
+                // "Dies" / "is put into exile" trigger: verify the permanent actually went to that
+                // zone (a dies trigger doesn't fire when it was exiled or bounced, and vice versa).
+                val inTargetZone = state.turnOrder.any { attachedEntityId in state.getZone(it, toZone) }
                 if (!inTargetZone) continue
             }
             triggers.add(
@@ -611,7 +656,7 @@ class DeathAndLeaveTriggerDetector(
             when (ability.binding) {
                 TriggerBinding.SELF, TriggerBinding.ANY -> {
                     // SELF: its own departure, still gated by the pattern's event-fact qualifiers
-                    // (`requireCraftMaterial` — Market Gnome) and any `Triggers.self.matching(...)`
+                    // (`requireCraftMaterial` — Market Gnome; `requireEmergeSacrifice` — Foul Emissary) and any `Triggers.self.matching(...)`
                     // filter, read from last-known information. Under a disjunction, any atom this
                     // departure satisfies fires it.
                     // ANY: "Whenever [this creature or] another creature you control leaves..." —

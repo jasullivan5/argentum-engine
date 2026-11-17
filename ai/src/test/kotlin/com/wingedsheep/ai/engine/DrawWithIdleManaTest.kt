@@ -1,6 +1,8 @@
 package com.wingedsheep.ai.engine
 
+import com.wingedsheep.ai.engine.knowledge.CardIntentAnalyzer
 import com.wingedsheep.ai.engine.knowledge.HoldPolicy
+import com.wingedsheep.ai.engine.knowledge.IntentTag
 import com.wingedsheep.ai.engine.knowledge.IntentCatalog
 import com.wingedsheep.ai.engine.knowledge.TimingVerdict
 import com.wingedsheep.ai.puzzles.AiPuzzle
@@ -39,11 +41,13 @@ class DrawWithIdleManaTest : ScenarioTestBase() {
     // `precombatPumpsForThePlan` off too: the g2 board (Bears facing a Hill Giant, Giant Growth in
     // hand) is one where a precombat pump changes the attack plan, so with it on the without-flag
     // agent casts the trick instead of cracking Omashu City and the control stops isolating this
-    // flag.
+    // flag. Likewise the static leaf as a prior playout (`RolloutSettings.staticPriorPlayouts`):
+    // it holds Omashu City here on its own, so the control reads its playouts raw.
     private val liveWithoutFlag = AiProfile.LIVE.copy(
         id = "live-without-idledraw",
         drawWithIdleMana = false,
         precombatPumpsForThePlan = false,
+        rollouts = AiProfile.LIVE.rollouts?.copy(staticPriorPlayouts = 0.0),
     )
 
     private fun decide(
@@ -150,6 +154,24 @@ class DrawWithIdleManaTest : ScenarioTestBase() {
 
             game.omashuVerdict(off) shouldBe TimingVerdict.Neutral
             game.omashuVerdict(on) shouldBe TimingVerdict.NoWindow
+        }
+
+        test("g2: a copy-and-cast activation reads as card advantage but is not held for the end step") {
+            // Isochron Scepter's copy is a spell with its own window (an imprinted Fog in their
+            // combat), so the draw-activation hold must not bind it to the opponent's end step.
+            val game = scenario().withPlayers()
+                .withLandsOnBattlefield(1, "Forest", 5)
+                .withCardOnBattlefield(1, "Isochron Scepter")
+                .withCardInHand(1, "Giant Growth")
+                .build()
+            val copy = cardRegistry.getCard("Isochron Scepter")!!.script.activatedAbilities
+                .single { !it.isManaAbility }
+            val activation = ActivateAbility(game.player1Id, game.findPermanent("Isochron Scepter")!!, copy.id)
+
+            // The copy is cast without paying its mana cost, so it reads as a free spell too.
+            CardIntentAnalyzer.analyzeEffect(copy.effect).tags shouldBe setOf(IntentTag.DRAW, IntentTag.FREE_SPELL)
+            on.verdictFor(game.state, game.player1Id, "Isochron Scepter", activation = activation) shouldBe
+                TimingVerdict.Neutral
         }
 
         test("g2: with no instant in hand the hold does not apply") {

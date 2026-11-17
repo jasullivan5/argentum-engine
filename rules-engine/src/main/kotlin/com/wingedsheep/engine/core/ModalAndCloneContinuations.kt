@@ -86,6 +86,12 @@ data class ModalContinuation(
     val recordChosenModesThisTurn: Boolean = false,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
     val resolvingTriggeredAbility: com.wingedsheep.sdk.scripting.TriggeredAbility? = null,
+    /**
+     * True when this mode menu was re-offered by cancelling back out of a mode's target picker:
+     * the first pick already recorded the dilemma (and fired its triggers), so re-picking is the
+     * same choice, not a second dilemma.
+     */
+    val dilemmaAlreadyFaced: Boolean = false,
 ) : AnswerContinuation
 
 /**
@@ -261,7 +267,7 @@ data class ModalTargetContinuation(
  * @property toughnessOverride When non-null, overrides the copy's base toughness (Superior Spider-Man: 4)
  * @property exileCopiedCard When true, exile the copied card after copying it (Superior Spider-Man:
  *   "When you do, exile that card"). Used for graveyard copies.
- * @property entersWithCounters When non-null, the counters the copy enters with (Altered Ego's
+ * @property entersWithCounters The counter riders the copy enters with (Altered Ego's
  *   "except it enters with X additional +1/+1 counters on it", Undercover Operative's conditional
  *   shield counter). Applied only when a copy was actually made — declining the copy declines the
  *   counters too.
@@ -292,7 +298,7 @@ data class CloneEntersContinuation(
     val powerOverride: Int? = null,
     val toughnessOverride: Int? = null,
     val exileCopiedCard: Boolean = false,
-    val entersWithCounters: com.wingedsheep.sdk.scripting.CopyEntryCounters? = null,
+    val entersWithCounters: List<com.wingedsheep.sdk.scripting.CopyEntryCounters> = emptyList(),
     /** [com.wingedsheep.sdk.scripting.EntersAsCopy.duration] — `EndOfTurn` tags the copy to revert at cleanup. */
     val duration: com.wingedsheep.sdk.scripting.Duration = com.wingedsheep.sdk.scripting.Duration.Permanent
 ) : AnswerContinuation
@@ -333,7 +339,7 @@ data class CloneEntersOnBattlefieldContinuation(
     val toughnessOverride: Int? = null,
     val exileCopiedCard: Boolean = false,
     val tappedIfCopied: Boolean = false,
-    val entersWithCounters: com.wingedsheep.sdk.scripting.CopyEntryCounters? = null,
+    val entersWithCounters: List<com.wingedsheep.sdk.scripting.CopyEntryCounters> = emptyList(),
     /** See [CloneEntersContinuation.duration]. */
     val duration: com.wingedsheep.sdk.scripting.Duration = com.wingedsheep.sdk.scripting.Duration.Permanent,
     /** Actual entry refs, retained across every as-enters decision. */
@@ -526,14 +532,23 @@ data class RevealCountersContinuation(
     val countersPerReveal: Int
 ) : AnswerContinuation
 
-/** Resume an as-enters linked-exile selection before the permanent enters the battlefield. */
+/**
+ * Resume an as-enters [com.wingedsheep.sdk.scripting.EntersWithExileCounters] choice before the
+ * permanent enters the battlefield. Answered by a card selection (move those cards), or — for the
+ * all-or-none form, where [exactCount] is set — first by a yes/no, after which the resumer asks for
+ * exactly [exactCount] of [candidates] (or moves them all when there are just that many).
+ */
 @Serializable
 data class ExileCountersContinuation(
     val spellId: EntityId,
     val controllerId: EntityId,
     val ownerId: EntityId,
     val counterType: CounterType,
-    val countersPerCard: Int
+    val countersPerCard: Int,
+    val destination: Zone = Zone.EXILE,
+    val exactCount: Int? = null,
+    val candidates: List<EntityId> = emptyList(),
+    val selectPrompt: String = ""
 ) : AnswerContinuation
 
 /**
@@ -631,7 +646,9 @@ data class CreateTokenCopyOfChosenContinuation(
     val controllerId: EntityId,
     val sourceId: EntityId?,
     val sourceName: String?,
-    val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+    /** The resolving effect and its context, re-run if a token substitution asks a question. */
+    val effect: com.wingedsheep.sdk.scripting.effects.CreateTokenCopyOfChosenPermanentEffect,
+    val effectContext: com.wingedsheep.engine.handlers.EffectContext,
 ) : AnswerContinuation
 
 /**
@@ -689,6 +706,11 @@ data class CreateTokenCopyRemainingContinuation(
     val context: com.wingedsheep.engine.handlers.EffectContext,
     val controllerId: EntityId,
     val remaining: Int,
+    /**
+     * The creation-order index of the first remaining token, so the per-token answers prepared on
+     * [context] before any token existed (entry copies, CR 508.4 defenders) stay with their token.
+     */
+    val firstIndex: Int = 0,
 ) : AutomaticContinuation
 
 /**
@@ -699,31 +721,17 @@ data class CreateTokenCopyRemainingContinuation(
  * so the chosen effect can be executed with the correct targets.
  *
  * @property choosingPlayerId The player who is making the choice
- * @property controllerId The ability controller (for effect context)
- * @property sourceId The spell/ability source
  * @property sourceName Name of the source for display
  * @property choices The feasible choices presented to the player (indices match the decision options)
- * @property targets Original targets from the effect context (preserved for ContextTarget resolution)
- * @property namedTargets Named targets from the pipeline state
- * @property triggeringEntityId The entity that triggered the ability
- * @property chosenCounterType The kind an enclosing counter-kind loop is visiting, so a chosen
- *   `RemoveCountersOfIteratedKind` / `AddCountersOfChosenKind(kindFrom = ITERATION)` still reads it
+ * @property context The whole effect context at the choice — targets, X, triggering entity and
+ *   player, pipeline state (stored collections and numbers), the counter kind an enclosing loop is
+ *   visiting — so the chosen effect resolves exactly as it would have without the pause (Finale of
+ *   Devastation's "mana value X or less" after its zone choice).
  */
 @Serializable
 data class ChooseActionContinuation(
     val choosingPlayerId: EntityId,
-    val controllerId: EntityId,
-    val sourceId: EntityId?,
     val sourceName: String?,
     val choices: List<@Serializable EffectChoice>,
-    val targets: List<ChosenTarget> = emptyList(),
-    val namedTargets: Map<String, ChosenTarget> = emptyMap(),
-    val triggeringEntityId: EntityId? = null,
-    val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
-    val resolvingTriggeredAbility: com.wingedsheep.sdk.scripting.TriggeredAbility? = null,
-    val chosenCounterType: com.wingedsheep.sdk.core.CounterType? = null,
-    /** The label the creating effect ran under; the program its resume runs keeps it. */
-    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
-    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
-    val programOrigin: com.wingedsheep.engine.core.ProgramOrigin? = null,
+    val context: com.wingedsheep.engine.handlers.EffectContext,
 ) : AnswerContinuation

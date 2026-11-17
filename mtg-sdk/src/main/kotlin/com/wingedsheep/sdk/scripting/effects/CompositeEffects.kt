@@ -261,11 +261,29 @@ data class ModalEffect(
      * only one of its opponent modes. Read on the triggered-ability announcement path, like
      * [mayChooseNone].
      */
-    val eachModeTargetsDifferent: Boolean = false
+    val eachModeTargetsDifferent: Boolean = false,
+    /**
+     * "Choose one at random" (Summon: Magus Sisters, Outlaws' Merriment, Umaro, Raging Yeti): the
+     * controller doesn't pick — the engine draws the mode uniformly from the game's seeded RNG as
+     * the ability goes onto the stack, before targets are chosen, so players respond knowing it
+     * (CR 603.3c; Magus Sisters' rulings). Only modes that could legally be chosen are in the draw:
+     * a mode with no legal target is excluded, and if none can be chosen the ability is removed
+     * from the stack. Exactly one mode is drawn, so [chooseCount] must be 1. Read where a modal
+     * *triggered* ability announces its modes (`TriggerProcessor`), like [mayChooseNone]; every
+     * printed card with this wording is a triggered ability. Use [chooseOneAtRandom].
+     */
+    val chooseAtRandom: Boolean = false
 ) : Effect {
+    init {
+        require(!chooseAtRandom || (chooseCount == 1 && minChooseCount == 1 && dynamicChooseCount == null)) {
+            "chooseAtRandom draws exactly one mode: chooseCount and minChooseCount must be 1, with no dynamicChooseCount"
+        }
+    }
+
     override val description: String = buildString {
         append(if (mayChooseNone) "You may choose " else "Choose ")
         when {
+            chooseAtRandom -> append("one at random")
             excludeModesChosenThisTurn -> append("one that hasn't been chosen this turn")
             excludePreviouslyChosenModes -> append("one that hasn't been chosen")
             dynamicChooseCount != null -> {
@@ -365,6 +383,14 @@ data class ModalEffect(
                 excludeModesChosenThisTurn = true,
                 countsAsModalSpell = false
             )
+
+        /**
+         * Create a "choose one at random" modal effect (Summon: Magus Sisters). The engine draws
+         * the mode from the modes that could legally be chosen as the triggered ability goes onto
+         * the stack; the controller makes no choice. See [ModalEffect.chooseAtRandom].
+         */
+        fun chooseOneAtRandom(vararg modes: Mode): ModalEffect =
+            ModalEffect(modes = modes.toList(), chooseCount = 1, chooseAtRandom = true)
 
         /**
          * Create a choose-two modal effect (Cryptic Command style).
@@ -1051,7 +1077,15 @@ sealed interface DelayedTriggerExpiry {
  * carried into whichever consequence fires, so a consequence can reference a collection built
  * earlier in the same resolution (e.g. "return the discarded card this way").
  *
- * Supported costs: [PayCost.Sacrifice] (card selection) and [PayCost.PayLife] (yes/no).
+ * Supported costs: [PayCost.Sacrifice] / tap (card selection) and [PayCost.PayLife] (yes/no).
+ * A null [cost] is a **free choice** — "any opponent may have you put that card into your
+ * graveyard" (Sin Prodder): nothing is paid, each asked player simply answers [prompt] yes or
+ * no, and the first yes runs [consequence] exactly as a payment would.
+ *
+ * [storePayerAs] stores the player who paid (or said yes) in a pipeline collection that
+ * [consequence] reads with `EffectTarget.PipelineTarget(storePayerAs)` — "if a player does, this
+ * deals damage to *that player*". Only [consequence] sees it; [consequenceIfNonePaid] has no such
+ * player.
  *
  * [eligiblePlayers] scopes *which* players are offered the choice, relative to the source's
  * controller: [Player.Each] (default) asks every player, [Player.EachOpponent] asks only the
@@ -1059,26 +1093,37 @@ sealed interface DelayedTriggerExpiry {
  * multi-player group references are meaningful here; single-player refs fall back to that one
  * player.
  *
- * @property cost The cost any player may choose to pay
+ * @property cost The cost any player may choose to pay; null for a free choice (see above)
  * @property consequence The effect that happens if a player pays (null = nothing)
  * @property consequenceIfNonePaid The effect that happens if no player pays (null = nothing)
  * @property eligiblePlayers Which players are offered the choice, relative to the controller
+ * @property prompt The yes/no question put to each asked player, in their words. Required for a
+ *   free choice (null [cost]); a payment's prompt is built from the cost itself.
+ * @property storePayerAs Pipeline collection [consequence] reads the paying player from
+ *   (`EffectTarget.PipelineTarget(storePayerAs)`); null when the consequence never names them.
  */
 @SerialName("AnyPlayerMayPay")
 @Serializable
 data class AnyPlayerMayPayEffect(
-    val cost: PayCost,
+    val cost: PayCost?,
     val consequence: Effect? = null,
     val consequenceIfNonePaid: Effect? = null,
-    val eligiblePlayers: Player = Player.Each
+    val eligiblePlayers: Player = Player.Each,
+    val prompt: String? = null,
+    val storePayerAs: String? = null,
 ) : Effect {
+    init {
+        require(cost != null || prompt != null) { "A free-choice AnyPlayerMayPay (null cost) needs a prompt" }
+    }
+
     override val description: String = buildString {
         val who = if (eligiblePlayers == Player.EachOpponent) "opponent" else "player"
+        val offer = cost?.description ?: "accept"
         when {
             consequenceIfNonePaid != null && consequence == null ->
-                append("${consequenceIfNonePaid.description} unless any $who ${cost.description}")
+                append("${consequenceIfNonePaid.description} unless any $who ${if (cost == null) "accepts" else offer}")
             else -> {
-                append("Any $who may ${cost.description}.")
+                append("Any $who may $offer.")
                 if (consequence != null) append(" If a player does, ${consequence.description}.")
                 if (consequenceIfNonePaid != null) append(" If no player does, ${consequenceIfNonePaid.description}.")
             }
@@ -1086,7 +1131,7 @@ data class AnyPlayerMayPayEffect(
     }
 
     override fun applyTextReplacement(replacer: TextReplacer): Effect {
-        val newCost = cost.applyTextReplacement(replacer)
+        val newCost = cost?.applyTextReplacement(replacer)
         val newConsequence = consequence?.applyTextReplacement(replacer)
         val newConsequenceIfNonePaid = consequenceIfNonePaid?.applyTextReplacement(replacer)
         return if (newCost !== cost || newConsequence !== consequence || newConsequenceIfNonePaid !== consequenceIfNonePaid)
@@ -1214,16 +1259,23 @@ data class FlipCoinsEffect(
  *
  * Used by Fiery Gambit ("Flip a coin until you lose a flip or choose to stop flipping"), whose three
  * payoff tiers are then plain `Compare(VariableReference(storeWinsAs), GTE, Fixed(n))` gates over the
- * one tally.
+ * one tally, and — with [mayStop] `false` — by Mirror March ("flip a coin until you lose a flip"),
+ * whose run has no stop option at all: a won flip is followed by the next flip with no prompt.
  *
  * @property storeWinsAs Pipeline `storedNumbers` key the won-flip tally is written to.
+ * @property mayStop Whether the flipper is offered "stop flipping" after each won flip ("…or choose
+ *   to stop flipping"). `false` is the mandatory form: only a lost flip ends the run (bounded by the
+ *   engine's coin-flip backstop when a forced-win effect means no flip can be lost).
  */
 @SerialName("FlipCoinsUntilLoss")
 @Serializable
 data class FlipCoinsUntilLossEffect(
-    val storeWinsAs: String = "wins"
+    val storeWinsAs: String = "wins",
+    val mayStop: Boolean = true
 ) : Effect {
-    override val description: String = "Flip a coin until you lose a flip or choose to stop flipping"
+    override val description: String =
+        if (mayStop) "Flip a coin until you lose a flip or choose to stop flipping"
+        else "Flip a coin until you lose a flip"
 }
 
 // =============================================================================
@@ -1460,13 +1512,21 @@ data class RepeatDynamicTimesEffect(
 sealed interface FeasibilityCheck {
 
     /**
-     * The player controls at least [count] permanents matching [filter].
+     * The player controls at least [count] permanents matching [filter] — or, when [dynamicCount]
+     * is set, at least that many, evaluated when the question is asked.
+     *
+     * [dynamicCount] is what lets a punisher offer "sacrifice that many permanents" as a payment
+     * whose size is only known at resolution (Archfiend of Spite: "that source's controller loses
+     * that much life unless they sacrifice that many permanents"). It mirrors
+     * [ForceSacrificeEffect.dynamicCount], so a choice pairing the two agrees about how many are
+     * needed; [count] stays the fallback, which keeps every fixed-count card unchanged.
      */
     @SerialName("ControlsPermanentMatching")
     @Serializable
     data class ControlsPermanentMatching(
         val filter: GameObjectFilter,
-        val count: Int = 1
+        val count: Int = 1,
+        val dynamicCount: DynamicAmount? = null
     ) : FeasibilityCheck
 
     /**

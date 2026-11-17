@@ -35,7 +35,12 @@ class FormatCardPool(
             setCodes.flatMap { setCode ->
                 val config = boosterGenerator.availableSets[setCode]
                     ?: throw IllegalArgumentException("Unknown set code: $setCode")
-                config.cards + config.printings.mapNotNull { cardRegistry.getCard(it.name) }
+                // Both halves resolve through the registry. The server builds a set's booster
+                // `cards` from the raw set definitions, which carry no `legalFormats` — only the
+                // registry's copies are stamped with Scryfall legality. Reading `cards` as-is
+                // dropped every card the set itself prints and left only its reprint rows.
+                config.cards.map { cardRegistry.getCard(it.name) ?: it } +
+                    config.printings.mapNotNull { cardRegistry.getCard(it.name) }
             }
         }
         return candidates

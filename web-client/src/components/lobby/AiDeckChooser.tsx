@@ -23,6 +23,7 @@
 import { useCallback, useRef, useState } from 'react'
 import { useGameStore } from '@/store/gameStore'
 import type { AiDeckSpec, AiDeckSpecView } from '@/types'
+import { autoBuiltDeckSize } from '@/utils/deckLegality'
 import { DeckPicker } from '../ui/DeckPicker'
 import { DeckPickerModal } from '../ui/DeckPickerModal'
 import { SetSelector, rollRandomSet } from '../ui/SetSelector'
@@ -104,6 +105,7 @@ export function AiDeckChooser({
   const isCommanderShape = commanderRules || (format !== null && COMMANDER_SHAPES.includes(format))
   const commanderSize = commanderDeckSize(format)
   const formatLabel = format?.replace('_', ' ').toLowerCase() ?? ''
+  const constructedSize = autoBuiltDeckSize(format)
 
   const pick = (next: AiDeckSource) => {
     setUncontrolledSource(next)
@@ -164,7 +166,7 @@ export function AiDeckChooser({
               {isCommanderShape
                 ? `The server picks the AI a commander and builds it a ${commanderSize}-card singleton deck in that commander's colours.`
                 : format
-                  ? `The server builds the AI a 60-card ${formatLabel}-legal deck.`
+                  ? `The server builds the AI a ${constructedSize}-card ${formatLabel}-legal deck.`
                   : 'The server opens eight boosters from your set and auto-builds the AI a 40-card deck.'}
               {' '}
               Bring your own deck and the AI plays from the same set(s): another starter deck from them

@@ -31,6 +31,7 @@ import com.wingedsheep.engine.mechanics.targeting.TargetValidator
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.ComponentContainer
 import com.wingedsheep.engine.state.GameState
+import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.engine.state.components.battlefield.AbilityActivatedThisTurnComponent
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.battlefield.ClassLevelComponent
@@ -100,6 +101,7 @@ internal class ActivationValidator(
         val abilityLookup = abilityResolver.lookup(state, action.sourceId, action.abilityId)
             ?: return "Ability not found on this card"
         val ability = abilityLookup.ability
+        checkFaceDownInExile(state, action, abilityLookup)?.let { return it }
 
         checkManaPaymentWindow(state, action, ability, manaPaymentWindow)?.let { return it }
         checkSplitSecond(state, ability)?.let { return it }
@@ -109,6 +111,7 @@ internal class ActivationValidator(
         // Apply text-changing effects to cost and target filters
         val textReplacement = com.wingedsheep.engine.state.components.identity.TextChanges.of(state, action.sourceId)
         val effectiveCost = costTotaller.total(state, action, ability, textReplacement)
+            ?: return PAY_ONLY_WITH_MANA_OF_UNPAYABLE
         modalChoices.validate(state, action, ability.effect)?.let { return it }
         val modal = (ability.effect as? com.wingedsheep.sdk.scripting.effects.ModalEffect)
         val allRequirements = ability.targetRequirements + action.chosenModes.orEmpty().flatMap {
@@ -130,6 +133,7 @@ internal class ActivationValidator(
 
         return checkBatchActivation(action, effectiveCost, effectiveTargetReqs)
             ?: checkSubmittedTotalExileSelection(state, action, effectiveCost)
+            ?: checkExileXSelection(state, action, ability, effectiveCost)
             ?: checkLoyaltyAbilityTiming(state, action, container, ability)
             ?: checkSorcerySpeedTiming(state, action, ability)
             ?: checkAttachedCreatureSummoningSickness(state, container, effectiveCost)
@@ -142,6 +146,23 @@ internal class ActivationValidator(
             ?: checkActivationRestrictions(state, action, ability)
             ?: checkTargets(state, targetAction, cardComponent, effectiveCost, effectiveTargetReqs)
             ?: checkDamageDistribution(state, action, ability)
+    }
+
+    /**
+     * A card exiled face down has no characteristics (CR 406.3a): the abilities its definition
+     * prints don't exist there, though one an effect granted it still does. The enumerator offers
+     * none of them; this rejects a client that names one anyway.
+     */
+    private fun checkFaceDownInExile(
+        state: GameState,
+        action: ActivateAbility,
+        lookup: ActivatedAbilityLookup,
+    ): String? {
+        val printed = lookup is ActivatedAbilityLookup.DirectDefinition ||
+            lookup is ActivatedAbilityLookup.DefinitionDerivedClass ||
+            lookup is ActivatedAbilityLookup.CopyException
+        if (!printed || !com.wingedsheep.engine.state.isFaceDownInExile(state, action.sourceId)) return null
+        return "A card exiled face down has no abilities"
     }
 
     /**
@@ -292,7 +313,10 @@ internal class ActivationValidator(
         // matching permanents — mana and non-mana alike. Loyalty abilities of
         // planeswalkers and Crew-style animation abilities are not blocked because the
         // filter (typically `Creature`) is matched in projected state.
-        if (castPermissionUtils.isActivationPrevented(state, action.sourceId, abilityIsManaAbility = ability.isManaAbility)) {
+        if (castPermissionUtils.isActivationPrevented(
+                state, action.sourceId, abilityIsManaAbility = ability.isManaAbility,
+                abilityIsLoyaltyAbility = ability.isPlaneswalkerAbility
+            )) {
             return "Activated abilities of this permanent can't be activated"
         }
 
@@ -300,7 +324,8 @@ internal class ActivationValidator(
         // activating and *when* — "During your turn, your opponents can't activate abilities
         // of artifacts, creatures, or enchantments." Scoped to the activating player.
         if (castPermissionUtils.isActivationPreventedForPlayer(
-                state, action.sourceId, action.playerId, abilityIsManaAbility = ability.isManaAbility
+                state, action.sourceId, action.playerId, abilityIsManaAbility = ability.isManaAbility,
+                abilityIsLoyaltyAbility = ability.isPlaneswalkerAbility
             )
         ) {
             return "An effect prevents you from activating that ability right now"
@@ -324,7 +349,10 @@ internal class ActivationValidator(
             val isOwnAbility = (com.wingedsheep.engine.state.components.identity.ownActivatedAbilities(cardComponent, cardDef, classLevel).any { it.id == action.abilityId })
                 || action.abilityId.value.startsWith("class_level_up_")
                 || isIntrinsicMana
-            if (isOwnAbility && !intrinsicSurvives) {
+            // "Except mana abilities" (Blood Sun) spares the permanent's own mana abilities.
+            val manaSpared = (ability.isManaAbility || isIntrinsicMana) &&
+                !state.projectedState.hasLostManaAbilities(action.sourceId)
+            if (isOwnAbility && !intrinsicSurvives && !manaSpared) {
                 return "This permanent has lost all abilities"
             }
         }
@@ -386,6 +414,42 @@ internal class ActivationValidator(
         } else null
     }
 
+    /**
+     * An `ExileXFromGraveyard` cost binds X to the size of the exiled pile, so a client-supplied
+     * pile must arrive with that X: a pile with no (or a different) `xValue` would otherwise pay
+     * X = 0 and exile nothing. Every `GameAction` field is client-supplied; the selection pause's
+     * own resume always sends both.
+     *
+     * An exile-X cost whose X can't be 0 — "Exile one or more creature cards from your graveyard"
+     * (Corpseweft) is `ExileXFromGraveyard` under `minimumXValue = 1` — also can't be activated
+     * without that many matching cards (a cost that can't be paid can't be activated). A pile
+     * below the floor is then an X below `minimumXValue`, which ActivateAbilityHandler rejects.
+     */
+    private fun checkExileXSelection(
+        state: GameState,
+        action: ActivateAbility,
+        ability: ActivatedAbility,
+        effectiveCost: AbilityCost,
+    ): String? {
+        val cost = effectiveCost.extractExileXFromGraveyardCost() ?: return null
+        val submitted = action.costPayment?.exiledCards.orEmpty()
+        if (submitted.isNotEmpty() && action.xValue != submitted.size) {
+            return "X must equal the number of cards exiled to pay this cost"
+        }
+        val minimum = ability.minimumXValue
+        if (minimum <= 0) return null
+        val candidates = costHandler.findMatchingCardsUnified(
+            state,
+            state.getZone(ZoneKey(action.playerId, Zone.GRAVEYARD)),
+            cost.filter,
+            action.playerId,
+            sourceId = action.sourceId
+        )
+        return if (candidates.size < minimum) {
+            "Not enough ${cost.filter.description}s in your graveyard to pay this cost"
+        } else null
+    }
+
     /** Check timing for planeswalker abilities. */
     private fun checkLoyaltyAbilityTiming(
         state: GameState,
@@ -406,12 +470,12 @@ internal class ActivationValidator(
             return "Loyalty abilities can only be activated at sorcery speed"
         }
         // Rule 606.3: Only one loyalty ability per planeswalker per turn
-        // (Oath of Teferi, or a one-shot grant on this planeswalker, allows two per turn)
+        // (Oath of Teferi or a one-shot grant raises it; The Chain Veil adds to it)
         val tracker = container.get<AbilityActivatedThisTurnComponent>()
         if (tracker != null && tracker.loyaltyActivationCount > 0) {
-            val playerMax = castPermissionUtils.getMaxLoyaltyActivations(state, action.playerId, action.sourceId)
-            if (tracker.hasReachedLoyaltyLimit(playerMax)) {
-                val maxActivations = tracker.effectiveLoyaltyLimit(playerMax)
+            val allowance = castPermissionUtils.getLoyaltyAllowance(state, action.playerId, action.sourceId)
+            if (tracker.hasReachedLoyaltyLimit(allowance)) {
+                val maxActivations = tracker.effectiveLoyaltyLimit(allowance)
                 return if (maxActivations > 1) {
                     "Loyalty abilities can only be activated $maxActivations times per planeswalker each turn"
                 } else {
@@ -617,7 +681,19 @@ internal class ActivationValidator(
         val effectiveXValue = if (variablePermanentsCost != null && chosenForCost != null) {
             VariablePermanentsCost.measure(state, variablePermanentsCost.xMeasure, chosenForCost)
         } else {
-            action.xValue
+            // "Discard a card with mana value X" pre-filled with its discard: the pick announces X.
+            action.xValue ?: com.wingedsheep.engine.mechanics.cost.CostDefinedX.announcedByDiscard(
+                state, effectiveCost.extractDiscardXCost(), action.costPayment?.discardedCards
+            )
+        }
+        // "Discard a card with mana value X" announces X with its pick, and the targets are asked
+        // for after it. Targets sent before any pick or X would validate against an unbound X —
+        // which matches anything — and the pick could then announce a different X, discarding for
+        // an ability that can only fizzle. Refuse them: the pick (or X) has to come first.
+        if (action.targets.isNotEmpty() && effectiveXValue == null &&
+            effectiveCost.extractDiscardXCost()?.count != null && effectiveCost.targetsFollowCostChoice()
+        ) {
+            return "Choose the card to discard before the targets: its mana value is X"
         }
         if (controllerTargetReqs.isNotEmpty() && action.targets.isNotEmpty()) {
             return targetValidator.validateTargets(
@@ -639,11 +715,12 @@ internal class ActivationValidator(
             // An empty target list is only illegal when at least one controller-chosen
             // requirement is mandatory. For an ability whose controller targets are all
             // optional ("up to one target …", e.g. Boom Box), choosing no targets is a
-            // legal activation, so don't reject it here. An VariablePermanents cost drives the
-            // target choice *after* the exile selection (X isn't known until then), so the
-            // bare initial submission legitimately arrives with no target — the engine pauses
-            // for it during execute(); don't reject that here either.
-            if (variablePermanentsCost == null && controllerTargetReqs.any { it.effectiveMinCount > 0 }) {
+            // legal activation, so don't reject it here. A cost whose pick announces X (a
+            // VariablePermanents cost, a "discard a card with mana value X") drives the target
+            // choice *after* that pick (X isn't known until then), so the bare initial submission
+            // legitimately arrives with no target — the engine pauses for it during execute();
+            // don't reject that here either.
+            if (!effectiveCost.targetsFollowCostChoice() && controllerTargetReqs.any { it.effectiveMinCount > 0 }) {
                 return "This ability requires a target"
             }
         }
@@ -661,7 +738,7 @@ internal class ActivationValidator(
      */
     private fun checkDamageDistribution(state: GameState, action: ActivateAbility, ability: ActivatedAbility): String? {
         val distribution = action.damageDistribution ?: return null
-        val division = AnnouncedDivision.of(ability.effect)
+        val division = AnnouncedDivision.ofActivation(ability.effect)
             ?: return "This ability does not divide anything among its targets"
         val chosenTargetIds = action.targets.map { it.toEntityId() }.toSet()
         if (distribution.keys != chosenTargetIds) {
@@ -748,10 +825,14 @@ internal class ActivationValidator(
                     val subMana = subCost.manaCostOrNull
                     if (subMana != null) manaSolver.canPay(state, playerId, subMana, excludeSources = excludeSources, spellContext = abilityContext)
                     else costHandler.canPayAbilityCost(state, subCost, sourceId, playerId, manaPool, abilityContext, granterId, lifePurpose)
-                }
+                } && costHandler.canPaySacrificeAtomsJointly(state, cost, sourceId, playerId)
             }
             else -> costHandler.canPayAbilityCost(state, cost, sourceId, playerId, manaPool, abilityContext, granterId, lifePurpose)
         }
     }
 
+    companion object {
+        /** "Spend only mana of the chosen color" when no mana qualifies (see `applyPayOnlyWithManaOf`). */
+        const val PAY_ONLY_WITH_MANA_OF_UNPAYABLE = "No mana you could spend can pay this ability's cost"
+    }
 }

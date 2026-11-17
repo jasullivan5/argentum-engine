@@ -7,6 +7,11 @@ Accepts the common decklist shapes — "Sol Ring", "1 Sol Ring", "1x Sol Ring",
 "Sideboard:"), and "#" / "//" comments — and compares the names against every `card("Name")` and
 `Printing` row under `mtg-sets/` (the same check scripts/commander-staples uses).
 
+A list whose first line is `# set: <CODE>` (what `just contribute` writes for "a whole set") is held to
+that set instead: a card counts as missing until <CODE> itself has it — its canonical, a `Printing` row,
+or a basic land — per `scripts/card-status --set <CODE>`. A card that exists only in another set is
+still missing here.
+
 Usage:
   scripts/card-list-status my-deck.txt              # summary + the missing cards
   scripts/card-list-status my-deck.txt --missing    # only the missing names, one per line
@@ -19,6 +24,7 @@ import argparse
 import importlib.machinery
 import importlib.util
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -39,6 +45,7 @@ SECTION_RE = re.compile(r"^(about|name .*|commander|commanders|companion|deck|ma
 COUNT_RE = re.compile(r"^(\d+)\s*x?\s+", re.IGNORECASE)
 # " (SET) 123", " (SET) 123a", " [SET]", " *F*", " *CMDR*", " #tag" trailers from Moxfield/Archidekt/MTGA.
 TRAILER_RE = re.compile(r"(\s+\(\w+\)(\s+[\w-]+)?|\s+\[\w+\]|\s+\*[^*]+\*|\s+#.*)+$")
+SET_DIRECTIVE_RE = re.compile(r"^#\s*set:\s*(\w+)\s*$", re.IGNORECASE)
 
 
 def parse_list(text: str) -> list[str]:
@@ -57,6 +64,34 @@ def parse_list(text: str) -> list[str]:
     return names
 
 
+def set_directive(text: str) -> str | None:
+    """The set code of a `# set: <CODE>` first line, or None for an ordinary card list."""
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    m = SET_DIRECTIVE_RE.match(first)
+    return m.group(1).lower() if m else None
+
+
+def set_missing_names(code: str) -> set[str]:
+    """Every card `card-status --set <code> --list` reports the set itself doesn't have yet."""
+    res = subprocess.run([sys.executable, str(SCRIPTS / "card-status"), "--set", code, "--list"],
+                         capture_output=True, text=True, timeout=300)
+    if res.returncode != 0:
+        raise SystemExit(f"card-list-status: card-status --set {code} failed: {res.stderr.strip() or res.stdout.strip()}")
+    return {m.group(1).strip().lower() for m in re.finditer(r"^\s+- (.+)$", res.stdout, re.M)}
+
+
+def missing_cards(text: str) -> tuple[list[str], list[str]]:
+    """(every card name in the list, the ones not implemented yet — in the list's set, for a set list)."""
+    names = parse_list(text)
+    code = set_directive(text)
+    if code:
+        missing = set_missing_names(code)
+        return names, [n for n in names if n.lower() in missing]
+    staples = _load_staples()
+    implemented = staples.implemented_names()
+    return names, [n for n in names if not staples.is_implemented(n, implemented)]
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("list", type=Path, help="card list file (decklist export or one name per line)")
@@ -67,10 +102,7 @@ def main() -> int:
         print(f"card-list-status: no such file: {args.list}", file=sys.stderr)
         return 2
 
-    staples = _load_staples()
-    names = parse_list(args.list.read_text(encoding="utf-8"))
-    implemented = staples.implemented_names()
-    missing = [n for n in names if not staples.is_implemented(n, implemented)]
+    names, missing = missing_cards(args.list.read_text(encoding="utf-8"))
 
     if args.missing:
         report = "".join(f"{n}\n" for n in missing)

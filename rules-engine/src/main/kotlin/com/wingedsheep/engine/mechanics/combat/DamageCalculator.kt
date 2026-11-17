@@ -61,8 +61,9 @@ class DamageCalculator(
     /**
      * Calculate the minimum damage needed to be considered "lethal" for a creature.
      *
-     * Damage is lethal if it equals or exceeds toughness minus
-     * damage already marked, OR if the source has deathtouch (any nonzero amount).
+     * Damage is lethal if it equals or exceeds toughness (or power, under a lethal-damage-by-power
+     * rule modification) minus damage already marked, OR if the source has deathtouch (any
+     * nonzero amount).
      *
      * @param state Current game state
      * @param creatureId The creature receiving damage
@@ -88,7 +89,7 @@ class DamageCalculator(
         val lethalAmount = if (hasDeathtouch) {
             1
         } else {
-            (toughness - damageMarked).coerceAtLeast(1)
+            (projected.lethalDamageThreshold(creatureId) - damageMarked).coerceAtLeast(1)
         }
 
         return LethalDamageInfo(
@@ -341,7 +342,7 @@ class DamageCalculator(
 
         for (entityId in state.getBattlefield()) {
             val container = state.getEntity(entityId) ?: continue
-            val replacementComponent = container.get<ReplacementEffectSourceComponent>() ?: continue
+            val replacementComponent = state.activeReplacementSource(entityId) ?: continue
             val sourceControllerId = container.get<ControllerComponent>()?.playerId ?: continue
 
             for (effect in replacementComponent.replacementEffects) {

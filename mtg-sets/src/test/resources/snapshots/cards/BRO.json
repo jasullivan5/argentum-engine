@@ -3932,7 +3932,8 @@
                     "target": {
                         "type": "BoundVariable",
                         "name": "t1"
-                    }
+                    },
+                    "mayChooseNewTargets": false
                 },
                 "targetRequirements": [
                     {
@@ -6302,11 +6303,7 @@
                 },
                 "condition": {
                     "type": "Compare",
-                    "left": {
-                        "type": "TurnTracking",
-                        "player": "You",
-                        "tracker": "PERMANENTS_SACRIFICED"
-                    },
+                    "left": "PermanentsSacrificedThisTurn",
                     "operator": "GTE",
                     "right": {
                         "type": "Fixed",
@@ -11287,7 +11284,8 @@
                 "fromZones": [
                     "Hand",
                     "Library"
-                ]
+                ],
+                "duringYourTurnOnly": true
             }
         ]
     },
@@ -16112,7 +16110,8 @@
                             "addedCardTypes": [
                                 "ARTIFACT"
                             ]
-                        }
+                        },
+                        "mayChooseNewTargets": false
                     }
                 }
             }
@@ -18301,9 +18300,12 @@
                             "zone": "Graveyard"
                         },
                         "id": "t0",
-                        "totalManaValueAtMost": {
-                            "type": "Fixed",
-                            "amount": 10
+                        "totalAtMost": {
+                            "property": "MANA_VALUE",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 10
+                            }
                         }
                     }
                 ],

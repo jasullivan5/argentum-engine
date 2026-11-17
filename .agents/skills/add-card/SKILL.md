@@ -25,9 +25,9 @@ unrelated cards.
 
 Given several card names:
 
-- Run **Steps 0–9 once per card**, committing each card separately (Step 10's commit rule) so a bad card
+- Run **Steps 0–9 once per card**, committing each card separately (Step 11's commit rule) so a bad card
   can be dropped without unpicking the others.
-- Run **Step 10's gate once**, at the end, for the whole batch. Don't gate per card.
+- Run **Step 10's AI check and Step 11's gate once**, at the end, for the whole batch. Don't gate per card.
 - **A card that turns out to need new SDK vocabulary leaves the batch** the moment Step 4 says so. Reset
   its commit, report it as dropped, and ship the rest. Do not grow the PR to cover it, and do not
   fake it with an existing primitive that only works in the common case. A card that could only ship
@@ -299,7 +299,91 @@ The mistakes this actually catches: wrong P/T, a missing keyword, a missing "tar
 modelled as "whenever", "enters the battlefield" as "dies", one ability of a multi-ability card dropped
 entirely, and "until end of turn" wired as a permanent effect.
 
-## Step 10: Verify and commit
+## Step 10: Make sure the AI can play it
+
+**Always, once for the whole batch.** A card that works for a human can still be a card the engine AI
+misplays: it plays every card, but where its readers don't understand an ability it falls back to a
+generic default, where nothing rates the card it drafts it on a guess, and where it can't see what the
+card feeds or cashes in it builds and plays it as a lone body. This step is a check *and* a fix — the
+card isn't done until the AI understands it, rates it, and sees its synergy, or the PR says exactly why
+not. One command shows all three:
+
+```bash
+just ai-card "Card One|Card Two|Card Three"
+```
+
+It prints, per card, the same answers the Assay explorer's **AI reading** and **How the AI rates it**
+panels draw (open `#c/<Card>` in the Assay Explorer tab of Set Completion for the visual version), plus
+the synergy axes:
+
+- **Reading** — `✓ n/n abilities read fully`, or a `✕` line per gap: which ability, what the reader
+  couldn't tell, and the SDK effect type behind it.
+- **Pick** — the 0–5 draft rating and where it comes from (17Lands, a set's pick table, or the effect
+  heuristic), then one line per set the card is in. `! no draft rating anywhere` means no data rates it
+  and the AI guesses from the heuristic, whose terms are listed.
+- **In play / Intent** — the board value the evaluator gives it, and what the AI thinks the card is for.
+- **Synergy** — the axes `SynergyAxes` reads the card *feeding* and *rewarding* (death, tokens,
+  creatures enter, lifegain, spells, plus counters, graveyard). The in-game evaluator prices a payoff by
+  the fuel beside it (`SynergyPresence`), and the Commander generator picks its theme from these axes.
+
+Hold each card to its Oracle text, not to the report's own say-so:
+
+**1. Understanding.** Every `✕`, and every `! abilities not recognised` on a card that plainly does
+something, is a gap to close:
+
+- **A gap a classifier entry closes** — one `when` branch in `TargetPolarityAnalyzer`,
+  `CardIntentAnalyzer.tagsOf`, `CombatReach` / `ExpiringGrantWindow`, or `LimitedCardRater`'s `LimitedScoreFold`
+  — close it in this PR: it fixes every card on that effect type, and you know the semantics now. Add an
+  AI test for the decision it changes and add an `ai/changelog.d/<branch>.md` entry; leave the
+  reading baseline to main's post-merge re-bless (`docs/ai/reading-audit.md` has the readers and the ratchet).
+- **A gap bigger than that** (a reader that needs a new concept, not just a new `when` branch): split it
+  out as its own `add-feature` PR, opened next, and say in this PR body why it couldn't be closed here.
+  Never defer a gap because it is pre-existing, because other cards share the effect, or because "it
+  belongs to the AI reading loop" — those are reasons it is *worth* closing now, not reasons to skip it.
+  If the effect type is new to the corpus, `AiReadingRatchetTest` fails: re-bless
+  `just ai-reading-baseline` in this PR.
+- **A decision no reader can make** — a card whose right play is card-specific (when to hold a
+  combat trick, which mode or creature type to name, an X to pick, when *not* to attack with it), and
+  where the generic 1-ply simulation demonstrably picks wrong — gets a `CardAdvisor`
+  (`ai/.../engine/advisor/`, registered through a `CardAdvisorModule`) with a test showing the
+  generic choice and the advised one. An advisor is the last resort: prefer teaching a reader that
+  covers the card's whole family.
+
+**2. Rating.** The pick must be roughly right for the card's limited environment, not just present:
+
+- **No draft rating** for a card in a set that has a **first-party** pick table: add the card's rating
+  to that table (`docs/limited-card-ratings.md`, "Adding or refreshing ratings"). Vendored Draftsim
+  tables are never hand-edited, and a set with no table at all gets one from the set's finishing PR.
+- **Heuristic-only and clearly off** — a bomb scored like a filler common, or a heuristic breakdown with
+  no term for the card's main ability — means `LimitedCardRater`'s `LimitedScoreFold` has no term for that
+  effect type: give it one (same PR when it's a single term; same AI test + changelog-entry rule).
+- **In play** reads 0 or a bare-body value for a card whose worth is its abilities: that is the same
+  understanding gap as above, seen from the evaluator.
+
+**3. Synergy.** Compare the `Synergy` line to the Oracle text:
+
+- **A payoff the AI doesn't see** — "whenever another creature you control dies / a token enters / you
+  gain life / you cast an instant or sorcery / a +1/+1 counter is put …" with no matching `rewards` —
+  or **fuel it doesn't see** — a sac outlet, token maker, lifelinker, counter source, self-mill with no
+  matching `feeds` — is a `SynergyAxes` reading gap. If the card is on an existing axis and the miss is a
+  shape the reader should match (a trigger pattern, a cost, an effect leaf), widen `SynergyAxes` in this
+  PR with a test pinning the card's `SynergyAxes.of` profile; otherwise name it in the PR body. Its known blind
+  spots (static "creatures with +1/+1 counters have …" rewards, keyword token makers like afterlife or
+  fabricate) score as no synergy by design — say so rather than forcing an axis.
+- **A false positive** — `rewards` on a card that only cares about itself ("when this dies") or about
+  opponents — is a reader bug: fix it, since it pulls decks toward cards that do nothing together.
+- **Draft archetypes.** In a set whose `draftai/archetypes/<CODE>.json` is **first-party** (see
+  `DraftsimData`'s provenance note), give the card its `{archetype, role}` tags so the draft scorer
+  counts it as an enabler or payoff. A tribal card's type belongs in that set's
+  `SetArchetypes` `creatureTypes`.
+
+**Say it in the PR body**, one line per card or one for the batch:
+`AI: reads 2/2 · pick 2.4 (FDN table) · intent Removal · synergy feeds death / rewards lifegain` — and
+call out every remaining `✕`, every heuristic-only pick, and every synergy the line misses, so a
+reviewer sees what the AI will get wrong before players do. A remaining `✕` needs the split-out PR
+above; a reviewer treats one without it as a blocking finding.
+
+## Step 11: Verify and commit
 
 Run the gates via the **`verify`** skill — `just build` for cards on existing effects, `just test` when
 Step 4 added engine behavior. **Once for the whole batch, after every card is written** — not per card;

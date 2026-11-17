@@ -37,6 +37,287 @@
     ]
 }
 
+// Ancient Copper Dragon
+{
+    "name": "Ancient Copper Dragon",
+    "manaCost": "{4}{R}{R}",
+    "typeLine": "Creature — Elder Dragon",
+    "oracleText": "Flying\nWhenever this creature deals combat damage to a player, roll a d20. You create a number of Treasure tokens equal to the result.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Ancient Copper Dragon:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "RollDice",
+                            "sides": 20,
+                            "storeTotalAs": "diceResult0"
+                        },
+                        {
+                            "type": "CreatePredefinedToken",
+                            "tokenType": "Treasure",
+                            "dynamicCount": {
+                                "type": "VariableReference",
+                                "variableName": "diceResult0"
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever this creature deals combat damage to a player, roll a d20. You create a number of Treasure tokens equal to the result."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "161",
+        "rarity": "MYTHIC",
+        "artist": "Antonio José Manzanedo",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/8/3836dddd-a7e4-499f-ad49-ce298aa65720.jpg?1783922745"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Ancient Gold Dragon
+{
+    "name": "Ancient Gold Dragon",
+    "manaCost": "{5}{W}{W}",
+    "typeLine": "Creature — Elder Dragon",
+    "oracleText": "Flying\nWhenever this creature deals combat damage to a player, roll a d20. You create a number of 1/1 blue Faerie Dragon creature tokens with flying equal to the result.",
+    "creatureStats": {
+        "power": 7,
+        "toughness": 10
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Ancient Gold Dragon:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "RollDice",
+                            "sides": 20,
+                            "storeTotalAs": "diceResult0"
+                        },
+                        {
+                            "type": "CreateToken",
+                            "count": {
+                                "type": "VariableReference",
+                                "variableName": "diceResult0"
+                            },
+                            "power": 1,
+                            "toughness": 1,
+                            "colors": [
+                                "BLUE"
+                            ],
+                            "creatureTypes": [
+                                "Faerie",
+                                "Dragon"
+                            ],
+                            "keywords": [
+                                "FLYING"
+                            ],
+                            "imageUri": "https://cards.scryfall.io/normal/front/6/f/6f1eb498-8496-4234-8e87-78dc3f647534.jpg?1783922323"
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever this creature deals combat damage to a player, roll a d20. You create a number of 1/1 blue Faerie Dragon creature tokens with flying equal to the result."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "3",
+        "rarity": "MYTHIC",
+        "artist": "Simon Dominic",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/2/421395b1-2694-42fd-bb90-0007e78adefc.jpg?1783922822"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Ancient Silver Dragon
+{
+    "name": "Ancient Silver Dragon",
+    "manaCost": "{6}{U}{U}",
+    "typeLine": "Creature — Elder Dragon",
+    "oracleText": "Flying\nWhenever this creature deals combat damage to a player, roll a d20. Draw cards equal to the result. You have no maximum hand size for the rest of the game.",
+    "creatureStats": {
+        "power": 8,
+        "toughness": 8
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Ancient Silver Dragon:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "RollDice",
+                            "sides": 20,
+                            "storeTotalAs": "diceResult0"
+                        },
+                        {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "VariableReference",
+                                "variableName": "diceResult0"
+                            }
+                        },
+                        "RemoveMaximumHandSize"
+                    ]
+                },
+                "descriptionOverride": "Whenever this creature deals combat damage to a player, roll a d20. Draw cards equal to the result. You have no maximum hand size for the rest of the game."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "56",
+        "rarity": "MYTHIC",
+        "artist": "Raoul Vitale",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/e/ced18935-4ce9-466e-a88d-2b14ff8f989f.jpg?1783922795"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Astral Dragon
+{
+    "name": "Astral Dragon",
+    "manaCost": "{6}{U}{U}",
+    "typeLine": "Creature — Dragon",
+    "oracleText": "Flying\nProject Image — When this creature enters, create two tokens that are copies of target noncreature permanent, except they're 3/3 Dragon creatures in addition to their other types, and they have flying.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Astral Dragon:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateTokenCopyOfTarget",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "overridePower": 3,
+                    "overrideToughness": 3,
+                    "addedKeywords": [
+                        "FLYING"
+                    ],
+                    "addedSubtypes": [
+                        "Dragon"
+                    ],
+                    "addCardTypes": [
+                        "CREATURE"
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "noncreature permanent"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "Project Image — Create two tokens that are copies of target noncreature permanent, except they're 3/3 Dragon creatures with flying."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "613",
+        "rarity": "RARE",
+        "artist": "Anastasia Ovchinnikova",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/5/b5bf8b03-1f5c-46c5-a684-ae5c04630286.jpg?1783922540",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "Except for power, toughness, types, and the flying ability, the token copies exactly what was printed on the original permanent and nothing else (unless that permanent is copying something else or is a token; see below). It doesn't copy whether that permanent is tapped or untapped, whether it has any counters on it or Auras and Equipment attached to it, and so on."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If the copied permanent has {X} in its mana cost, X is considered to be 0."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If the copied permanent is a token, the new token that's created copies the original characteristics of that token, with the exceptions noted above."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If the copied permanent is copying something else, then the token enters the battlefield as whatever that permanent copied, with the exceptions noted above."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "Any enters-the-battlefield abilities of the copied permanent will trigger when the token enters the battlefield. Any “as [this permanent] enters the battlefield” or “[this permanent] enters the battlefield with” abilities of the chosen permanent will also work."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If you target an Aura with Astral Dragon's ability, no tokens will be created."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "Since the tokens are creatures, they can't attack or {T} until your next turn if they don't have haste."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Avenging Hunter
 {
     "name": "Avenging Hunter",
@@ -73,6 +354,312 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Battle Angels of Tyr
+{
+    "name": "Battle Angels of Tyr",
+    "manaCost": "{2}{W}{W}",
+    "typeLine": "Creature — Angel Knight",
+    "oracleText": "Flying, myriad\nWhenever this creature deals combat damage to a player, draw a card if that player has more cards in hand than each other player. Then you create a Treasure token if that player controls more lands than each other player. Then you gain 3 life if that player has more life than each other player.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING",
+        "MYRIAD"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Simple",
+            "keyword": "MYRIAD"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Battle Angels of Tyr:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "Gated",
+                            "gate": {
+                                "type": "Gate.WhenCondition",
+                                "condition": {
+                                    "type": "PlayerHasMost",
+                                    "player": "TriggeringPlayer",
+                                    "amount": {
+                                        "type": "Count",
+                                        "player": "You",
+                                        "zone": "Hand"
+                                    },
+                                    "includeTies": false
+                                }
+                            },
+                            "then": {
+                                "type": "DrawCards",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            }
+                        },
+                        {
+                            "type": "Gated",
+                            "gate": {
+                                "type": "Gate.WhenCondition",
+                                "condition": {
+                                    "type": "PlayerHasMost",
+                                    "player": "TriggeringPlayer",
+                                    "amount": {
+                                        "type": "AggregateBattlefield",
+                                        "player": "You",
+                                        "filter": "land"
+                                    },
+                                    "includeTies": false
+                                }
+                            },
+                            "then": {
+                                "type": "CreatePredefinedToken",
+                                "tokenType": "Treasure"
+                            }
+                        },
+                        {
+                            "type": "Gated",
+                            "gate": {
+                                "type": "Gate.WhenCondition",
+                                "condition": {
+                                    "type": "PlayerHasMost",
+                                    "player": "TriggeringPlayer",
+                                    "amount": "YourLifeTotal",
+                                    "includeTies": false
+                                }
+                            },
+                            "then": {
+                                "type": "GainLife",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 3
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "9",
+        "rarity": "MYTHIC",
+        "artist": "Fajareka Setiawan",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/c/4c91dbf4-94fa-45d0-b8ed-a778b11d789b.jpg?1783922818"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Black Market Connections
+{
+    "name": "Black Market Connections",
+    "manaCost": "{2}{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "At the beginning of your first main phase, choose one or more —\n• Sell Contraband — Create a Treasure token. You lose 1 life.\n• Buy Information — Draw a card. You lose 2 life.\n• Hire a Mercenary — Create a 3/2 colorless Shapeshifter creature token with changeling. You lose 3 life. (It is every creature type.)",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Black Market Connections:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "PRECOMBAT_MAIN"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Modal",
+                    "modes": [
+                        {
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "CreatePredefinedToken",
+                                        "tokenType": "Treasure",
+                                        "imageUri": "https://cards.scryfall.io/normal/front/7/7/770b988d-4f31-4746-8c23-4ed8d9a6b393.jpg?1783922318"
+                                    },
+                                    {
+                                        "type": "LoseLife",
+                                        "amount": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        },
+                                        "target": "Controller"
+                                    }
+                                ]
+                            },
+                            "description": "Sell Contraband — Create a Treasure token. You lose 1 life."
+                        },
+                        {
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "DrawCards",
+                                        "count": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        }
+                                    },
+                                    {
+                                        "type": "LoseLife",
+                                        "amount": {
+                                            "type": "Fixed",
+                                            "amount": 2
+                                        },
+                                        "target": "Controller"
+                                    }
+                                ]
+                            },
+                            "description": "Buy Information — Draw a card. You lose 2 life."
+                        },
+                        {
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "CreateToken",
+                                        "power": 3,
+                                        "toughness": 2,
+                                        "colors": [],
+                                        "creatureTypes": [
+                                            "Shapeshifter"
+                                        ],
+                                        "keywords": [
+                                            "CHANGELING"
+                                        ],
+                                        "imageUri": "https://cards.scryfall.io/normal/front/1/1/1186b536-e6c8-433d-a906-b29f334d619c.jpg?1783922314"
+                                    },
+                                    {
+                                        "type": "LoseLife",
+                                        "amount": {
+                                            "type": "Fixed",
+                                            "amount": 3
+                                        },
+                                        "target": "Controller"
+                                    }
+                                ]
+                            },
+                            "description": "Hire a Mercenary — Create a 3/2 colorless Shapeshifter creature token with changeling. You lose 3 life."
+                        }
+                    ],
+                    "chooseCount": 3,
+                    "minChooseCount": 1
+                },
+                "descriptionOverride": "At the beginning of your first main phase, choose one or more — Sell Contraband (Treasure, lose 1 life); Buy Information (draw, lose 2 life); Hire a Mercenary (3/2 changeling, lose 3 life)."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "620",
+        "rarity": "RARE",
+        "artist": "Evyn Fong",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/b/8b28572c-d2ba-4834-8630-3d82202ebb6f.jpg?1783922535"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Blood Money
+{
+    "name": "Blood Money",
+    "manaCost": "{5}{B}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy all creatures. For each nontoken creature destroyed this way, you create a tapped Treasure token.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "BattlefieldMatching",
+                        "filter": "creature nontoken"
+                    },
+                    "storeAs": "gathered0"
+                },
+                {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "BattlefieldMatching",
+                                "filter": "creature"
+                            },
+                            "storeAs": "destroyAll_gathered"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "destroyAll_gathered",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard"
+                            },
+                            "moveType": "Destroy",
+                            "storeMovedAs": "stored1"
+                        }
+                    ]
+                },
+                {
+                    "type": "FilterCollection",
+                    "from": "gathered0",
+                    "collectionFilter": {
+                        "type": "ExcludeOtherCollection",
+                        "otherCollectionName": "stored1"
+                    },
+                    "storeMatching": "matching2"
+                },
+                {
+                    "type": "FilterCollection",
+                    "from": "gathered0",
+                    "collectionFilter": {
+                        "type": "ExcludeOtherCollection",
+                        "otherCollectionName": "matching2"
+                    },
+                    "storeMatching": "matching3"
+                },
+                {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure",
+                    "tapped": true,
+                    "dynamicCount": {
+                        "type": "VariableReference",
+                        "variableName": "matching3_count"
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "116",
+        "rarity": "MYTHIC",
+        "artist": "Inka Schulz",
+        "flavorText": "For the patriar class, wealth is in the blood.",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/d/5d45c18c-b8eb-465c-8dfc-fd6da73e25b5.jpg?1783922766"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -428,6 +1015,130 @@
     "colorIdentityOverride": []
 }
 
+// Cultist of the Absolute
+{
+    "name": "Cultist of the Absolute",
+    "manaCost": "{B}",
+    "typeLine": "Legendary Enchantment — Background",
+    "oracleText": "Commander creatures you own get +3/+3 and have flying, deathtouch, \"Ward—Pay 3 life,\" and \"At the beginning of your upkeep, sacrifice a creature.\"",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 3,
+                "toughnessBonus": 3,
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            "IsCommander"
+                        ],
+                        "controllerPredicate": "OwnedByYou"
+                    }
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "FLYING",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            "IsCommander"
+                        ],
+                        "controllerPredicate": "OwnedByYou"
+                    }
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "DEATHTOUCH",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            "IsCommander"
+                        ],
+                        "controllerPredicate": "OwnedByYou"
+                    }
+                }
+            },
+            {
+                "type": "GrantWard",
+                "cost": {
+                    "type": "WardCost.Life",
+                    "amount": 3
+                },
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            "IsCommander"
+                        ],
+                        "controllerPredicate": "OwnedByYou"
+                    }
+                }
+            },
+            {
+                "type": "GrantTriggeredAbility",
+                "ability": {
+                    "id": "Cultist of the Absolute:1",
+                    "trigger": {
+                        "type": "StepEvent",
+                        "step": "UPKEEP"
+                    },
+                    "binding": "ANY",
+                    "effect": {
+                        "type": "ForceSacrifice",
+                        "filter": "creature",
+                        "target": "Controller"
+                    },
+                    "descriptionOverride": "At the beginning of your upkeep, sacrifice a creature."
+                },
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            "IsCommander"
+                        ],
+                        "controllerPredicate": "OwnedByYou"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "123",
+        "rarity": "RARE",
+        "artist": "Artur Treffner",
+        "flavorText": "You embrace power at any cost, and if it consumes you, so be it.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/0/b0c7b4af-d521-4f4f-8910-7e05f2f60eb6.jpg?1783922764",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "If a card refers to a commander creature you own, a Background won't usually be counted or included for that effect. If another spell or ability causes your Background to become a creature, however, it will be included."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If you control a Background that grants an ability to commander creatures you own, and you own more than one commander creature, each of them will have that ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Cut a Deal
 {
     "name": "Cut a Deal",
@@ -490,6 +1201,35 @@
     "colorIdentityOverride": [
         "WHITE"
     ]
+}
+
+// Decanter of Endless Water
+{
+    "name": "Decanter of Endless Water",
+    "manaCost": "{3}",
+    "typeLine": "Artifact",
+    "oracleText": "You have no maximum hand size.\n{T}: Add one mana of any color.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Decanter of Endless Water:1",
+                "cost": "CostTap",
+                "effect": "AddManaOfChoice",
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ],
+        "staticAbilities": [
+            "NoMaximumHandSize"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "309",
+        "artist": "Titus Lunter",
+        "flavorText": "\"Now, remember: Under no circumstances should you utter the word 'geyser' in the same room as—oh, blast it!\"\n—Bindlehaim, Upper City merchant",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/1/518bbc36-58ea-44c4-a857-75a3aff058f5.jpg?1783922678"
+    },
+    "colorIdentityOverride": []
 }
 
 // Displacer Kitten
@@ -821,6 +1561,97 @@
     ]
 }
 
+// Earthquake Dragon
+{
+    "name": "Earthquake Dragon",
+    "manaCost": "{14}{G}",
+    "typeLine": "Creature — Elemental Dragon",
+    "oracleText": "This spell costs {X} less to cast, where X is the total mana value of Dragons you control.\nFlying, trample\n{2}{G}, Sacrifice a land: Return this card from your graveyard to your hand.",
+    "creatureStats": {
+        "power": 10,
+        "toughness": 10
+    },
+    "keywords": [
+        "FLYING",
+        "TRAMPLE"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Earthquake Dragon:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{2}{G}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomSacrifice",
+                                "filter": "land"
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": "Self",
+                    "destination": "Hand",
+                    "fromZone": "Graveyard"
+                },
+                "activateFromZone": "Graveyard",
+                "descriptionOverride": "Return this card from your graveyard to your hand"
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifySpellCost",
+                "target": "SelfCast",
+                "modification": {
+                    "type": "ReduceGenericBy",
+                    "source": {
+                        "type": "TotalPropertyAmongPermanentsYouControl",
+                        "property": "ManaValue",
+                        "filter": "permanent Dragon"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "228",
+        "rarity": "RARE",
+        "artist": "Johan Grenier",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/f/bfedfd30-8075-429e-a0fa-4919920c8632.jpg?1783922715",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "If a permanent has {X} in its mana cost, X is 0 when calculating its mana value."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "The total cost to cast Earthquake Dragon is locked in before you pay that cost. For example, if you control three Dragons, each with mana value 4, including one you can sacrifice to add {C}, the total cost of Earthquake Dragon is {2}{G}. Then you can sacrifice the Dragon as you activate mana abilities just before paying the cost."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If the total mana value of Dragons you control is 14 or greater, Earthquake Dragon costs {G} to cast."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "Earthquake Dragon's last ability can be activated only if it is in your graveyard."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Feywild Caretaker
 {
     "name": "Feywild Caretaker",
@@ -882,6 +1713,121 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Folk Hero
+{
+    "name": "Folk Hero",
+    "manaCost": "{1}{W}",
+    "typeLine": "Legendary Enchantment — Background",
+    "oracleText": "Commander creatures you own have \"Whenever you cast a spell that shares a creature type with this creature, draw a card. This ability triggers only once each turn.\"",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantTriggeredAbility",
+                "ability": {
+                    "id": "Folk Hero:1",
+                    "trigger": {
+                        "type": "SpellCastEvent",
+                        "spellFilter": {
+                            "cardPredicates": [
+                                "SharesCreatureTypeWithSource"
+                            ]
+                        }
+                    },
+                    "binding": "ANY",
+                    "effect": {
+                        "type": "DrawCards",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    },
+                    "oncePerTurn": true,
+                    "descriptionOverride": "Whenever you cast a spell that shares a creature type with this creature, draw a card. This ability triggers only once each turn."
+                },
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            "IsCommander"
+                        ],
+                        "controllerPredicate": "OwnedByYou"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "650",
+        "rarity": "MYTHIC",
+        "artist": "Kai Carpenter",
+        "flavorText": "Tales of your great deeds follow you no matter how far you travel from your hometown.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/8/a8b3aae8-fc36-45ed-84ed-efb8f543cada.jpg?1783922517",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "If a card refers to a commander creature you own, a Background won't usually be counted or included for that effect. If another spell or ability causes your Background to become a creature, however, it will be included."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If you control a Background that grants an ability to commander creatures you own, and you own more than one commander creature, each of them will have that ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Ganax, Astral Hunter
+{
+    "name": "Ganax, Astral Hunter",
+    "manaCost": "{4}{R}",
+    "typeLine": "Legendary Creature — Dragon",
+    "oracleText": "Flying\nWhenever Ganax or another Dragon you control enters, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\nChoose a Background (You can have a Background as a second commander.)",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Partner",
+            "kind": "ChooseABackground"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Ganax, Astral Hunter:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "permanent Dragon ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure"
+                },
+                "descriptionOverride": "Whenever Ganax or another Dragon you control enters, create a Treasure token."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "176",
+        "rarity": "UNCOMMON",
+        "artist": "Aaron Miller",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/f/9f5bb319-29b2-4a7c-82e9-f8b5e47909a1.jpg?1783922742"
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 
@@ -1047,6 +1993,621 @@
     ]
 }
 
+// Irenicus's Vile Duplication
+{
+    "name": "Irenicus's Vile Duplication",
+    "manaCost": "{3}{U}",
+    "typeLine": "Sorcery",
+    "oracleText": "Create a token that's a copy of target creature you control, except the token has flying and it isn't legendary.",
+    "script": {
+        "spellEffect": {
+            "type": "CreateTokenCopyOfTarget",
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            },
+            "exceptions": {
+                "addedKeywords": [
+                    "FLYING"
+                ],
+                "removedSupertypes": [
+                    "LEGENDARY"
+                ]
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "78",
+        "rarity": "UNCOMMON",
+        "artist": "Oleksandr Kozachenko",
+        "flavorText": "\"You will serve me better in this form.\"\n—Jon Irenicus",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/0/40a791df-2483-406d-90b0-a8d402d615d6.jpg?1783922787",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "Irenicus's Vile Duplication has received an update to its Oracle text to clarify that the token still has flying even if the creature it's copying isn't legendary."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Jade Orb of Dragonkind
+{
+    "name": "Jade Orb of Dragonkind",
+    "manaCost": "{2}{G}",
+    "typeLine": "Artifact",
+    "oracleText": "{T}: Add {G}. When you spend this mana to cast a Dragon creature spell, it enters with an additional +1/+1 counter on it and gains hexproof until your next turn. (It can't be the target of spells or abilities your opponents control.)",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Jade Orb of Dragonkind:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "GREEN",
+                    "riders": [
+                        {
+                            "type": "TriggersWhenSpent",
+                            "spellFilter": {
+                                "cardPredicates": [
+                                    "IsCreature",
+                                    {
+                                        "type": "HasSubtype",
+                                        "subtype": "Dragon"
+                                    }
+                                ]
+                            },
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "AddCounters",
+                                        "counterType": "PLUS_ONE_PLUS_ONE",
+                                        "count": 1,
+                                        "target": "TriggeringEntity"
+                                    },
+                                    {
+                                        "type": "GrantKeywordToSpell",
+                                        "keyword": "HEXPROOF",
+                                        "duration": "UntilYourNextTurn"
+                                    }
+                                ]
+                            }
+                        }
+                    ]
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "236",
+        "artist": "Olena Richards",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/b/1b32bae4-65e4-4bdb-8bc5-b98a5aac1568.jpg?1783922712",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "The mana created by Jade Orb of Dragonkind can be spent on anything, not just Dragon creature spells."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "The delayed triggered ability will trigger whether Jade Orb of Dragonkind is still on the battlefield or not."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If more than one {G} produced by a Jade Orb of Dragonkind is spent to cast a single Dragon creature spell, the delayed triggered ability associated with each mana spent will trigger. That creature will enter the battlefield with that many +1/+1 counters."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If the mana is spent on a Dragon creature spell, that creature will have hexproof as soon as it enters the battlefield. There is no opportunity to target the creature before it gains hexproof."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Jaheira, Friend of the Forest
+{
+    "name": "Jaheira, Friend of the Forest",
+    "manaCost": "{2}{G}",
+    "typeLine": "Legendary Creature — Human Elf Druid",
+    "oracleText": "Tokens you control have \"{T}: Add {G}.\"\nChoose a Background (You can have a Background as a second commander.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "keywordAbilities": [
+        {
+            "type": "Partner",
+            "kind": "ChooseABackground"
+        }
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantActivatedAbility",
+                "ability": {
+                    "id": "Jaheira, Friend of the Forest:1",
+                    "cost": "CostTap",
+                    "effect": {
+                        "type": "AddMana",
+                        "color": "GREEN"
+                    },
+                    "timing": "ManaAbility",
+                    "isManaAbility": true
+                },
+                "filter": {
+                    "baseFilter": "token ctrl:you"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "237",
+        "rarity": "RARE",
+        "artist": "Mila Pesic",
+        "flavorText": "\"The Harpers' movement grows, but it needs sunlight to blossom. We can be that light.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/e/feb7ad1b-4466-48f7-b46d-cc83d4e22b51.jpg?1783922710",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "Jaheira's ability gives the mana ability to all tokens you control, not just creature tokens."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "You won't be able to activate the mana abilities of creature tokens you control on the turn they're created unless they have haste. Conversely, you will be able to activate the mana abilities of noncreature tokens you control on the turn they're created (provided they're untapped)."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Jan Jansen, Chaos Crafter
+{
+    "name": "Jan Jansen, Chaos Crafter",
+    "manaCost": "{R}{W}{B}",
+    "typeLine": "Legendary Creature — Gnome Artificer",
+    "oracleText": "Haste\n{T}, Sacrifice an artifact creature: Create two Treasure tokens.\n{T}, Sacrifice a noncreature artifact: Create two 1/1 colorless Construct artifact creature tokens.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "HASTE"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Jan Jansen, Chaos Crafter:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        "CostTap",
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomSacrifice",
+                                "filter": "artifact creature"
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure",
+                    "count": 2
+                },
+                "descriptionOverride": "{T}, Sacrifice an artifact creature: Create two Treasure tokens."
+            },
+            {
+                "id": "Jan Jansen, Chaos Crafter:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        "CostTap",
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomSacrifice",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "IsArtifact",
+                                        {
+                                            "type": "Not",
+                                            "predicate": "IsCreature"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [],
+                    "creatureTypes": [
+                        "Construct"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/0/f/0f5715cf-fbf6-4b13-af91-525edc7706ea.jpg?1783922318",
+                    "artifactToken": true
+                },
+                "descriptionOverride": "{T}, Sacrifice a noncreature artifact: Create two 1/1 colorless Construct artifact creature tokens."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "277",
+        "rarity": "RARE",
+        "artist": "Vladimir Krisetskiy",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/b/6b215a08-41db-4440-8e33-34a84a33db50.jpg?1783922693"
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "WHITE",
+        "BLACK"
+    ]
+}
+
+// Karlach, Fury of Avernus
+{
+    "name": "Karlach, Fury of Avernus",
+    "manaCost": "{4}{R}",
+    "typeLine": "Legendary Creature — Tiefling Barbarian",
+    "oracleText": "Whenever you attack, if it's the first combat phase of the turn, untap all attacking creatures. They gain first strike until end of turn. After this phase, there is an additional combat phase.\nChoose a Background (You can have a Background as a second commander.)",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 4
+    },
+    "keywordAbilities": [
+        {
+            "type": "Partner",
+            "kind": "ChooseABackground"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Karlach, Fury of Avernus:1",
+                "trigger": "YouAttackEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Group",
+                                "filter": {
+                                    "baseFilter": "creature attacking"
+                                }
+                            },
+                            "body": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "TapUntap",
+                                        "target": "IterationEntity",
+                                        "tap": false
+                                    },
+                                    {
+                                        "type": "GrantKeyword",
+                                        "keyword": "FIRST_STRIKE",
+                                        "target": "IterationEntity"
+                                    }
+                                ]
+                            }
+                        },
+                        "AddCombatPhase"
+                    ]
+                },
+                "interveningIf": "IsFirstCombatPhaseOfTurn",
+                "descriptionOverride": "Whenever you attack, if it's the first combat phase of the turn, untap all attacking creatures. They gain first strike until end of turn. After this phase, there is an additional combat phase."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "186",
+        "rarity": "MYTHIC",
+        "artist": "Billy Christian",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/7/775480ed-f574-40cb-bd9b-21102eaaff63.jpg?1783922734",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "Notably, the triggered ability of Karlach doesn't give you any additional main phases. This means that you will move directly from the end of combat step of one combat phase to the beginning of combat step of the next one."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "Karlach doesn't have to be among the attacking creatures."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Korlessa, Scale Singer
+{
+    "name": "Korlessa, Scale Singer",
+    "manaCost": "{G}{U}",
+    "typeLine": "Legendary Creature — Dragon Bard",
+    "oracleText": "You may look at the top card of your library any time.\nYou may cast Dragon spells from the top of your library.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 4
+    },
+    "script": {
+        "staticAbilities": [
+            "LookAtTopOfLibrary",
+            {
+                "type": "CastSpellTypesFromTopOfLibrary",
+                "filter": "Dragon"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "280",
+        "rarity": "UNCOMMON",
+        "artist": "Jesper Ejsing",
+        "flavorText": "\"Would you like a song of wing-wind and fire, or one of gentle heartbeats atop a golden hoard?\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/e/fe2d08ac-6c24-4158-87a1-c59d1cd447a8.jpg?1783922690",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "You can look at the top card of your library whenever you want (with one restriction; see below), even if you don't have priority. This action doesn't use the stack. Knowing what that card is becomes part of the information you have access to, just like you can look at the cards in your hand."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If the top card of your library changes while you're casting a spell, playing a land, or activating an ability, you can't look at the new top card until you finish doing so. This means that if you cast a spell from the top of your library, you can't look at the next one until you're done paying for that spell."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "Korlessa doesn't change when you can cast Dragon spells. Normally, this means during your main phase when the stack is empty, although flash may change this."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "You'll still pay all costs for the spell, including additional costs. You may also pay alternative costs if any are available."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "The top card of your library isn't in your hand, so you can't take other actions that would normally be allowed from your hand, such as discarding it due to an effect or activating a cycling ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "BLUE"
+    ]
+}
+
+// Lozhan, Dragons' Legacy
+{
+    "name": "Lozhan, Dragons' Legacy",
+    "manaCost": "{3}{U}{R}",
+    "typeLine": "Legendary Creature — Dragon Shaman",
+    "oracleText": "Flying\nWhenever you cast an Adventure or Dragon spell, Lozhan deals damage equal to that spell's mana value to any target that isn't a commander.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Lozhan, Dragons' Legacy:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "spellFilter": {
+                        "cardPredicates": [
+                            {
+                                "type": "Or",
+                                "predicates": [
+                                    {
+                                        "type": "HasSubtype",
+                                        "subtype": "Adventure"
+                                    },
+                                    {
+                                        "type": "HasSubtype",
+                                        "subtype": "Dragon"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGERING_SPELL_MANA_VALUE"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "AnyTarget",
+                    "id": "t0",
+                    "descriptionOverride": "any target that isn't a commander",
+                    "filter": {
+                        "statePredicates": [
+                            {
+                                "type": "StateNot",
+                                "predicate": "IsCommander"
+                            }
+                        ]
+                    }
+                },
+                "descriptionOverride": "Whenever you cast an Adventure or Dragon spell, Lozhan deals damage equal to that spell's mana value to any target that isn't a commander."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "281",
+        "rarity": "UNCOMMON",
+        "artist": "Rudy Siswanto",
+        "flavorText": "She channels myth and memory into waves of deadly arcane force.",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/e/fe604232-19da-4331-a6f2-ddb004f1dd90.jpg?1783922690",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "If you cast a non-Dragon permanent spell that has an Adventure (rather than the Adventure itself) Lozhan's triggered ability will not trigger."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "The mana value of an Adventure spell is the based on the mana cost of the Adventure, not the mana cost of the permanent card that has the Adventure."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "\"Any target that isn't a commander\" includes any player, as well as any creature or planeswalker that isn't a commander."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "RED"
+    ]
+}
+
+// Mahadi, Emporium Master
+{
+    "name": "Mahadi, Emporium Master",
+    "manaCost": "{1}{B}{R}",
+    "typeLine": "Legendary Creature — Devil",
+    "oracleText": "At the beginning of your end step, create a Treasure token for each creature that died this turn. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Mahadi, Emporium Master:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure",
+                    "dynamicCount": {
+                        "type": "TurnTracking",
+                        "player": "Each",
+                        "tracker": "CREATURES_DIED"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "282",
+        "rarity": "UNCOMMON",
+        "artist": "Ilse Gort",
+        "flavorText": "\"Welcome to the Wandering Emporium. Feel free to browse the bazaar. We have everything a lost soul could want, need, or afford.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/3/c3da2b1a-76c5-4d36-bdf8-025b86f61eb5.jpg?1783922689"
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
+// Miirym, Sentinel Wyrm
+{
+    "name": "Miirym, Sentinel Wyrm",
+    "manaCost": "{3}{G}{U}{R}",
+    "typeLine": "Legendary Creature — Dragon Spirit",
+    "oracleText": "Flying, ward {2}\nWhenever another nontoken Dragon you control enters, create a token that's a copy of it, except the token isn't legendary.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "keywords": [
+        "FLYING",
+        "WARD"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Ward",
+            "cost": {
+                "type": "WardCost.Mana",
+                "manaCost": "{2}"
+            }
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Miirym, Sentinel Wyrm:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "permanent Dragon nontoken ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "CreateTokenCopyOfTarget",
+                    "target": "TriggeringEntity",
+                    "exceptions": {
+                        "removedSupertypes": [
+                            "LEGENDARY"
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "284",
+        "rarity": "RARE",
+        "artist": "Kekai Kotaki",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/9/a934590b-5c70-4f07-af67-fbe817a99531.jpg?1783922689",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "Miirym, Sentinel Wyrm's triggered ability copies the printed values of the Dragon that entered the battlefield. It won't copy any counters on that creature or any effects that have changed its power, toughness, types, color, and so on."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If the Dragon that entered the battlefield is copying something else as the triggered ability resolves, the token will be a copy of whatever that creature is a copy of."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "BLUE",
+        "RED"
+    ]
+}
+
 // Passageway Seer
 {
     "name": "Passageway Seer",
@@ -1103,6 +2664,73 @@
     "colorIdentityOverride": [
         "BLACK"
     ]
+}
+
+// Patriar's Seal
+{
+    "name": "Patriar's Seal",
+    "manaCost": "{3}",
+    "typeLine": "Artifact",
+    "oracleText": "{T}: Add one mana of any color.\n{1}, {T}: Untap target legendary creature you control.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Patriar's Seal:1",
+                "cost": "CostTap",
+                "effect": "AddManaOfChoice",
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Patriar's Seal:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "TapUntap",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "tap": false
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": {
+                                "cardPredicates": [
+                                    "IsCreature",
+                                    "IsLegendary"
+                                ],
+                                "controllerPredicate": "ControlledByYou"
+                            }
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{1}, {T}: Untap target legendary creature you control."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "332",
+        "rarity": "UNCOMMON",
+        "artist": "Kamila Szutenberg",
+        "flavorText": "Only a fool ignores a letter bearing the official mark of a patriar family.",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/7/37f920f0-4dfc-477b-af7e-a17dfc9ba455.jpg?1783922667"
+    },
+    "colorIdentityOverride": []
 }
 
 // Pseudodragon Familiar
@@ -1237,6 +2865,122 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Rug of Smothering
+{
+    "name": "Rug of Smothering",
+    "manaCost": "{3}",
+    "typeLine": "Artifact Creature — Construct",
+    "oracleText": "Flying\nWhenever a player casts a spell, they lose 1 life for each spell they've cast this turn.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 3
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Rug of Smothering:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "player": "Each"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "SpellsCastThisTurn",
+                        "player": "TriggeringPlayer"
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "336",
+        "rarity": "UNCOMMON",
+        "artist": "Ioannis Fiore",
+        "flavorText": "\"No, not an accessory to murder—I'm looking for an accessory *for* murder.\"\n—Nadja, Flaming Fist investigator",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/7/a73d1cb0-d0dc-4f2a-9cf2-954d5889dd08.jpg?1783922664"
+    },
+    "colorIdentityOverride": []
+}
+
+// Scaled Nurturer
+{
+    "name": "Scaled Nurturer",
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature — Dragon Druid",
+    "oracleText": "{T}: Add {G}. When you spend this mana to cast a Dragon creature spell, you gain 2 life.",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Scaled Nurturer:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "GREEN",
+                    "riders": [
+                        {
+                            "type": "TriggersWhenSpent",
+                            "spellFilter": {
+                                "cardPredicates": [
+                                    "IsCreature",
+                                    {
+                                        "type": "HasSubtype",
+                                        "subtype": "Dragon"
+                                    }
+                                ]
+                            },
+                            "effect": {
+                                "type": "GainLife",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 2
+                                }
+                            }
+                        }
+                    ]
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "252",
+        "artist": "David Gaillet",
+        "flavorText": "\"Life always starts small. Only time will tell what heights it may reach.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/4/84ae5a76-b8b9-431d-8060-a6a96f5d1e0b.jpg?1783922704",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "The mana created by Scaled Nurturer can be spent on anything, not just Dragon creature spells."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "The delayed triggered ability will trigger whether Scaled Nurturer is still on the battlefield or not."
+            },
+            {
+                "date": "2022-06-10",
+                "text": "If more than one {G} produced by a Scaled Nurturer is spent to cast a single Dragon creature spell, the delayed triggered ability associated with each mana spent will trigger. You will gain 2 life that many times."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -1424,6 +3168,144 @@
     ]
 }
 
+// Thrakkus the Butcher
+{
+    "name": "Thrakkus the Butcher",
+    "manaCost": "{3}{R}{G}",
+    "typeLine": "Legendary Creature — Dragon Peasant",
+    "oracleText": "Trample\nWhenever Thrakkus attacks, double the power of each Dragon you control until end of turn.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 4
+    },
+    "keywords": [
+        "TRAMPLE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Thrakkus the Butcher:1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature Dragon ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "ModifyStats",
+                        "powerModifier": {
+                            "type": "EntityProperty",
+                            "entity": "IterationEntity",
+                            "numericProperty": "Power"
+                        },
+                        "toughnessModifier": {
+                            "type": "Fixed",
+                            "amount": 0
+                        },
+                        "target": "IterationEntity"
+                    }
+                },
+                "descriptionOverride": "Whenever Thrakkus attacks, double the power of each Dragon you control until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "295",
+        "rarity": "UNCOMMON",
+        "artist": "Néstor Ossandón Leal",
+        "flavorText": "Somehow, he never seems to run out of fresh meat.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/2/2255d1e4-f387-4187-8c10-7d0009f6ec79.jpg?1783922685",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "To double a creature's power, that creature gets +X/+0, where X is the power of that creature as the triggered ability resolves."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "GREEN"
+    ]
+}
+
+// Undercellar Myconid
+{
+    "name": "Undercellar Myconid",
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature — Fungus",
+    "oracleText": "Whenever this creature enters or dies, create a 1/1 green Saproling creature token.\n{T}: Add one mana of any color.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Undercellar Myconid:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Saproling"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/f/7/f7cbc9fc-42d2-4d1a-b6c0-29a35cfd1588.jpg?1783922319"
+                },
+                "descriptionOverride": "Whenever this creature enters, create a 1/1 green Saproling creature token."
+            },
+            {
+                "id": "Undercellar Myconid:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Saproling"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/f/7/f7cbc9fc-42d2-4d1a-b6c0-29a35cfd1588.jpg?1783922319"
+                },
+                "descriptionOverride": "Whenever this creature dies, create a 1/1 green Saproling creature token."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Undercellar Myconid:3",
+                "cost": "CostTap",
+                "effect": "AddManaOfChoice",
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "259",
+        "artist": "David Szabo",
+        "flavorText": "Water, barley, yeast, darkness—the tavern cellar had everything a growing mold could need.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/8/786c5b3e-737f-4794-b482-af5f0ee901e5.jpg?1783922702"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // White Plume Adventurer
 {
     "name": "White Plume Adventurer",
@@ -1542,5 +3424,79 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Wrathful Red Dragon
+{
+    "name": "Wrathful Red Dragon",
+    "manaCost": "{3}{R}{R}",
+    "typeLine": "Creature — Dragon",
+    "oracleText": "Flying\nWhenever a Dragon you control is dealt damage, it deals that much damage to any target that isn't a Dragon.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Wrathful Red Dragon:1",
+                "trigger": {
+                    "type": "DamageReceivedEvent",
+                    "recipient": {
+                        "cardPredicates": [
+                            {
+                                "type": "HasSubtype",
+                                "subtype": "Dragon"
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGER_DAMAGE_AMOUNT"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "damageSource": "TriggeringEntity"
+                },
+                "targetRequirement": {
+                    "type": "AnyTarget",
+                    "id": "t0",
+                    "descriptionOverride": "any target that isn't a Dragon",
+                    "filter": {
+                        "cardPredicates": [
+                            {
+                                "type": "Not",
+                                "predicate": {
+                                    "type": "HasSubtype",
+                                    "subtype": "Dragon"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "descriptionOverride": "Whenever a Dragon you control is dealt damage, it deals that much damage to any target that isn't a Dragon."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "207",
+        "rarity": "RARE",
+        "artist": "Dan Murayama Scott",
+        "flavorText": "\"We'll put it all back! The gems, the gold, the chalice that would've looked great on my mantle; we'll put everythi—\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/c/acd207de-eec3-4d82-b8b9-b1e60a7bad12.jpg?1783922724"
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }

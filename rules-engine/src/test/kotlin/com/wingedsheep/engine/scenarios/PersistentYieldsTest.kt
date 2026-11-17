@@ -119,6 +119,15 @@ class PersistentYieldsTest : ScenarioTestBase() {
             game.getPendingDecision().shouldBeInstanceOf<YesNoDecision>()
         }
 
+        test("the may-question offers 'remember my answer' and names the ability it would yield to") {
+            val game = newSeerGame()
+            game.castSpell(1, "Yield Seer").error shouldBe null
+            game.resolveStack()
+            val decision = game.getPendingDecision().shouldBeInstanceOf<YesNoDecision>()
+            decision.canRememberAnswer shouldBe true
+            decision.context.abilityIdentity shouldBe seerIdentity
+        }
+
         test("an auto-answer yield is keyed by identity, so it does not fire for a different ability") {
             val game = newSeerGame()
             game.state = game.state.withYield(

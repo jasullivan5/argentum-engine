@@ -15,8 +15,8 @@ import com.wingedsheep.sdk.core.Zone
 
 /**
  * "Exile this card instead of putting it anywhere else any time it would leave the stack" — the
- * stack-side clause shared by flashback (CR 702.34a), aftermath (CR 702.127a) and jump-start
- * (CR 702.133a). Every stack exit that isn't a resolution or a counter (those already honour the
+ * stack-side clause shared by flashback (CR 702.34a), aftermath (CR 702.127a), jump-start
+ * (CR 702.133a) and beam me up. Every stack exit that isn't a resolution or a counter (those already honour the
  * graveyard-bound [AfterResolveDestinationComponent]) asks here before moving a spell: a bounce to
  * its owner's hand, a put-into-library, a generic zone move off the stack.
  */
@@ -26,15 +26,22 @@ object StackExitRider {
      * The zone [container]'s spell must go to instead of wherever it was headed as it leaves the
      * stack, or null when nothing overrides the move. Either an [AfterResolveDestinationComponent]
      * armed for [AfterResolveDestinationComponent.everyStackExit] (aftermath, a granted jump-start),
-     * or a spell cast from the graveyard by paying its flashback cost.
+     * or a spell cast from the graveyard by paying its flashback or beam me up cost.
      */
     fun overrideZone(container: ComponentContainer): Zone? {
         container.get<AfterResolveDestinationComponent>()?.takeIf { it.everyStackExit }?.let { return it.zone }
         val spell = container.get<SpellOnStackComponent>() ?: return null
-        return Zone.EXILE.takeIf {
-            spell.castFromZone == Zone.GRAVEYARD && spell.alternativeCost == AlternativeCostType.FLASHBACK
-        }
+        return Zone.EXILE.takeIf { paidGraveyardExileCost(spell) }
     }
+
+    /**
+     * Whether [spell] was cast from a graveyard by paying a cost that exiles it on every stack exit
+     * (flashback, beam me up). The cost recorded on the spell decides, not the card's current
+     * abilities, so a conditional flashback whose condition lapsed still exiles (Viral Spawning).
+     */
+    fun paidGraveyardExileCost(spell: SpellOnStackComponent): Boolean =
+        spell.castFromZone == Zone.GRAVEYARD &&
+            (spell.alternativeCost == AlternativeCostType.FLASHBACK || spell.alternativeCost == AlternativeCostType.BEAM_ME_UP)
 
     /**
      * Move [spellId] off the stack into its owner's [zone] as the rider directs — the shared move

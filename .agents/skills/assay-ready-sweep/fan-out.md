@@ -5,7 +5,7 @@ so everything they need must be *in the brief* and everything they produce must 
 
 ## Hand agents the brief, not facts from your head
 
-Pre-fetch every card's Scryfall payload once (the set cache `~/.cache/scryfall/<code>.json` already holds
+Pre-fetch every card's Scryfall payload once (the set cache `~/.cache/scryfall/set-<code>.json` already holds
 `rarity`, `collector_number`, `artist`, `image_uri`, `flavor_text`, `oracle_text` per card — that is what
 `just assay-ready <CODE> --json` is for) and render one brief per card containing:
 

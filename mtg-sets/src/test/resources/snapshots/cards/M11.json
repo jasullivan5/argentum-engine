@@ -177,6 +177,91 @@
     ]
 }
 
+// Angelic Arbiter
+{
+    "name": "Angelic Arbiter",
+    "manaCost": "{5}{W}{W}",
+    "typeLine": "Creature — Angel",
+    "oracleText": "Flying\nEach opponent who cast a spell this turn can't attack with creatures.\nEach opponent who attacked with a creature this turn can't cast spells.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 6
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "CantAttackUnless",
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "SpellsCastThisTurn",
+                        "player": "ControllerOfIterationEntity"
+                    },
+                    "operator": "EQ",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 0
+                    }
+                },
+                "filter": {
+                    "baseFilter": "creature ctrl:opponent"
+                }
+            },
+            {
+                "type": "PlayersCantCastSpells",
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "TurnTracking",
+                        "player": "You",
+                        "tracker": "PLAYER_ATTACKED"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "conditionFromCaster": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "4",
+        "rarity": "RARE",
+        "artist": "Steve Argyle",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/1/71f05793-9e6f-4815-9a13-f791cb4b6aa0.jpg?1783941838",
+        "rulings": [
+            {
+                "date": "2010-08-15",
+                "text": "During your turn, Angelic Arbiter's abilities have no effect on the game."
+            },
+            {
+                "date": "2010-08-15",
+                "text": "During an opponent's turn, that opponent may either cast spells or attack with creatures, but not both (assuming that Angelic Arbiter is on the battlefield for the entirety of that turn). The player may perform other actions, such as activating abilities and playing lands."
+            },
+            {
+                "date": "2010-08-15",
+                "text": "If Angelic Arbiter leaves the battlefield during an opponent's turn, its abilities cease to affect the game. For example, if an opponent casts Doom Blade to destroy Angelic Arbiter, that player may then attack with creatures."
+            },
+            {
+                "date": "2010-08-15",
+                "text": "If Angelic Arbiter enters during an opponent's turn, its abilities take actions that player performed earlier in the turn into account, even though it wasn't on the battlefield at the time. For example, if an opponent casts a spell, then you use Leyline of Anticipation's ability to cast Angelic Arbiter as though it had flash, that player won't be able to attack with creatures that turn."
+            },
+            {
+                "date": "2010-08-15",
+                "text": "Angelic Arbiter's last ability applies if an opponent attacked with at least one creature during the current turn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Arc Runner
 {
     "name": "Arc Runner",
@@ -742,7 +827,8 @@
                     },
                     "revealed": true
                 },
-                "ShuffleLibrary"
+                "ShuffleLibrary",
+                "EmitLibrarySearchedEvent"
             ]
         }
     },
@@ -977,6 +1063,97 @@
     "colorIdentityOverride": [
         "GREEN"
     ]
+}
+
+// Gaea's Revenge
+{
+    "name": "Gaea's Revenge",
+    "manaCost": "{5}{G}{G}",
+    "typeLine": "Creature — Elemental",
+    "oracleText": "This spell can't be countered.\nHaste\nThis creature can't be the target of nongreen spells or abilities from nongreen sources.",
+    "creatureStats": {
+        "power": 8,
+        "toughness": 5
+    },
+    "keywords": [
+        "HASTE"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "CantBeTargetedBy",
+                "quality": {
+                    "type": "UntargetableBy.SourcesOfColor",
+                    "scope": {
+                        "type": "ProtectionScope.NonColor",
+                        "color": "GREEN"
+                    }
+                }
+            }
+        ],
+        "cantBeCountered": true
+    },
+    "metadata": {
+        "collectorNumber": "174",
+        "rarity": "MYTHIC",
+        "artist": "Kekai Kotaki",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/8/68f610a9-73b0-4ef8-b725-f3eee1b78fad.jpg?1783941799"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Gargoyle Sentinel
+{
+    "name": "Gargoyle Sentinel",
+    "manaCost": "{3}",
+    "typeLine": "Artifact Creature — Gargoyle",
+    "oracleText": "Defender (This creature can't attack.)\n{3}: Until end of turn, this creature loses defender and gains flying.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "DEFENDER"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Gargoyle Sentinel:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{3}"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "RemoveKeyword",
+                            "keyword": "DEFENDER",
+                            "target": "Self"
+                        },
+                        {
+                            "type": "GrantKeyword",
+                            "keyword": "FLYING",
+                            "target": "Self"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "207",
+        "rarity": "UNCOMMON",
+        "artist": "Drew Baker",
+        "flavorText": "\"Do not mistake a quiet rampart for one that is unguarded. Some things stir only when they need to.\"\n—Bonovar, siege commander",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/a/6af328bc-bce5-4024-9da5-853ee16eaa8a.jpg?1783941791"
+    },
+    "colorIdentityOverride": []
 }
 
 // Garruk's Companion
@@ -1475,7 +1652,7 @@
                 "controllerOnly": true
             }
         ],
-        "mayStartOnBattlefield": true
+        "beginOnBattlefield": {}
     },
     "metadata": {
         "collectorNumber": "61",
@@ -1491,6 +1668,35 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Leyline of Sanctity
+{
+    "name": "Leyline of Sanctity",
+    "manaCost": "{2}{W}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "If this card is in your opening hand, you may begin the game with it on the battlefield.\nYou have hexproof. (You can't be the target of spells or abilities your opponents control.)",
+    "script": {
+        "staticAbilities": [
+            "GrantHexproofToController"
+        ],
+        "beginOnBattlefield": {}
+    },
+    "metadata": {
+        "collectorNumber": "21",
+        "rarity": "RARE",
+        "artist": "Ryan Pancoast",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/6/262de9ae-d641-4f0e-af6a-03ce0e1c91d3.jpg?1783941834",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "A player's \"opening hand\" is the hand of cards the player has after all players have taken mulligans. If players have any cards in hand that allow actions to be taken with them from a player's opening hand, the starting player takes all such actions first in any order, followed by each other player in turn order. Then the first turn begins."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }
 
@@ -1865,6 +2071,105 @@
     ]
 }
 
+// Phylactery Lich
+{
+    "name": "Phylactery Lich",
+    "manaCost": "{B}{B}{B}",
+    "typeLine": "Creature — Zombie",
+    "oracleText": "Indestructible\nAs this creature enters, put a phylactery counter on an artifact you control.\nWhen you control no permanents with phylactery counters on them, sacrifice this creature.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "INDESTRUCTIBLE"
+    ],
+    "script": {
+        "stateTriggeredAbilities": [
+            {
+                "id": "Phylactery Lich:1",
+                "condition": {
+                    "type": "Exists",
+                    "player": "You",
+                    "zone": "Battlefield",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsPermanent"
+                        ],
+                        "statePredicates": [
+                            {
+                                "type": "HasCounter",
+                                "counterType": "PHYLACTERY"
+                            }
+                        ]
+                    },
+                    "negate": true
+                },
+                "effect": {
+                    "type": "SacrificeTarget",
+                    "target": "Self"
+                },
+                "descriptionOverride": "When you control no permanents with phylactery counters on them, sacrifice this creature."
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithChoice",
+                "choiceType": "CREATURE_ON_BATTLEFIELD",
+                "permanentFilter": {
+                    "cardPredicates": [
+                        "IsArtifact"
+                    ],
+                    "controllerPredicate": "ControlledByYou"
+                },
+                "then": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "AddCounters",
+                            "counterType": "PHYLACTERY",
+                            "count": 1,
+                            "target": "ChosenCreature"
+                        }
+                    ],
+                    "descriptionOverride": "Put a phylactery counter on it"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "110",
+        "rarity": "RARE",
+        "artist": "Michael Komarck",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/d/9d088983-92c1-4f4d-8abf-dd20347495b5.jpg?1783941813",
+        "rulings": [
+            {
+                "date": "2018-07-13",
+                "text": "Phylactery Lich's first ability doesn't target the artifact. No player may take actions between the time you choose an artifact and the time you put a phylactery counter on it."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "If you control no artifacts as Phylactery Lich enters the battlefield, its first ability won't do anything. As soon as it enters the battlefield, its last ability will trigger (unless you control some other permanent with a phylactery counter on it) and you'll have to sacrifice it."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "If Phylactery Lich and an artifact are entering the battlefield under your control at the same time, you can't put a phylactery counter on that artifact. You must choose an artifact you control that's already on the battlefield."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "Phylactery Lich's last ability is a \"state trigger.\" Once a state trigger triggers, it won't trigger again as long as the ability is on the stack. If the ability is countered and the trigger condition is still true, it will immediately trigger again."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "Phylactery Lich's last ability checks your permanents for any phylactery counters, not just the specific one that it caused you to put on an artifact. For example, if you control two Phylactery Liches and two different artifacts with phylactery counters, neither Phylactery Lich will be sacrificed if one of those artifacts leaves the battlefield."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Preordain
 {
     "name": "Preordain",
@@ -2067,6 +2372,87 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Serra Ascendant
+{
+    "name": "Serra Ascendant",
+    "manaCost": "{W}",
+    "typeLine": "Creature — Human Monk",
+    "oracleText": "Lifelink (Damage dealt by this creature also causes you to gain that much life.)\nAs long as you have 30 or more life, this creature gets +5/+5 and has flying.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "LIFELINK"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "ModifyStats",
+                    "powerBonus": 5,
+                    "toughnessBonus": 5,
+                    "filter": {
+                        "baseFilter": "permanent",
+                        "scope": "Self"
+                    }
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "LifeTotal",
+                        "player": "You"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 30
+                    }
+                }
+            },
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "GrantKeyword",
+                    "keyword": "FLYING",
+                    "filter": {
+                        "baseFilter": "permanent",
+                        "scope": "Self"
+                    }
+                },
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "LifeTotal",
+                        "player": "You"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 30
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "28",
+        "rarity": "RARE",
+        "artist": "Anthony Palumbo",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/e/1ee65b44-eeb6-418b-b022-a0aef587c738.jpg?1783941831",
+        "rulings": [
+            {
+                "date": "2017-11-17",
+                "text": "If Serra Ascendant is dealt damage at the same time that you gain life (most likely because it dealt combat damage to a creature blocking or blocked by it), and your life total becomes 30 or greater, apply its last effect before considering whether or not the damage dealt to it is lethal."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }
 

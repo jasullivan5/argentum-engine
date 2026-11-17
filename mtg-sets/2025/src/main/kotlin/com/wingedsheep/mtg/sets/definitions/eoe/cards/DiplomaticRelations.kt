@@ -1,5 +1,6 @@
 package com.wingedsheep.mtg.sets.definitions.eoe.cards
 
+import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.dsl.DynamicAmounts
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
@@ -22,6 +23,7 @@ val DiplomaticRelations = card("Diplomatic Relations") {
         val myCreature = target(TargetFilter.CreatureYouControl)
         val theirCreature = target(TargetFilter.CreatureOpponentControls, optional = true)
         effect = Effects.ModifyStats(1, 0, myCreature) then
+            Effects.GrantKeyword(Keyword.VIGILANCE, myCreature) then
             Effects.DealDamage(
                 amount = DynamicAmounts.powerOf(myCreature),
                 target = theirCreature,

@@ -1,6 +1,7 @@
 package com.wingedsheep.engine.state.components.player
 
 import com.wingedsheep.engine.state.Component
+import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.sdk.core.BendType
 import com.wingedsheep.sdk.core.CardType
 import com.wingedsheep.sdk.core.Color
@@ -10,12 +11,15 @@ import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.core.TurnPart
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.scripting.effects.CombatDeclaration
 import com.wingedsheep.sdk.scripting.effects.HijackScope
 import com.wingedsheep.sdk.scripting.effects.ManaExpiry
 import com.wingedsheep.sdk.scripting.effects.ManaRestriction
 import com.wingedsheep.sdk.scripting.effects.ManaSpellRider
+import com.wingedsheep.sdk.scripting.ConvertEmptyingMana
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.engine.mechanics.mana.consume
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 /**
@@ -81,6 +85,10 @@ data class ManaPoolComponent(
      */
     fun addColorless(amount: Int): ManaPoolComponent =
         copy(colorless = colorless + amount)
+
+    /** Add mana of [color], or colorless mana when [color] is null. */
+    fun addOf(color: Color?, amount: Int): ManaPoolComponent =
+        if (color == null) addColorless(amount) else add(color, amount)
 
     /**
      * Get mana of a specific color.
@@ -210,25 +218,25 @@ data class ManaPoolComponent(
      * the next mana-loss point. Ordinary mana and other-expiry restricted entries are untouched; a
      * pool with no matching entries is unchanged.
      */
-    fun convertExpired(expiry: ManaExpiry, color: Color): ManaPoolComponent {
+    fun convertExpired(expiry: ManaExpiry, color: Color?): ManaPoolComponent {
         if (restrictedMana.none { it.expiry == expiry }) return this
         val (converting, kept) = restrictedMana.partition { it.expiry == expiry }
         return copy(restrictedMana = kept).withConverted(converting, color)
     }
 
     /**
-     * Add [entries] back recoloured to [color] as ordinary (end-of-turn) mana. An entry that carries
+     * Add [entries] back recoloured to [color] (null: colorless) as ordinary (end-of-turn) mana. An entry that carries
      * a real restriction or a rider stays a restricted entry — only its colour changes; one that was
      * only stored restricted to carry an expiry (`AnySpend`, no riders — firebending) becomes plain
      * mana of [color].
      */
-    private fun withConverted(entries: List<RestrictedManaEntry>, color: Color): ManaPoolComponent {
+    private fun withConverted(entries: List<RestrictedManaEntry>, color: Color?): ManaPoolComponent {
         val (plain, restricted) = entries.partition { it.restriction == ManaRestriction.AnySpend && it.riders.isEmpty() }
         val recoloured = restricted.map { it.copy(color = color, expiry = ManaExpiry.END_OF_TURN) }
         return copy(restrictedMana = restrictedMana + recoloured,
             manaUnits = manaUnits + plain.mapNotNull { entry -> entry.source?.let {
                 com.wingedsheep.engine.mechanics.mana.ManaUnit(color, it)
-            } }).let { if (plain.isNotEmpty()) it.add(color, plain.size).markSnow(color,
+            } }).let { if (plain.isNotEmpty()) it.addOf(color, plain.size).markSnow(color,
                 plain.count { entry -> entry.source?.isSnow == true }) else it }
     }
 
@@ -278,8 +286,8 @@ data class ManaPoolComponent(
      * mana-loss action. This is the single emptying primitive for every mana-loss point, applying
      * the per-player mana-loss statics:
      *  - [convertTo] non-null ([com.wingedsheep.sdk.scripting.ConvertEmptyingMana] — Ozai, the Phoenix
-     *    King to red; Omnath, Locus of All to black): the would-be-lost mana becomes that colour
-     *    instead of emptying (CR 614.1a). Plain and colorless mana becomes that many plain mana of
+     *    King to red; Omnath, Locus of All to black; Kruphix, God of Horizons to colorless): the
+     *    would-be-lost mana becomes its [ConvertEmptyingMana.color] instead of emptying (CR 614.1a). Plain and colorless mana becomes that many plain mana of
      *    [convertTo]; a restricted entry is recoloured but keeps its restriction and riders (Omnath's
      *    ruling), so conversion never frees mana from a spending restriction.
      *  - [retain] non-empty (The Last Agni Kai, [RetainUnspentManaComponent]): mana of those colours —
@@ -295,18 +303,19 @@ data class ManaPoolComponent(
      * cleanup downgrades them via [expireTurnKeptMana] before its own emptying. Only ordinary
      * ([ManaExpiry.END_OF_TURN]) mana is subject to this action.
      */
-    fun emptyAtBoundary(convertTo: Color?, retain: Set<Color>): ManaPoolComponent {
+    fun emptyAtBoundary(convertTo: ConvertEmptyingMana?, retain: Set<Color>): ManaPoolComponent {
         val preserved = restrictedMana.filter { it.expiry != ManaExpiry.END_OF_TURN }
         val lostRestricted = restrictedMana.filter { it.expiry == ManaExpiry.END_OF_TURN }
         return when {
             convertTo != null -> {
                 // Provenance tags are markers on already-counted colour mana, not extra mana; the
                 // pool-level tags don't carry over a mana-loss boundary.
+                val color = convertTo.color
                 val lostPlain = white + blue + black + red + green + colorless
                 ManaPoolComponent(restrictedMana = preserved,
-                    manaUnits = manaUnits.map { it.copy(color = convertTo) })
-                    .withConverted(lostRestricted, convertTo)
-                    .let { if (lostPlain > 0) it.add(convertTo, lostPlain).markSnow(convertTo, snowTotal) else it }
+                    manaUnits = manaUnits.map { it.copy(color = color) })
+                    .withConverted(lostRestricted, color)
+                    .let { if (lostPlain > 0) it.addOf(color, lostPlain).markSnow(color, snowTotal) else it }
             }
             retain.isNotEmpty() -> ManaPoolComponent(
                 white = if (Color.WHITE in retain) white else 0,
@@ -556,13 +565,19 @@ enum class ExtraPhaseKind {
  *   timestamp it resolved at. Together they identify one *creation*: CR 500.8 runs the most recently
  *   created phase first, while phases one effect creates together ("an additional combat phase
  *   followed by an additional main phase") keep the order that effect gave them.
+ * @param beginningTrigger For a COMBAT entry, the "At the beginning of that combat, …" delayed
+ *   trigger (Moraug, Fury of Akoum), already baked by its creating effect. It rides on the entry
+ *   rather than in [com.wingedsheep.engine.state.GameState.delayedTriggers] so it can only ever fire
+ *   at *this* phase: the TurnManager installs it as the phase begins, and the beginning-of-combat
+ *   step that follows fires and consumes it. A skipped phase drops it with the entry.
  */
 @Serializable
 data class QueuedPhase(
     val kind: ExtraPhaseKind,
     val attackerRestriction: GameObjectFilter? = null,
     val createdBy: EntityId? = null,
-    val createdAt: Long = 0
+    val createdAt: Long = 0,
+    val beginningTrigger: com.wingedsheep.engine.event.DelayedTriggeredAbility? = null
 ) {
     fun sameCreationAs(other: QueuedPhase): Boolean =
         createdBy == other.createdBy && createdAt == other.createdAt
@@ -666,6 +681,42 @@ data class AdditionalUpkeepStepsComponent(
 data object InAdditionalUpkeepStepComponent : Component
 
 /**
+ * Component tracking additional upkeep steps to be inserted directly after the current upkeep step
+ * (Paradox Haze: "an additional upkeep step after this step"). Per CR 500.9 each is a bare upkeep
+ * step in the same beginning phase — no new phase — so the TurnManager drains this when advancing
+ * out of an upkeep step, re-entering a fresh upkeep step instead of moving on, decrementing the
+ * count each time. Always added to the active player's own turn.
+ *
+ * @param count Number of additional upkeep steps remaining to insert
+ */
+@Serializable
+data class AdditionalUpkeepStepsAfterStepComponent(
+    val count: Int = 1
+) : Component
+
+/**
+ * Marker placed on the active player when an upkeep step of their turn ends. It distinguishes every
+ * later upkeep step of the turn — added after the step (Paradox Haze) or after a later phase
+ * (Obeka) — from the first, which is what
+ * [com.wingedsheep.sdk.scripting.conditions.IsFirstUpkeepStepOfTurn] reads. Cleared at end-of-turn
+ * cleanup.
+ */
+@Serializable
+data object UpkeepStepEndedThisTurnComponent : Component
+
+/**
+ * Marker placed on the active player when a cleanup step's turn-based actions are done (CR 514.1,
+ * 514.2) — at once, after the hand-size discard's answer, or at the end of an "end the turn"
+ * process. Only the settle boundary turns events into triggers, so it is the
+ * [com.wingedsheep.engine.core.Settler] that finishes the step: if a state-based action was
+ * performed or a triggered ability was put on the stack, the active player receives priority in
+ * this cleanup step and another cleanup step follows once everyone passes (CR 514.3a); otherwise
+ * the turn passes. Lives only until that settle; one found outside a cleanup step is dropped.
+ */
+@Serializable
+data object CleanupCheckPendingComponent : Component
+
+/**
  * Informational marker placed on the active player while the game is inside an *inserted* beginning
  * phase ([ExtraPhaseKind.BEGINNING]). Nothing decides on it: the TurnManager's drain-and-resume
  * already keeps the inserted draw step from falling through into a precombat main phase. Cleared
@@ -713,18 +764,20 @@ data object InAdditionalEndStepComponent : Component
 data object SkipCombatPhasesComponent : Component
 
 /**
- * Component indicating that a player's creatures and/or lands don't untap
- * during their next untap step. Applied by effects like Exhaustion.
+ * This player's permanents matching any of [permanents] don't untap during their next untap step —
+ * Exhaustion, Mana Vapors, Icebreaker Kraken. One filter per resolved effect: a second effect adds
+ * its own filter rather than replacing the first, since both apply to the same step.
  *
- * This component is consumed (removed) after the untap step is processed.
- *
- * @param affectsCreatures If true, creatures controlled by this player don't untap
- * @param affectsLands If true, lands controlled by this player don't untap
+ * Read by `BeginningPhaseManager.performUntapStep` against the projected permanents the player
+ * controls *at that step*, and consumed (removed) once the step is processed. [objects] holds the
+ * permanents a locked-at-resolution effect fixed (Sleep), as rules objects: each stays tapped at that
+ * step if it is still the same object (not flickered into a new one, CR 400.7) and this player still
+ * controls it.
  */
 @Serializable
 data class SkipUntapComponent(
-    val affectsCreatures: Boolean = true,
-    val affectsLands: Boolean = true
+    val permanents: List<GameObjectFilter> = emptyList(),
+    val objects: Set<com.wingedsheep.engine.state.ObjectRef> = emptySet()
 ) : Component
 
 /**
@@ -852,6 +905,27 @@ data class PlayerHexproofComponent(
 ) : Component
 
 /**
+ * "Hexproof from [quality]" on a player (CR 702.11d) — Veil of Summer's "You … gain hexproof from
+ * blue and from black until end of turn". The player can't be the target of spells or abilities
+ * their opponents control whose source matches any granted scope; unlike full hexproof
+ * ([PlayerHexproofComponent]) every other source may still target them. Read by
+ * [com.wingedsheep.engine.mechanics.targeting.PlayerProtectionRules.hasHexproofFromSource].
+ *
+ * Each grant keeps its own [Grant.removeOn], so an end-of-turn grant layered over a lasting one
+ * still expires on time.
+ */
+@Serializable
+data class PlayerHexproofFromComponent(
+    val grants: List<Grant> = emptyList()
+) : Component {
+    @Serializable
+    data class Grant(
+        val scope: com.wingedsheep.sdk.scripting.ProtectionScope,
+        val removeOn: PlayerEffectRemoval = PlayerEffectRemoval.EndOfTurn
+    )
+}
+
+/**
  * Marks a player as having protection from each quality in [scopes] (CR 702.16).
  *
  * Player-level protection (The One Ring's "you gain protection from everything until
@@ -951,21 +1025,31 @@ data object PlayerCitysBlessingComponent : Component
 data object PlayerEnduringStoryComponent : Component
 
 /**
- * Marks a player as having no maximum hand size for the rest of the game.
+ * Marks a player as having no maximum hand size for the rest of the game (or until a player's next
+ * turn).
  *
  * Conferred by resolution effects like Wisdom of Ages ("You have no maximum hand size for the
  * rest of the game"). Distinct from the battlefield-only
  * [com.wingedsheep.sdk.scripting.NoMaximumHandSize] static ability (Reliquary Tower, Thought
  * Vessel), which only applies while its permanent is in play. Like the city's blessing, this is
- * permanent for the rest of the game — cleanup never removes it, so it has no `removeOn` field.
+ * permanent for the rest of the game by default — cleanup never removes it.
  *
  * [timestamp] is the [com.wingedsheep.engine.state.GameState.timestamp] of the effect that
  * conferred it: maximum-hand-size effects apply in timestamp order (CR 613.11), so a later
  * "your maximum hand size is N" static still sets a limit (see
  * [com.wingedsheep.engine.core.MaximumHandSize.effective]).
+ *
+ * A temporary grant ("you have no maximum hand size until your next turn" — Deep Space Scan)
+ * carries [removeOn] = [PlayerEffectRemoval.UntilYourNextTurn] and [expiresForPlayerId], the
+ * effect's controller whose next turn ends it; cleanup drops it after that player's untap step.
+ * A rest-of-game grant never gets downgraded by a later temporary one.
  */
 @Serializable
-data class PlayerNoMaximumHandSizeComponent(val timestamp: Long) : Component
+data class PlayerNoMaximumHandSizeComponent(
+    val timestamp: Long,
+    val removeOn: PlayerEffectRemoval = PlayerEffectRemoval.Permanent,
+    val expiresForPlayerId: EntityId? = null
+) : Component
 
 /**
  * Reduces a player's maximum hand size by [amount] for the rest of the game (Inspired Idea,
@@ -1091,6 +1175,14 @@ enum class PlayerEffectRemoval {
      * [CantCastSpellsComponent] honours it so far.
      */
     EndOfYourNextTurn,
+    /**
+     * Applies only during the holding player's next turn, then is removed at that turn's cleanup —
+     * the player-component analogue of
+     * [com.wingedsheep.sdk.scripting.Duration.DuringAffectedPlayersNextTurn] (Sphinx's Decree).
+     * Pair it with a turn-number floor, as [SpellCastRestriction] does: dormant before the first
+     * turn of the holder numbered at or after the floor. Only [CantCastSpellsComponent] honours it.
+     */
+    DuringYourNextTurn,
     /** Never removed automatically — must be explicitly cleared */
     Permanent
 }
@@ -1167,7 +1259,12 @@ data class CantCastSpellsComponent(
  *
  * @property expiresAfterTurn For [PlayerEffectRemoval.EndOfYourNextTurn]: the ban ends at the
  *   cleanup of the first turn of [controllerId] numbered at or after this floor (the
- *   `Duration.EndOfYourNextTurn` mechanism). Null for every other removal.
+ *   `Duration.EndOfYourNextTurn` mechanism). For [PlayerEffectRemoval.DuringYourNextTurn]: the ban
+ *   binds only on a turn of its holder numbered at or after this floor, and ends at that turn's
+ *   cleanup. Null for every other removal.
+ * @property activeFromSpellCount The ban only binds once the player has cast this many spells this
+ *   turn ([GameState.playerSpellsCastThisTurn]) — "You can cast only one more spell this turn"
+ *   records the count at resolution plus one. Null binds at once.
  */
 @Serializable
 data class SpellCastRestriction(
@@ -1175,8 +1272,21 @@ data class SpellCastRestriction(
     val removeOn: PlayerEffectRemoval = PlayerEffectRemoval.EndOfTurn,
     val sourceId: EntityId? = null,
     val controllerId: EntityId? = null,
-    val expiresAfterTurn: Int? = null
-)
+    val expiresAfterTurn: Int? = null,
+    val activeFromSpellCount: Int? = null
+) {
+    fun bindsNow(state: GameState, playerId: EntityId): Boolean =
+        (activeFromSpellCount == null || (state.playerSpellsCastThisTurn[playerId] ?: 0) >= activeFromSpellCount) &&
+            (removeOn != PlayerEffectRemoval.DuringYourNextTurn || isHoldersNextTurn(state, playerId))
+
+    /** On the holder's first turn at or after the floor — a [PlayerEffectRemoval.DuringYourNextTurn] window. */
+    fun isHoldersNextTurn(state: GameState, playerId: EntityId): Boolean =
+        expiresAfterTurn != null && state.turnNumber >= expiresAfterTurn && state.isActiveTurnFor(playerId)
+}
+
+/** The [CantCastSpellsComponent] bans on [playerId] that bind right now. */
+fun GameState.bindingCastBans(playerId: EntityId): List<SpellCastRestriction> =
+    getEntity(playerId)?.get<CantCastSpellsComponent>()?.restrictions.orEmpty().filter { it.bindsNow(this, playerId) }
 
 /**
  * Component indicating that a player can't search libraries — applied by
@@ -1191,6 +1301,15 @@ data class SpellCastRestriction(
 data class CantSearchLibrariesComponent(
     val removeOn: PlayerEffectRemoval = PlayerEffectRemoval.EndOfTurn
 ) : Component
+
+/**
+ * The player can't block with more than [maxBlockers] creatures this combat — stamped by
+ * [com.wingedsheep.sdk.scripting.effects.BlockerCountLimitThisCombatEffect] (Mirri, Weatherlight
+ * Duelist). Stacked stamps keep the smallest cap. Read by `BlockPhaseManager` when this player
+ * declares blockers; removed by `CombatManager.endCombat` with the rest of the combat state.
+ */
+@Serializable
+data class BlockerCountLimitThisCombatComponent(val maxBlockers: Int) : Component
 
 /**
  * Component indicating that a player can't gain life. Conferred directly on the player by
@@ -1221,6 +1340,42 @@ data class CantGainLifeComponent(
 data class CantLoseLifeComponent(
     val removeOn: PlayerEffectRemoval = PlayerEffectRemoval.Permanent
 ) : Component
+
+/**
+ * The locks keeping a player from getting counters (CR 122.1 — players can have counters), each
+ * conferred by a [com.wingedsheep.sdk.scripting.effects.LockPlayerCountersEffect]. The player-side
+ * sibling of the projected `CANT_RECEIVE_COUNTERS` flag a permanent carries: players aren't
+ * projected, so the lock lives on the player. Read through [GameState.cantGetCounters], which
+ * `ProjectedState.canReceiveCounters` consults — the one question every counter-placing path
+ * (effects, damage, proliferate, costs) already asks.
+ *
+ * A list because locks stack independently: two Suncleansers aimed at one player keep them locked
+ * until both have left.
+ */
+@Serializable
+data class CantGetCountersComponent(
+    val locks: List<PlayerCounterLock> = emptyList()
+) : Component
+
+/**
+ * One counter lock on a player.
+ *
+ * @param removeOn [PlayerEffectRemoval.EndOfTurn] (dropped at cleanup) or
+ *   [PlayerEffectRemoval.Permanent] (never dropped by the clock).
+ * @param whileSource For a "for as long as [source] remains on the battlefield" lock: the source
+ *   *object* as it was when the lock was created. The lock holds only while that same object is on
+ *   the battlefield; once it leaves, a later object of the same card has a new identity, so the
+ *   lock can't come back (CR 611.2b).
+ */
+@Serializable
+data class PlayerCounterLock(
+    val removeOn: PlayerEffectRemoval = PlayerEffectRemoval.Permanent,
+    val whileSource: com.wingedsheep.engine.state.ObjectRef? = null
+) {
+    /** Whether this lock is in force in [state]. */
+    fun holds(state: GameState): Boolean = whileSource == null ||
+        (state.isCurrentObject(whileSource) && state.logicalZone(whileSource.entityId)?.zoneType == Zone.BATTLEFIELD)
+}
 
 /**
  * Component indicating that a player cannot activate planeswalkers' loyalty abilities for the
@@ -1360,15 +1515,28 @@ data class LoyaltyAbilitiesActivatedThisTurnComponent(
 ) : Component
 
 /**
+ * Number of dilemmas this player has faced during the current turn — mode choices for spells and
+ * abilities, one per choice. Advanced only by [com.wingedsheep.engine.mechanics.modal.Dilemmas];
+ * reset to 0 for every player at turn start by TurnManager. Backs
+ * [com.wingedsheep.sdk.scripting.values.TurnTracker.DILEMMAS_FACED].
+ */
+@Serializable
+data class DilemmasFacedThisTurnComponent(
+    val count: Int = 0
+) : Component
+
+/**
  * One "you may activate loyalty abilities of [filter] more freely" permission: [instantSpeed] lifts
  * the sorcery-timing half of CR 606.3 (Jace's Machinations), [times] raises the once-per-turn half
- * (Urza Assembles the Titans; 1 leaves it alone).
+ * (Urza Assembles the Titans; 1 leaves it alone), and [additionalActivations] adds to it (The Chain
+ * Veil; summed across grants).
  */
 @Serializable
 data class LoyaltyActivationPermission(
     val filter: GameObjectFilter,
     val instantSpeed: Boolean = false,
     val times: Int = 1,
+    val additionalActivations: Int = 0,
 )
 
 /**
@@ -1414,10 +1582,14 @@ data class TapForManaGrantsComponent(
  *
  * Used by Final Punishment: "Target player loses life equal to the damage
  * already dealt to that player this turn."
+ *
+ * [noncombatAmount] is the noncombat slice of [amount] — `TurnTracker.NONCOMBAT_DAMAGE_RECEIVED`
+ * (Chandra's Incinerator).
  */
 @Serializable
 data class DamageReceivedThisTurnComponent(
-    val amount: Int = 0
+    val amount: Int = 0,
+    val noncombatAmount: Int = 0,
 ) : Component
 
 /**
@@ -1564,6 +1736,15 @@ data class OpponentCreaturesExiledThisTurnComponent(
 ) : Component
 
 /**
+ * Marks that this player has cycled a card during the current turn. Set by the cycling handlers
+ * (plain and typecycling) and cleared at end of turn by CleanupPhaseManager; read to compute
+ * `CardCycledEvent.firstThisTurn` ("whenever you cycle another card for the first time each
+ * turn", Valiant Rescuer).
+ */
+@Serializable
+data object CycledThisTurnComponent : Component
+
+/**
  * Marks that this player has investigated (CR 701.16a) during the current turn. Set by the
  * `InvestigateExecutor` after each investigate and cleared at end of turn by CleanupPhaseManager;
  * read to compute `InvestigatedEvent.firstThisTurn` ("whenever you investigate for the first time
@@ -1645,6 +1826,64 @@ data class CardsCycledThisGameComponent(val countsByName: Map<String, Int> = emp
 }
 
 /**
+ * How many spells this player has cast this game, in total and by spell name. Never cleared.
+ * Written by `CastRecords` alongside the per-turn counts; backs
+ * [com.wingedsheep.sdk.scripting.values.DynamicAmount.SpellsCastThisGame] — "if this spell is the
+ * first spell you've cast this game" (Once Upon a Time), and with a name "you've cast another
+ * spell named Approach of the Second Sun this game". A face-down cast counts toward [count] only.
+ */
+@Serializable
+data class SpellsCastThisGameComponent(
+    val count: Int = 0,
+    val countsByName: Map<String, Int> = emptyMap(),
+) : Component {
+    fun count(cardName: String?): Int = if (cardName == null) count else countsByName[cardName] ?: 0
+
+    fun record(cardName: String?): SpellsCastThisGameComponent = SpellsCastThisGameComponent(
+        count = count + 1,
+        countsByName = if (cardName == null) countsByName else countsByName + (cardName to (countsByName[cardName] ?: 0) + 1),
+    )
+}
+
+/**
+ * One extra turn (CR 500.7) that has been created but has not begun, with the riders that apply
+ * *during that turn*. They live on the turn, not on the effect that made it, so a turn that is
+ * skipped as it would begin (Ugin's Nexus, Trouble in Pairs) never applies them.
+ *
+ * @property loseAtEndStep "At the beginning of that turn's end step, you lose the game" (Last
+ *   Chance, Final Fortune).
+ * @property powerUpAbilitiesCantBeActivated "During that turn, power-up abilities can't be
+ *   activated" (Kang the Conqueror) — global, not scoped to the turn's taker.
+ * @property damageCantBePrevented "During that turn, damage can't be prevented" (Alchemist's
+ *   Gambit) — global too.
+ */
+@Serializable
+data class PendingExtraTurn(
+    val loseAtEndStep: Boolean = false,
+    val powerUpAbilitiesCantBeActivated: Boolean = false,
+    val damageCantBePrevented: Boolean = false,
+)
+
+/**
+ * A player's extra turns (CR 500.7). [pending] holds the extra turns created for them that haven't
+ * begun yet, the one that begins next first: each is pushed on by `TakeExtraTurnExecutor.insertExtraTurn`
+ * ("if a player is given multiple extra turns, the extra turn created last takes place first"), and
+ * one is spent by `TurnManager` when their next turn begins or is skipped. [begun] is never cleared:
+ * it backs [com.wingedsheep.sdk.scripting.values.DynamicAmount.ExtraTurnsBegunThisGame] — "if you
+ * haven't begun an extra turn this game" (H.M.S. Bounty, Unlikely Timeship).
+ *
+ * The scheduling itself still runs through the opponents' `SkipNextTurnComponent.extraTurnBypasses`;
+ * this component only gives the taker's turn its extra-turn identity, which the bypass walk can't:
+ * when the taker isn't the active player, the bypass on the active player is spent a turn later.
+ * Skipping a pending extra turn needs no repair of those bypasses: the walk simply carries on to the
+ * next seat, and the bypassed seats' regular turns come round exactly as if the extra turn never
+ * existed.
+ */
+@Serializable
+data class ExtraTurnsComponent(val pending: List<PendingExtraTurn> = emptyList(), val begun: Int = 0) : Component
+
+
+/**
  * Tracks the number of permanents (tokens included) put into this player's hand from the
  * battlefield this turn, keyed on the owner. Cleared at end of turn by CleanupPhaseManager.
  *
@@ -1667,15 +1906,6 @@ data class PermanentsPutIntoHandFromBattlefieldThisTurnComponent(val count: Int 
 data class CardsPutIntoExileThisTurnComponent(val count: Int = 0) : Component
 
 /**
- * Marker component indicating that this player has sacrificed a Food artifact this turn.
- * Cleared at end of turn by CleanupPhaseManager.
- *
- * Used for conditions like "if you've sacrificed a Food this turn" (Bonecache Overseer).
- */
-@Serializable
-data object SacrificedFoodThisTurnComponent : Component
-
-/**
  * Marker: this player scried or surveilled this turn. Set by `EmitScriedEventExecutor` and
  * `EmitSurveiledEventExecutor` — the two places a scry / surveil event is emitted — and cleared at
  * end of turn by CleanupPhaseManager. Read through `TurnTracker.SCRIED_OR_SURVEILED`.
@@ -1684,31 +1914,35 @@ data object SacrificedFoodThisTurnComponent : Component
 data object ScriedOrSurveiledThisTurnComponent : Component
 
 /**
- * Marker component indicating that this player has sacrificed an artifact this turn.
- * Cleared at end of turn by CleanupPhaseManager.
- *
- * The card-type sibling of [SacrificedFoodThisTurnComponent], set by the same
- * `ZoneTransitionService.trackPermanentSacrifice` hook off the *projected* type line, so an
- * animated or type-changed permanent that was an artifact when sacrificed counts. Backs
- * `TurnTracker.ARTIFACT_SACRIFICED` — "if you've sacrificed an artifact this turn"
- * (Suspicious Detonation, Furtive Courier).
+ * Marker: this player surveilled this turn — the surveil-only half of
+ * [ScriedOrSurveiledThisTurnComponent]. Set by `EmitSurveiledEventExecutor` alongside it, cleared at
+ * end of turn by CleanupPhaseManager. Read through `TurnTracker.SURVEILED` ("if you've surveilled
+ * this turn", Darkblade Agent) and, before it is set, to stamp `SurveiledEvent.firstThisTurn`
+ * ("whenever you surveil for the first time each turn", Whispering Snitch).
  */
 @Serializable
-data object SacrificedArtifactThisTurnComponent : Component
+data object SurveiledThisTurnComponent : Component
 
 /**
- * Tracks the number of permanents this player has sacrificed this turn (controller-scoped,
- * any permanent type). Incremented by `ZoneTransitionService.trackPermanentSacrifice` on the
+ * Every permanent this player has sacrificed this turn (controller-scoped), each frozen as it stood
+ * just before it was sacrificed — projected type line, subtypes, colors, controller, name, mana
+ * value and token-ness. Appended by `ZoneTransitionService.trackPermanentSacrifice` on the
  * sacrificing player and cleared at end of turn by `CleanupPhaseManager`.
  *
- * Distinct from the game-wide turn-scoped `GameState.permanentsSacrificedThisTurn` counter
- * (which sums every player's sacrifices for "for each permanent sacrificed this turn" cost
- * reductions): this is per-player, so it backs "if you sacrificed one or more permanents this
- * turn, ... deals that much damage" (Sawblade Skinripper) via
- * `TurnTracker.PERMANENTS_SACRIFICED`.
+ * Backs `DynamicAmount.PermanentsSacrificedThisTurn(player, filter)`: "if you sacrificed one or more
+ * permanents this turn, ... deals that much damage" (Sawblade Skinripper, unfiltered), "if you've
+ * sacrificed an artifact / a Food this turn" (Suspicious Detonation, Bonecache Overseer), "a nontoken
+ * permanent" (Evendo Brushrazer) and "three or more Clues" (Briarbridge Patrol). Because each entry
+ * is a snapshot, a sacrificed token that has ceased to exist still counts, and so does a permanent
+ * that matched only through a continuous effect.
+ *
+ * Distinct from the game-wide turn-scoped `GameState.permanentsSacrificedThisTurn` counter (which sums
+ * every player's sacrifices for "for each permanent sacrificed this turn" cost reductions).
  */
 @Serializable
-data class PermanentsSacrificedThisTurnComponent(val count: Int = 0) : Component
+data class PermanentsSacrificedThisTurnComponent(
+    val sacrificed: List<com.wingedsheep.engine.state.components.stack.EntitySnapshot> = emptyList(),
+) : Component
 
 /**
  * Tracks the (graveyard-resident) entity ids of this player's cards that were discarded this turn.
@@ -1728,12 +1962,13 @@ data class PermanentsSacrificedThisTurnComponent(val count: Int = 0) : Component
  *    (Veronica, Dissident Scribe); [undefinedCharacteristics] marks the ones discarded with
  *    undefined characteristics, which no card predicate matches.
  *  - [cardIds] — entity ids of discarded-this-turn cards **still identifiable as that discarded
- *    object**. Membership (`sourceId in cardIds`) backs the `YouDiscardedThisCardThisTurn` condition
- *    that gates the Mayhem keyword (CR 702.187b). Entity ids are stable across the hand→graveyard
- *    move, so the id recorded at discard equals the object now in the graveyard — but per CR 400.7 a
- *    card that leaves the graveyard (cast via Mayhem, reanimated, exiled, bounced) becomes a **new
- *    object** on any later return, so its id is pruned from this list when it leaves the graveyard or
- *    is cast via Mayhem. That stops a Mayhem spell being recast every time it resolves back.
+ *    object**. Membership backs the `YouDiscardedThisCardThisTurn` condition that gates the Mayhem
+ *    keyword (CR 702.187b) and `StatePredicate.DiscardedThisTurn` (Shadow of the Grave). Entity ids
+ *    are stable across the hand→graveyard move, so the id recorded at discard equals the object now
+ *    in the graveyard — but per CR 400.7 a card that moves again (reanimated, exiled, bounced, cast)
+ *    becomes a **new object**, so its id is pruned on any later `moveToZone` and on any cast. The one
+ *    exception is an uncast madness card going exile → graveyard, which stays findable (CR 400.7k).
+ *    That stops a Mayhem spell being recast every time it resolves back.
  */
 @Serializable
 data class CardsDiscardedThisTurnComponent(
@@ -1869,19 +2104,28 @@ data class PlayerDescendedThisTurnComponent(val count: Int = 0) : Component
 data class CreatureCardsPutIntoGraveyardThisTurnComponent(val count: Int = 0) : Component
 
 /**
- * Tracks the number of cards put into this player's graveyard **from their library** during the
- * current turn — milled, surveilled, or any other library → graveyard move. Cleared at end of turn
- * by CleanupPhaseManager.
+ * Counts the cards put into this player's graveyard during the current turn, by the zone each came
+ * **from** — library (milled, surveilled, any other library → graveyard move), hand (discarded, or
+ * put there by an effect), stack, and so on. Cleared at end of turn by CleanupPhaseManager.
  *
  * Recorded by the same `moveToZone` hook as [CreatureCardsPutIntoGraveyardThisTurnComponent] and
- * keyed on the card's owner (a library card only ever goes to its owner's graveyard). Turn history,
- * not a graveyard scan: a card that later leaves the graveyard still counts.
+ * keyed on the card's owner, tokens excluded (a token isn't a card, CR 111.6). Turn history, not a
+ * graveyard scan: a card that later leaves the graveyard still counts.
  *
- * Backs Cruel Calculations' "the number of cards that were put into target player's graveyard
- * from their library this turn".
+ * Backs `TurnTracker.CARDS_PUT_INTO_GRAVEYARD_FROM_LIBRARY` (Cruel Calculations) and
+ * `TurnTracker.CARDS_PUT_INTO_GRAVEYARD_FROM_HAND` (Welcome the Dead sums the two).
+ *
+ * Keeps the serial name of the library-only counter it replaced, so a game saved mid-turn before
+ * the rename still loads (its old `count` is dropped as an unknown key; at most one turn's tally).
  */
 @Serializable
-data class CardsPutIntoGraveyardFromLibraryThisTurnComponent(val count: Int = 0) : Component
+@SerialName("com.wingedsheep.engine.state.components.player.CardsPutIntoGraveyardFromLibraryThisTurnComponent")
+data class CardsPutIntoGraveyardByOriginThisTurnComponent(val counts: Map<Zone, Int> = emptyMap()) : Component {
+    fun count(zone: Zone): Int = counts[zone] ?: 0
+
+    fun plus(zone: Zone): CardsPutIntoGraveyardByOriginThisTurnComponent =
+        copy(counts = counts + (zone to count(zone) + 1))
+}
 
 /**
  * The cards put into this player's graveyard from any other zone this turn, in arrival order (a
@@ -1922,8 +2166,14 @@ data class EnteredPermanentRecord(
     val entityId: EntityId,
     val cardTypes: Set<com.wingedsheep.sdk.core.CardType> = emptySet(),
     val subtypes: Set<String> = emptySet(),
-    /** Whether the entering permanent was a token — i.e. this entry is its creation (CR 111.2). */
+    /** Whether the entering permanent was a token. */
     val isToken: Boolean = false,
+    /**
+     * Whether this entry is a copy of a permanent spell resolving (CR 707.10f, 608.3f): it becomes a token
+     * as it enters, but that token was never *created* (Thalisse, Reverent Medium ruling), so it
+     * doesn't count toward "tokens you created this turn".
+     */
+    val isSpellCopy: Boolean = false,
     /**
      * The entering object's `BattlefieldEntryTimestampComponent.timestamp`, so a reader can tell
      * whether the permanent now on the battlefield under [entityId] is the object that made this
@@ -1954,7 +2204,9 @@ data class EnteredPermanentRecord(
  *  - [countOfType] → `DynamicAmount.CardTypeEnteredUnderControlThisTurn` ("if three or more
  *    artifacts entered the battlefield under your control this turn", Malcator, Purity Overseer).
  *  - [countTokens] → `TurnTracker.TOKENS_CREATED` ("activate only if you created a token this
- *    turn", Idol of Oblivion) — a token's entry is its creation (CR 111.2).
+ *    turn", Idol of Oblivion; "the number of tokens you created this turn", Thalisse, Reverent
+ *    Medium) — a created token's entry is its creation (CR 111.2); a resolved permanent-spell copy
+ *    is a token that was never created and is left out.
  *  - [entries] directly → `DynamicAmount.SubtypeEnteredUnderControlThisTurn` ("each other Zombie
  *    that entered the battlefield under your control this turn", Geralf, the Fleshwright).
  *  - [includes] → `StatePredicate.EnteredThisTurn(underYourControl = true)` ("each creature that entered the
@@ -1971,8 +2223,11 @@ data class PermanentsEnteredUnderControlThisTurnComponent(
     fun countOfType(cardType: com.wingedsheep.sdk.core.CardType): Int =
         entries.count { cardType in it.cardTypes }
 
-    /** Number of logged entries that were tokens — the tokens this player created this turn. */
-    fun countTokens(): Int = entries.count { it.isToken }
+    /**
+     * Number of logged entries that were created tokens — the tokens this player created this turn.
+     * Resolved permanent-spell copies are tokens but weren't created, so they don't count.
+     */
+    fun countTokens(): Int = entries.count { it.isToken && !it.isSpellCopy }
 
     /** Whether the object that entered as [entityId] at [entryTimestamp] is among this turn's entries. */
     fun includes(entityId: EntityId, entryTimestamp: Long): Boolean =
@@ -2136,7 +2391,7 @@ data class PermanentsWithCountersPutIntoGraveyardThisTurnComponent(
  * The card types of permanents put into this player's graveyard from the battlefield this turn,
  * read off each one's last-known type line. Keyed on the owner — "your graveyard" is the owner's —
  * and tokens count (they reach the graveyard before ceasing to exist). Cleared at end of turn by
- * CleanupPhaseManager. Backs `PermanentTypePutIntoGraveyardFromBattlefieldThisTurn` (Kami of
+ * CleanupPhaseManager. Backs `PermanentPutIntoZoneFromBattlefieldThisTurn(GRAVEYARD)` (Kami of
  * Transience).
  */
 @Serializable
@@ -2144,6 +2399,22 @@ data class CardTypesPutIntoGraveyardFromBattlefieldThisTurnComponent(
     val types: Set<CardType> = emptySet()
 ) : Component {
     fun with(added: Collection<CardType>): CardTypesPutIntoGraveyardFromBattlefieldThisTurnComponent =
+        if (types.containsAll(added)) this else copy(types = types + added)
+}
+
+/**
+ * The card types of permanents returned to this player's hand from the battlefield this turn, read
+ * off each one's last-known type line — the hand-destination sibling of
+ * [CardTypesPutIntoGraveyardFromBattlefieldThisTurnComponent], keyed on the owner the same way
+ * ("your hand" is the owner's), and tokens count (they reach the hand before ceasing to exist).
+ * Cleared at end of turn by CleanupPhaseManager. Backs
+ * `PermanentPutIntoZoneFromBattlefieldThisTurn(HAND)` (Miles O'Brien, Transporter Ops).
+ */
+@Serializable
+data class CardTypesReturnedToHandFromBattlefieldThisTurnComponent(
+    val types: Set<CardType> = emptySet()
+) : Component {
+    fun with(added: Collection<CardType>): CardTypesReturnedToHandFromBattlefieldThisTurnComponent =
         if (types.containsAll(added)) this else copy(types = types + added)
 }
 
@@ -2174,13 +2445,39 @@ data class CombatDamageReceivedThisTurnComponent(
 ) : Component
 
 /**
- * Marks a player as having been dealt combat damage by a legendary creature this turn.
- * Cleared at end of turn by CleanupPhaseManager.
- * Backs the DEALT_COMBAT_DAMAGE_BY_LEGENDARY_CREATURE turn tracker
- * (AnOpponentWasDealtCombatDamageByLegendaryCreatureThisTurn condition — Blitzball).
+ * Every source that dealt *combat* damage to this player this turn, each frozen as it stood when it
+ * dealt the damage ([com.wingedsheep.engine.state.components.battlefield.DamageSourceLki]: controller,
+ * creature-ness, card types, legendary-ness, subtypes, name). Amounts aren't kept — only which
+ * sources connected. Recorded at the one place all damage to a player funnels
+ * through ([com.wingedsheep.engine.handlers.effects.DamageUtils.trackDamageReceivedByPlayer]), so only
+ * damage actually dealt is recorded; cleared at end of turn by CleanupPhaseManager.
+ *
+ * Backs `DynamicAmount.CombatDamageSourcesThisTurn` — "target nonland permanent controlled by a
+ * player who was dealt combat damage by three or more Pirates this turn" (Admiral Beckett Brass),
+ * "an opponent was dealt combat damage by a legendary creature this turn" (Blitzball). Its rulings
+ * (Beckett's) fix the shape: the sources count as they were when they dealt the damage,
+ * whether or not they are still on the battlefield or still Pirates, and a source that dealt combat
+ * damage twice (double strike) counts once — [countMatching] counts distinct source objects.
  */
 @Serializable
-data object WasDealtCombatDamageByLegendaryCreatureThisTurnComponent : Component
+data class CombatDamageSourcesThisTurnComponent(
+    val sources: Set<com.wingedsheep.engine.state.components.battlefield.DamageSourceLki> = emptySet()
+) : Component {
+    /** Record a hit; a source already on record with the same snapshot is not added twice. */
+    fun adding(source: com.wingedsheep.engine.state.components.battlefield.DamageSourceLki): CombatDamageSourcesThisTurnComponent {
+        val key = source.copy(amount = 0)
+        return if (key in sources) this else copy(sources = sources + key)
+    }
+
+    /**
+     * How many distinct source objects matched [filter] when they dealt this player combat damage,
+     * "you" being [youId]. A source recorded twice with different snapshots (it changed between first-
+     * strike and regular damage) is one source, matching if either snapshot does.
+     */
+    fun countMatching(filter: GameObjectFilter, youId: EntityId): Int =
+        sources.filter { it.matches(filter, youId) }.distinctBy { it.sourceId ?: it }.size
+}
+
 
 /**
  * Pending real turn skips and scheduling bypasses used to insert another player's extra turns.
@@ -2213,22 +2510,34 @@ data class EndTheTurnRequestedComponent(val sourceId: EntityId? = null) : Compon
 
 /**
  * "You choose which creatures attack this turn. You choose which creatures block this turn and how
- * those creatures block." (Master Warcraft.) Placed on the player who makes every attack and block
- * declaration during turn [turnNumber].
+ * those creatures block." (Master Warcraft), or a narrower "you choose how creatures your opponents
+ * control block" (Brutal Hordechief). Placed on the player who takes the declarations over; one
+ * [CombatDeclarationGrant] per resolved effect, since one player can hold several (a Master
+ * Warcraft and a Hordechief activation in one turn).
  *
  * Moves only the *declaration*: the declared attackers and blockers still belong to — and must be
  * legal for — the players who control them (the engine validates the declaration exactly as it
  * would theirs), and every other decision, priority and hidden zone stays with its owner. Read
- * through [com.wingedsheep.engine.mechanics.combat.CombatDeclarationControl]; expires on its own
- * once the turn number moves on.
+ * through [com.wingedsheep.engine.mechanics.combat.CombatDeclarationControl]; grants expire on
+ * their own once the turn number moves on.
  */
 @Serializable
 data class CombatDeclarationControlComponent(
-    /** The turn during which this player makes every attack and block declaration. */
-    val turnNumber: Int,
-    /** When the effect was created; the latest one wins when two players cast it the same turn. */
-    val timestamp: Long
+    val grants: List<CombatDeclarationGrant>
 ) : Component
+
+/**
+ * One resolved take-over of combat declarations during turn [turnNumber]: the [declarations] owed
+ * by any of [declaringPlayers] (frozen at resolution).
+ */
+@Serializable
+data class CombatDeclarationGrant(
+    val turnNumber: Int,
+    /** When the effect was created; the latest grant covering a declaration wins. */
+    val timestamp: Long,
+    val declarations: Set<CombatDeclaration>,
+    val declaringPlayers: Set<EntityId>
+)
 
 /**
  * Tracks a Mindslaver-style "you control target opponent" effect, scoped to either the

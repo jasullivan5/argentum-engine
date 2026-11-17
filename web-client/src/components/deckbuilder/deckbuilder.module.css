@@ -1606,6 +1606,20 @@
   vertical-align: middle;
 }
 
+.deckRowPointsTag {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  color: #b9a6ff;
+  background: rgba(185, 166, 255, 0.1);
+  border: 1px solid rgba(185, 166, 255, 0.3);
+  border-radius: 999px;
+  font-weight: 600;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
 .formatPickerRow {
   display: flex;
   align-items: center;

@@ -197,14 +197,21 @@ object ManaPaymentWindow {
                 val restriction = p.color?.let { source?.colorRestrictions?.get(it) } ?: source?.restriction
                 val amount = if (p.color != null) p.amount else p.colorless
                 produced = if (restriction != null) produced.addRestricted(p.color, amount, restriction)
-                    else produced.addProduction(p)
+                    else produced.addProduction(p.copy(extraColors = emptyMap()))
                 record(tags.getValue(sourceId), p.color, amount, restriction != null)
+                // The other colors of a "two mana of different colors" tap.
+                for ((extra, extraAmount) in p.extraColors) {
+                    produced = if (restriction != null) produced.addRestricted(extra, extraAmount, restriction)
+                        else produced.add(extra, extraAmount)
+                    record(tags.getValue(sourceId), extra, extraAmount, restriction != null)
+                }
             }
             // Bonus mana from mana auras / "whenever you tap for mana" riders isn't in
             // manaProduced; credit it or the cost comes up short (mirrors CostPaymentService.payMana).
             for (source in solution.sources) {
                 for ((color, amount) in source.fixedBonusMana) produced = produced.add(color, amount)
             }
+            produced = produced.withReservedSnowBonus(solution)
         } else {
             val byId = availableSources.filter { it.entityId !in excludeSources }.associateBy { it.entityId }
             val actualSources = services.manaSolver.findAvailableManaSources(state, playerId, spellContext).associateBy { it.entityId }
@@ -223,6 +230,23 @@ object ManaPaymentWindow {
                 events.addAll(tapped.second)
                 val color = neededColor(source.producesColors, source.manaAmount, stillNeeded, spellContext)
                 val restriction = color?.let { actual.colorRestrictions[it] } ?: actual.restriction
+                if (actual.differentColors && color != null && source.manaAmount > 1) {
+                    // "Two mana of different colors": each unit a color the cost still wants, none twice.
+                    val made = mutableListOf(color)
+                    stillNeeded = ManaPool().add(color).payPartial(stillNeeded, spellContext).remainingCost
+                    repeat(source.manaAmount - 1) {
+                        val next = neededColor(source.producesColors - made.toSet(), 1, stillNeeded, spellContext)
+                            ?: return@repeat
+                        made += next
+                        stillNeeded = ManaPool().add(next).payPartial(stillNeeded, spellContext).remainingCost
+                    }
+                    for (unitColor in made) {
+                        produced = if (restriction != null) produced.addRestricted(unitColor, 1, restriction)
+                            else produced.add(unitColor, 1)
+                        record(tag, unitColor, 1, restriction != null)
+                    }
+                    continue
+                }
                 val unit = when {
                     color != null -> ManaPool().add(color, source.manaAmount)
                     source.producesColorless -> ManaPool().addColorless(source.manaAmount)
@@ -451,13 +475,15 @@ object ManaPaymentWindow {
     fun floatingManaCovers(
         state: GameState,
         playerId: EntityId,
-        cost: com.wingedsheep.sdk.core.ManaCost
+        cost: com.wingedsheep.sdk.core.ManaCost,
+        /** The payment being made; restricted floating mana counts only where it admits it. */
+        spellContext: SpellPaymentContext? = null,
     ): Boolean {
         val pool = state.getEntity(playerId)
             ?.get<com.wingedsheep.engine.state.components.player.ManaPoolComponent>()
             ?: return false
-        return ManaPool(pool.white, pool.blue, pool.black, pool.red, pool.green, pool.colorless, snowMana = pool.snowMana, manaUnits = pool.manaUnits, snowColorless = pool.snowColorless).withSpendingColors(state, playerId)
-            .payPartial(cost)
+        return ManaPool(pool.white, pool.blue, pool.black, pool.red, pool.green, pool.colorless, restrictedMana = pool.restrictedMana, snowMana = pool.snowMana, manaUnits = pool.manaUnits, snowColorless = pool.snowColorless).withSpendingColors(state, playerId)
+            .payPartial(cost, spellContext)
             .remainingCost
             .isEmpty()
     }

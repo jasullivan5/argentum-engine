@@ -15,10 +15,11 @@ import kotlin.reflect.KClass
 /**
  * Executor for RedirectNextDamageEffect.
  * "The next time damage would be dealt to [protected targets] this turn,
- *  that damage is dealt to [redirectTo] instead."
+ *  that damage is dealt to [redirectTo] instead" — or "all damage … until your next turn".
  *
- * Creates a floating effect with a RedirectNextDamage shield that is consumed
- * when damage is first dealt to any protected entity. The shield expires at end of turn.
+ * Creates a floating effect with a RedirectNextDamage shield. When it is used up depends on the
+ * effect's amount and [com.wingedsheep.sdk.scripting.effects.RedirectScope]; it expires with the
+ * effect's duration ("this turn" by default), or as soon as its recipient leaves the battlefield.
  */
 class RedirectNextDamageExecutor : EffectExecutor<RedirectNextDamageEffect> {
 
@@ -29,8 +30,10 @@ class RedirectNextDamageExecutor : EffectExecutor<RedirectNextDamageEffect> {
         effect: RedirectNextDamageEffect,
         context: EffectContext
     ): EffectResult {
+        // No recipient — an illegal target, or nothing to choose ("choose a creature you control"
+        // with none) — leaves nothing to redirect to, so the shield is never created.
         val redirectToId = context.resolveTarget(effect.redirectTo, state)
-            ?: return EffectResult.error(state, "Could not resolve redirect target for RedirectNextDamageEffect")
+            ?: return EffectResult.success(state)
 
         val protectedIds = effect.protectedTargets.mapNotNull { target ->
             context.resolveTarget(target, state)
@@ -45,26 +48,27 @@ class RedirectNextDamageExecutor : EffectExecutor<RedirectNextDamageEffect> {
             ChosenDamageSource(ref, state.getEntity(sourceId)?.get<CardComponent>()?.name ?: "Source")
         }
 
-        // A creatures-only shield protects a *class*, not a list, so it carries no protected ids
-        // and must not be rejected for having none (Blood of the Martyr). A source-keyed shield
+        // A filter shield protects a *class*, not a list, so it carries no protected ids and must
+        // not be rejected for having none (Blood of the Martyr). A source-keyed shield
         // with no protected targets covers every recipient (Reverberation).
         val coversAnyRecipient = effect.fromSource != null && effect.protectedTargets.isEmpty()
-        if (protectedIds.isEmpty() && !effect.creaturesOnly && !coversAnyRecipient) {
+        if (protectedIds.isEmpty() && effect.protectedFilter == null && !coversAnyRecipient) {
             return EffectResult.error(state, "Could not resolve any protected targets for RedirectNextDamageEffect")
         }
 
         val newState = state.addFloatingEffect(
             layer = Layer.ABILITY,
             modification = SerializableModification.RedirectNextDamage(
-                redirectToId, effect.amount, effect.scope, effect.creaturesOnly, effect.optional,
+                redirectToId, effect.amount, effect.scope, effect.protectedFilter, effect.optional,
                 chosenSource = fromSource,
                 // Keyed to objects, as RedirectDamageFromChosenSource's shield is: a protected or
-                // redirect-to permanent that leaves the battlefield ends the shield (CR 400.7).
+                // redirect-to permanent that leaves the battlefield ends the shield (CR 400.7) — a
+                // flickered "that creature" comes back as a new object and soaks nothing.
                 protectedRef = if (fromSource != null) protectedIds.singleOrNull()?.let(state::objectRef) else null,
-                redirectToRef = if (fromSource != null) state.objectRef(redirectToId) else null
+                redirectToRef = state.objectRef(redirectToId)
             ),
             affectedEntities = protectedIds,
-            duration = Duration.EndOfTurn,
+            duration = effect.duration,
             context = context
         )
 

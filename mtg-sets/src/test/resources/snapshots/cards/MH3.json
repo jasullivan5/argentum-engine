@@ -28,7 +28,7 @@
                     "type": "GrantMayPlayFromExile",
                     "from": "gathered0",
                     "expiry": "Permanent",
-                    "colorlessAsAnyColor": true,
+                    "spendAsAnyColor": "COLORLESS",
                     "nonLandOnly": true
                 }
             ]
@@ -4809,7 +4809,7 @@
                         "NameEqualsChosenComponent"
                     ]
                 },
-                "nonManaAbilitiesOnly": true,
+                "abilities": "NON_MANA",
                 "anyZone": true
             }
         ],
@@ -6840,6 +6840,9 @@
         "power": 1,
         "toughness": 4
     },
+    "keywords": [
+        "ETERNALIZE"
+    ],
     "script": {
         "activatedAbilities": [
             {
@@ -6878,7 +6881,7 @@
                 "isManaAbility": true
             },
             {
-                "id": "Fanatic of Rhonas:3",
+                "id": "eternalize_{2}{G}{G}",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
@@ -6908,7 +6911,9 @@
                     }
                 },
                 "timing": "SorcerySpeed",
-                "activateFromZone": "Graveyard"
+                "activateFromZone": "Graveyard",
+                "descriptionOverride": "Eternalize {2}{G}{G} ({2}{G}{G}, Exile this card from your graveyard: Create a token that's a copy of it, except it's a 4/4 black Zombie with no mana cost. Eternalize only as a sorcery.)",
+                "keyword": "ETERNALIZE"
             }
         ]
     },
@@ -7296,7 +7301,8 @@
                     },
                     "revealed": true
                 },
-                "ShuffleLibrary"
+                "ShuffleLibrary",
+                "EmitLibrarySearchedEvent"
             ]
         },
         "selfAlternativeCost": {
@@ -8597,6 +8603,18 @@
     "manaCost": "{1}{B}",
     "typeLine": "Sorcery",
     "oracleText": "Choose one —\n• Target player creates a 2/2 black Zombie creature token.\n• Return target creature card from your graveyard to your hand.\nEntwine {2} (Choose both if you pay the entwine cost.)",
+    "keywords": [
+        "ENTWINE"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Kicker",
+            "manaCost": "{2}",
+            "displayPrefix": "Entwine",
+            "keyword": "ENTWINE",
+            "declaredSlot": "ENTWINED"
+        }
+    ],
     "script": {
         "spellEffect": {
             "type": "Modal",
@@ -8650,7 +8668,36 @@
             ],
             "chooseCount": 2,
             "minChooseCount": 1,
-            "additionalManaCostPerExtraMode": "{2}"
+            "dynamicChooseCount": {
+                "type": "Conditional",
+                "condition": {
+                    "type": "CastChoiceMade",
+                    "slot": "ENTWINED"
+                },
+                "ifTrue": {
+                    "type": "Fixed",
+                    "amount": 2
+                },
+                "ifFalse": {
+                    "type": "Fixed",
+                    "amount": 1
+                }
+            },
+            "dynamicMinChooseCount": {
+                "type": "Conditional",
+                "condition": {
+                    "type": "CastChoiceMade",
+                    "slot": "ENTWINED"
+                },
+                "ifTrue": {
+                    "type": "Fixed",
+                    "amount": 2
+                },
+                "ifFalse": {
+                    "type": "Fixed",
+                    "amount": 1
+                }
+            }
         }
     },
     "metadata": {
@@ -8813,7 +8860,10 @@
                     },
                     "then": "ExileAndReturnTransformed"
                 },
-                "interveningIf": "TriggeringEntityEnteredOrWasCastFromGraveyard",
+                "interveningIf": {
+                    "type": "TriggeringEntityEnteredOrWasCastFrom",
+                    "zone": "Graveyard"
+                },
                 "descriptionOverride": "Whenever Grist or another creature you control enters, if it entered from your graveyard or you cast it from your graveyard, you may pay {G}. If you do, exile Grist, then return it to the battlefield transformed under its owner's control."
             }
         ]
@@ -9702,7 +9752,10 @@
         "triggeredAbilities": [
             {
                 "id": "Hydra Trainer:1",
-                "trigger": "ExertedAsItAttacksEvent",
+                "trigger": {
+                    "type": "ExertedEvent",
+                    "asItAttacks": true
+                },
                 "effect": {
                     "type": "ModifyStats",
                     "powerModifier": {
@@ -10293,55 +10346,86 @@
                     "to": "Battlefield"
                 },
                 "effect": {
-                    "type": "ReflexiveTrigger",
-                    "action": {
-                        "type": "Composite",
-                        "effects": [
-                            {
-                                "type": "Sacrifice",
-                                "filter": "creature"
-                            },
-                            "EmitExploitedEvent"
-                        ]
-                    },
-                    "reflexiveEffect": {
-                        "type": "Composite",
-                        "effects": [
-                            {
-                                "type": "GainControl",
-                                "target": {
-                                    "type": "BoundVariable",
-                                    "name": "t0"
-                                },
-                                "duration": "EndOfTurn"
-                            },
-                            {
-                                "type": "TapUntap",
-                                "target": {
-                                    "type": "BoundVariable",
-                                    "name": "t0"
-                                },
-                                "tap": false
-                            },
-                            {
-                                "type": "GrantKeyword",
-                                "keyword": "HASTE",
-                                "target": {
-                                    "type": "BoundVariable",
-                                    "name": "t0"
-                                }
-                            }
-                        ]
-                    },
-                    "reflexiveTargetRequirements": [
-                        {
-                            "type": "TargetObject",
-                            "filter": {
-                                "baseFilter": "creature|artifact"
-                            },
-                            "id": "t0"
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "SourceInZone",
+                            "zones": [
+                                "Battlefield"
+                            ]
                         }
-                    ],
+                    },
+                    "then": {
+                        "type": "ReflexiveTrigger",
+                        "action": {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "Sacrifice",
+                                    "filter": "creature"
+                                },
+                                "EmitExploitedEvent"
+                            ]
+                        },
+                        "reflexiveEffect": {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "GainControl",
+                                    "target": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    },
+                                    "duration": "EndOfTurn"
+                                },
+                                {
+                                    "type": "TapUntap",
+                                    "target": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    },
+                                    "tap": false
+                                },
+                                {
+                                    "type": "GrantKeyword",
+                                    "keyword": "HASTE",
+                                    "target": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    }
+                                }
+                            ]
+                        },
+                        "reflexiveTargetRequirements": [
+                            {
+                                "type": "TargetObject",
+                                "filter": {
+                                    "baseFilter": "creature|artifact"
+                                },
+                                "id": "t0"
+                            }
+                        ],
+                        "descriptionOverride": "You may sacrifice a creature"
+                    },
+                    "otherwise": {
+                        "type": "ReflexiveTrigger",
+                        "action": {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "Sacrifice",
+                                    "filter": "creature"
+                                },
+                                "EmitExploitedEvent"
+                            ]
+                        },
+                        "reflexiveEffect": {
+                            "type": "Composite",
+                            "effects": []
+                        },
+                        "descriptionOverride": "You may sacrifice a creature"
+                    },
                     "descriptionOverride": "You may sacrifice a creature"
                 },
                 "descriptionOverride": "Exploit (When this creature enters, you may sacrifice a creature.)"
@@ -16239,7 +16323,10 @@
                                 },
                                 "multiplier": 2
                             },
-                            "restriction": "CostsContainingXOnly"
+                            "restriction": {
+                                "type": "CostsContainingSymbolOnly",
+                                "symbol": "com.wingedsheep.sdk.core.ManaSymbol.X"
+                            }
                         }
                     ]
                 },
@@ -16429,7 +16516,7 @@
                     "restriction": {
                         "type": "AnyOf",
                         "restrictions": [
-                            "ColorlessSpellsOnly",
+                            "ColorlessSpellsOrAbilitiesOnly",
                             "AbilityActivationOnly"
                         ]
                     }
@@ -20454,7 +20541,8 @@
                             "linkToSource": true,
                             "faceDown": "HIDDEN"
                         },
-                        "ShuffleLibrary"
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
                     ]
                 }
             },
@@ -20689,9 +20777,10 @@
                             }
                         },
                         {
-                            "type": "Modal",
-                            "modes": [
+                            "type": "ChooseAction",
+                            "choices": [
                                 {
+                                    "label": "Search your library",
                                     "effect": {
                                         "type": "Composite",
                                         "effects": [
@@ -20743,10 +20832,10 @@
                                             "ShuffleLibrary",
                                             "EmitLibrarySearchedEvent"
                                         ]
-                                    },
-                                    "description": "Search your library"
+                                    }
                                 },
                                 {
+                                    "label": "Search your graveyard",
                                     "effect": {
                                         "type": "Composite",
                                         "effects": [
@@ -20776,7 +20865,7 @@
                                                 "type": "SelectFromCollection",
                                                 "from": "searchable",
                                                 "selection": {
-                                                    "type": "ChooseUpTo",
+                                                    "type": "ChooseExactly",
                                                     "count": {
                                                         "type": "Fixed",
                                                         "amount": 1
@@ -20795,10 +20884,10 @@
                                                 }
                                             }
                                         ]
-                                    },
-                                    "description": "Search your graveyard"
+                                    }
                                 },
                                 {
+                                    "label": "Search your library and graveyard",
                                     "effect": {
                                         "type": "Composite",
                                         "effects": [
@@ -20851,11 +20940,9 @@
                                             "ShuffleLibrary",
                                             "EmitLibrarySearchedEvent"
                                         ]
-                                    },
-                                    "description": "Search your library and graveyard"
+                                    }
                                 }
-                            ],
-                            "countsAsModalSpell": false
+                            ]
                         }
                     ]
                 }

@@ -90,8 +90,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   {
     id: 'stack-yield-menu',
-    keys: 'Right-click / long-press',
-    label: 'Open the yield menu for an ability on the stack',
+    keys: 'Right-click',
+    label: 'Open the yield menu for an ability on the stack (or press Yield… under the top item)',
     where: 'In a game, on a stack item',
   },
 ]

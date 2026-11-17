@@ -70,6 +70,13 @@ data class TriggerContext(
     val selfCastCostChoices: Map<com.wingedsheep.sdk.scripting.ChoiceSlot, Boolean>? = null,
     /** Named cost branches and repeated optional-payment counts, frozen for the source's own cast/entry triggers. */
     val selfCastAdditionalCostChoices: Map<com.wingedsheep.sdk.scripting.ChoiceSlot, Int>? = null,
+    /**
+     * The "as you cast this spell" captures (CR 601.2i) of this trigger's own source, frozen as its
+     * enters trigger is detected. The permanent's cast-choices bag is stripped if it leaves in
+     * response (CR 400.7), but the intervening "if" is rechecked on resolution (CR 603.4) and how
+     * the spell was cast is fixed — Orator of Ojutai bounced in response still draws.
+     */
+    val selfCastTimeValues: Map<String, Int>? = null,
     /** Actual payment of this trigger's own source spell; zero payment is distinct from no snapshot. */
     val selfCastManaSpent: com.wingedsheep.engine.state.components.battlefield.CastRecordComponent? = null,
     /** Last known +1/+1 counter count when the source left the battlefield */
@@ -94,6 +101,11 @@ data class TriggerContext(
     val abilityTriggerCause: com.wingedsheep.sdk.scripting.AbilityTriggerCause? = null,
     /** The object that dealt the triggering damage (`EffectTarget.DamageSource`); null outside damage triggers. */
     val damageSourceId: EntityId? = null,
+    /**
+     * What was dealt the triggering damage (`EffectTarget.DamageRecipient`) — a permanent, or the
+     * player when the damage went to one; null outside damage triggers.
+     */
+    val damageRecipientId: EntityId? = null,
     /**
      * The damage source's controller at the instant the triggering damage was dealt (CR 603.10),
      * read off the event's `sourceLastKnown`. "That creature's controller" (Backfire) still names
@@ -273,6 +285,21 @@ data class TriggerContext(
      */
     val capturedEntityIds: List<EntityId>? = null,
     /**
+     * The rules-object identity (CR 400.7) each battlefield permanent in [capturedEntityIds] had when
+     * the trigger fired, for captures that must stop naming a permanent once it leaves — "one of
+     * those creatures" (Godsend's block partners). A permanent that left and came back keeps its
+     * entity id but is a new object, so [withoutDepartedCaptures] drops it from the captured
+     * collection at resolution. Null when the capture tracks no identity.
+     */
+    val capturedObjects: List<com.wingedsheep.engine.state.ObjectRef>? = null,
+    /**
+     * The players a "deal combat damage to one or more players" batch trigger hit, seeded into the
+     * resolving ability's pipeline under
+     * [com.wingedsheep.sdk.scripting.effects.IterationSpace.TRIGGER_DAMAGED_PLAYERS] — "the number
+     * of opponents dealt damage this way" (Hordewing Skaab). Null for every other trigger.
+     */
+    val damagedPlayerIds: List<EntityId>? = null,
+    /**
      * Copiable values (CR 707.2) of the permanents in [capturedEntityIds], frozen when the trigger
      * fired. A "create a token that's a copy of that permanent" payoff falls back to them when the
      * captured permanent has left before resolution and its own departure snapshot is gone — a
@@ -282,6 +309,14 @@ data class TriggerContext(
      * it"). Null when the trigger captured nothing copyable.
      */
     val capturedEntitySnapshots: List<com.wingedsheep.engine.state.components.stack.EntitySnapshot>? = null,
+    /**
+     * For a "whenever [player] attack(s) with …" firing ([com.wingedsheep.sdk.scripting.EventPattern.YouAttackEvent]),
+     * whom each captured attacker was declared attacking — a player, planeswalker or battle id —
+     * frozen as the trigger fired so a creature removed from combat in response still counts.
+     * Read by [com.wingedsheep.sdk.scripting.conditions.TriggeringAttackersAttackedPlayer]
+     * (Firemane Commando). Null for every other trigger.
+     */
+    val capturedAttackerDefenders: Map<EntityId, EntityId>? = null,
     /**
      * For [com.wingedsheep.engine.core.PermanentAttachedEvent] /
      * [com.wingedsheep.engine.core.PermanentUnattachedEvent] triggers — the permanent the triggering
@@ -310,7 +345,7 @@ data class TriggerContext(
      */
     val lastKnownChosenCreature: com.wingedsheep.engine.state.components.battlefield.ChoiceValue.EntityChoice? = null,
     /**
-     * For a [com.wingedsheep.engine.core.LandTappedForManaEvent] trigger — the colors of the mana
+     * For a [com.wingedsheep.engine.core.PermanentTappedForManaEvent] trigger — the colors of the mana
      * the land produced (empty for colorless). Read by
      * [com.wingedsheep.sdk.scripting.predicates.CardPredicate.SharesColorWithTriggeringMana] for
      * "if that creature shares a color with the mana that land produced" (C.A.M.P.). `null` for
@@ -394,6 +429,7 @@ data class TriggerContext(
                 is DamageDealtEvent -> TriggerContext(
                     triggeringEntityId = event.targetId,
                     damageSourceId = event.sourceId,
+                    damageRecipientId = event.targetId,
                     damageSourceControllerId = event.sourceLastKnown?.controllerId,
                     triggeringPlayerId = event.targetLastKnown?.controllerId,
                     damageAmount = event.amount,
@@ -449,7 +485,8 @@ data class TriggerContext(
                     triggeringPlayerId = event.controllerId,
                     manaValueOfTriggeringSpell = event.manaValue.takeIf { it > 0 }
                 )
-                is CardsDrawnEvent -> TriggerContext(triggeringPlayerId = event.playerId)
+                // A cycling draw's cycled card is "the cycled card" a `DrawEvent.cyclingOf` trigger refers to.
+                is CardsDrawnEvent -> TriggerContext(triggeringPlayerId = event.playerId, triggeringEntityId = event.cycledCardId)
                 // A player losing the game: the loser is both the triggering player (so
                 // Player.TriggeringPlayer / a TriggeringPlayerIs condition resolves to them) and
                 // the triggering entity (players are entities). Shinryu, Transcendent Rival reads
@@ -467,6 +504,11 @@ data class TriggerContext(
                     // outcome, so "if you won" is this flag verbatim (CR 701.30d).
                     clashWon = event.won
                 )
+                // The countered spell is the triggering object; the counterer is the triggering player.
+                is com.wingedsheep.engine.core.SpellCounteredEvent -> TriggerContext(
+                    triggeringPlayerId = event.countererId,
+                    triggeringEntityId = event.spellEntityId
+                )
                 is com.wingedsheep.engine.core.ScriedEvent -> TriggerContext(
                     triggeringPlayerId = event.playerId,
                     scryCount = event.count,
@@ -475,6 +517,9 @@ data class TriggerContext(
                 // Surveil reuses the "cards looked at" count slot (TRIGGER_SCRY_COUNT) — the
                 // field is the number of cards looked at, common to scry and surveil.
                 is com.wingedsheep.engine.core.ProliferatedEvent -> TriggerContext(
+                    triggeringPlayerId = event.playerId
+                )
+                is com.wingedsheep.engine.core.DilemmaFacedEvent -> TriggerContext(
                     triggeringPlayerId = event.playerId
                 )
                 is com.wingedsheep.engine.core.SurveiledEvent -> TriggerContext(
@@ -498,6 +543,11 @@ data class TriggerContext(
                 is com.wingedsheep.engine.core.ForagedEvent -> TriggerContext(
                     triggeringPlayerId = event.playerId
                 )
+                // Foretell (CR 702.143a): the foretelling player is the triggering player; the
+                // foretold card stays hidden, so it isn't the triggering entity.
+                is com.wingedsheep.engine.core.ForetoldEvent -> TriggerContext(
+                    triggeringPlayerId = event.playerId
+                )
                 // Investigate (CR 701.16a): the investigating player is the triggering player.
                 is com.wingedsheep.engine.core.InvestigatedEvent -> TriggerContext(
                     triggeringPlayerId = event.playerId
@@ -514,6 +564,11 @@ data class TriggerContext(
                 // Wardens) can each name what they need.
                 is com.wingedsheep.engine.core.BecameRenownedEvent -> TriggerContext(
                     triggeringEntityId = event.entityId,
+                    triggeringPlayerId = event.controllerId
+                )
+                // Fight (CR 701.14): the fighter is "it" and its controller the triggering player.
+                is com.wingedsheep.engine.core.CreatureFoughtEvent -> TriggerContext(
+                    triggeringEntityId = event.creatureId,
                     triggeringPlayerId = event.controllerId
                 )
                 // Monstrosity (CR 701.37b): same shape as renown.
@@ -568,8 +623,8 @@ data class TriggerContext(
                 is com.wingedsheep.engine.core.RemovedFromCombatEvent -> TriggerContext(triggeringEntityId = event.entityId)
                 is TappedEvent -> TriggerContext(triggeringEntityId = event.entityId)
                 is UntappedEvent -> TriggerContext(triggeringEntityId = event.entityId)
-                is com.wingedsheep.engine.core.LandTappedForManaEvent -> TriggerContext(
-                    triggeringEntityId = event.landId,
+                is com.wingedsheep.engine.core.PermanentTappedForManaEvent -> TriggerContext(
+                    triggeringEntityId = event.permanentId,
                     triggeringPlayerId = event.tapperId,
                     producedManaColors = event.producedColors
                 )
@@ -659,11 +714,24 @@ data class TriggerContext(
                     triggeringPlayerId = event.playerId,
                     dieResults = event.results,
                 )
+                // "that Saga" — the Saga whose chapter resolved, read through its battlefield
+                // snapshot once CR 714.4 has sacrificed it (Narci, Fable Singer).
+                is com.wingedsheep.engine.core.SagaChapterResolvedEvent -> TriggerContext(
+                    triggeringEntityId = event.sagaId,
+                    triggeringLastKnownSnapshot = event.sagaSnapshot,
+                    triggeringPlayerId = event.controllerId,
+                )
                 else -> TriggerContext()
             }
         }
     }
 }
+
+/** The pipeline collections a triggered ability's own firing seeds ([triggerStoredCollections]). */
+internal val TRIGGER_SCOPED_COLLECTIONS: Set<String> = setOf(
+    com.wingedsheep.engine.handlers.PipelineState.TRIGGER_CAPTURED_COLLECTION,
+    com.wingedsheep.sdk.scripting.effects.IterationSpace.TRIGGER_DAMAGED_PLAYERS
+)
 
 /**
  * The named collections a triggered ability sees — when its targets are chosen (CR 603.3d), when
@@ -679,4 +747,26 @@ internal fun triggerStoredCollections(
 ): Map<String, List<EntityId>> =
     (triggerContext?.capturedEntityIds?.takeIf { it.isNotEmpty() }
         ?.let { mapOf(com.wingedsheep.engine.handlers.PipelineState.TRIGGER_CAPTURED_COLLECTION to it) }
-        ?: emptyMap()) + (carried?.storedCollections ?: emptyMap())
+        ?: emptyMap()) +
+        (triggerContext?.damagedPlayerIds
+            ?.let { mapOf(com.wingedsheep.sdk.scripting.effects.IterationSpace.TRIGGER_DAMAGED_PLAYERS to it) }
+            ?: emptyMap()) +
+        (carried?.storedCollections ?: emptyMap())
+
+/**
+ * Drops from the resolving trigger's captured collection every permanent whose
+ * [TriggerContext.capturedObjects] identity is no longer current — it left the battlefield (and
+ * perhaps came back as a new object under the same entity id, CR 400.7) after the trigger fired.
+ * A no-op for triggers that captured no identities.
+ */
+internal fun com.wingedsheep.engine.handlers.EffectContext.withoutDepartedCaptures(
+    state: com.wingedsheep.engine.state.GameState,
+    triggerContext: TriggerContext?,
+): com.wingedsheep.engine.handlers.EffectContext {
+    val refs = triggerContext?.capturedObjects?.takeIf { it.isNotEmpty() } ?: return this
+    val key = com.wingedsheep.engine.handlers.PipelineState.TRIGGER_CAPTURED_COLLECTION
+    val captured = pipeline.storedCollections[key] ?: return this
+    val departed = refs.filterNot { state.isCurrentObject(it) }.mapTo(HashSet()) { it.entityId }
+    if (departed.isEmpty()) return this
+    return copy(pipeline = pipeline.copy(storedCollections = pipeline.storedCollections + (key to captured - departed)))
+}

@@ -1,7 +1,7 @@
 # Runtime-only image for CI: the deploy workflow builds game-server.jar on the runner (where it can
 # reuse the Gradle build cache CI saved on main) and passes game-server/build/libs as the build
 # context. game-server/Dockerfile remains the self-contained build for anyone without a JDK.
-FROM eclipse-temurin:21-jre-alpine
+FROM eclipse-temurin:25-jre-alpine
 WORKDIR /app
 COPY game-server.jar app.jar
 # Stamped onto every recorded replay (see EngineVersion) so a replay that stops re-simulating can be

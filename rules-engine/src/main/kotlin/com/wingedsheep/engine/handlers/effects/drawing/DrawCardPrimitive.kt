@@ -9,11 +9,13 @@ import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
+import com.wingedsheep.engine.state.components.identity.TokenComponent
 import com.wingedsheep.engine.state.components.player.CardsDrawnThisTurnComponent
 import com.wingedsheep.engine.state.components.player.AttemptedDrawFromEmptyLibraryComponent
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.RevealFirstDrawEachTurn
+import com.wingedsheep.engine.state.components.identity.faceUpCardDefinition
 
 /**
  * Primitive single-card draw.
@@ -51,13 +53,17 @@ class DrawCardPrimitive(
      * @property miracle the drawn card's miracle ability (printed or granted in hand) when it is the
      *     first card its owner drew this turn, i.e. when CR 702.94a lets them reveal it; the caller
      *     asks. Null otherwise.
+     * @property optionalRevealSources the permanents whose optional [RevealFirstDrawEachTurn]
+     *     applies to this first draw of the turn ("you may reveal … as you draw it"); the caller asks
+     *     once per source. Empty otherwise.
      */
     data class Result(
         val state: GameState,
         val events: List<GameEvent>,
         val drawnCardId: EntityId?,
         val failed: Boolean,
-        val miracle: com.wingedsheep.sdk.scripting.KeywordAbility.Miracle? = null
+        val miracle: com.wingedsheep.sdk.scripting.KeywordAbility.Miracle? = null,
+        val optionalRevealSources: List<EntityId> = emptyList()
     )
 
     /**
@@ -76,9 +82,14 @@ class DrawCardPrimitive(
     ): Result {
         val libraryZone = ZoneKey(playerId, Zone.LIBRARY)
         val handZone = ZoneKey(playerId, Zone.HAND)
-        val library = state.getZone(libraryZone)
+        // A token that left the battlefield can't change zones (CR 111.8) and is no card in the
+        // library — it only lingers until the next SBA check removes it (CR 704.5d). A draw passes
+        // over it: "shuffle permanents into your library, then draw that many" (The Great Aurora)
+        // counts tokens but must never draw one, and a library of only tokens is empty for drawing.
+        val cardId = state.getZone(libraryZone)
+            .firstOrNull { state.getEntity(it)?.has<TokenComponent>() != true }
 
-        if (library.isEmpty()) {
+        if (cardId == null) {
             // CR 121.4: a player who attempts to draw from an empty library loses the game the
             // next time a player would receive priority — a state-based action (CR 704.5b), not
             // part of the draw. Record the attempt; EmptyLibraryDrawLossCheck turns it into the
@@ -97,7 +108,6 @@ class DrawCardPrimitive(
         }
 
         // Move top card from library → hand.
-        val cardId = library.first()
         var newState = state.removeFromZone(libraryZone, cardId)
         newState = newState.addToZone(handZone, cardId)
 
@@ -119,9 +129,13 @@ class DrawCardPrimitive(
             )
         )
         var miracle: com.wingedsheep.sdk.scripting.KeywordAbility.Miracle? = null
+        var optionalRevealSources = emptyList<EntityId>()
         if (drawCountBefore == 0) {
-            val revealEvent = checkRevealFirstDraw(newState, playerId, cardId)
-            if (revealEvent != null) events.add(revealEvent)
+            val (mandatory, optional) = revealFirstDrawSources(newState, playerId).partition { !it.second }
+            if (mandatory.isNotEmpty()) {
+                firstDrawRevealEvent(newState, playerId, cardId, mandatory.map { it.first })?.let(events::add)
+            }
+            optionalRevealSources = optional.map { it.first }
 
             // Miracle (CR 702.94a): the first card drawn this turn may be revealed for its miracle
             // if it has one (printed or granted in hand). Revealing is its owner's choice, so this
@@ -138,7 +152,8 @@ class DrawCardPrimitive(
             events = events,
             drawnCardId = cardId,
             failed = false,
-            miracle = miracle
+            miracle = miracle,
+            optionalRevealSources = optionalRevealSources
         )
     }
 
@@ -154,29 +169,45 @@ class DrawCardPrimitive(
         DrawRestrictions.drawsLeftThisTurn(state, playerId, cardRegistry, predicateEvaluator)
 
     /**
-     * If [playerId] controls a permanent with [RevealFirstDrawEachTurn], emit a
-     * [CardRevealedFromDrawEvent] for [drawnCardId]. Only called on the first
-     * draw of the turn.
+     * The permanents [playerId] controls whose [RevealFirstDrawEachTurn] applies to their first draw
+     * of the turn (a `yourTurnsOnly` one only on [playerId]'s turn), each paired with whether its
+     * reveal is optional. Only called on the first draw of the turn.
      */
-    private fun checkRevealFirstDraw(
+    private fun revealFirstDrawSources(
         state: GameState,
-        playerId: EntityId,
-        drawnCardId: EntityId
-    ): CardRevealedFromDrawEvent? {
+        playerId: EntityId
+    ): List<Pair<EntityId, Boolean>> {
         val projected = state.projectedState
-        val hasRevealAbility = projected.getBattlefieldControlledBy(playerId).any { permanentId ->
-            val card = state.getEntity(permanentId)?.get<CardComponent>() ?: return@any false
-            val cardDef = cardRegistry.getCard(card.cardDefinitionId) ?: return@any false
-            cardDef.script.staticAbilities.any { it is RevealFirstDrawEachTurn }
+        val isTheirTurn = state.isActiveTurnFor(playerId)
+        return projected.getBattlefieldControlledBy(playerId).mapNotNull { permanentId ->
+            val cardDef = state.getEntity(permanentId)?.faceUpCardDefinition(cardRegistry) ?: return@mapNotNull null
+            val reveals = cardDef.script.staticAbilities
+                .filterIsInstance<RevealFirstDrawEachTurn>()
+                .filter { !it.yourTurnsOnly || isTheirTurn }
+            if (reveals.isEmpty()) null
+            else permanentId to reveals.all { it.optional }
         }
-        if (!hasRevealAbility) return null
+    }
 
-        val drawnCard = state.getEntity(drawnCardId)?.get<CardComponent>() ?: return null
-        return CardRevealedFromDrawEvent(
-            playerId = playerId,
-            cardEntityId = drawnCardId,
-            cardName = drawnCard.name,
-            isCreature = drawnCard.typeLine.isCreature
-        )
+    companion object {
+        /**
+         * The [CardRevealedFromDrawEvent] for [drawnCardId], revealed by [revealedBy] — the
+         * mandatory reveals as the card is drawn, or one optional source its controller said yes to.
+         */
+        fun firstDrawRevealEvent(
+            state: GameState,
+            playerId: EntityId,
+            drawnCardId: EntityId,
+            revealedBy: List<EntityId>
+        ): CardRevealedFromDrawEvent? {
+            val drawnCard = state.getEntity(drawnCardId)?.get<CardComponent>() ?: return null
+            return CardRevealedFromDrawEvent(
+                playerId = playerId,
+                cardEntityId = drawnCardId,
+                cardName = drawnCard.name,
+                isCreature = drawnCard.typeLine.isCreature,
+                revealedBy = revealedBy
+            )
+        }
     }
 }

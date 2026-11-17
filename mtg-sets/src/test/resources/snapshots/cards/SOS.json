@@ -3322,7 +3322,8 @@
                         "zone": "Graveyard"
                     }
                 },
-                "ShuffleLibrary"
+                "ShuffleLibrary",
+                "EmitLibrarySearchedEvent"
             ]
         }
     },
@@ -4304,9 +4305,13 @@
                                 "condition": {
                                     "type": "Compare",
                                     "left": {
-                                        "type": "AggregateBattlefield",
-                                        "player": "EachOpponent",
-                                        "filter": "creature"
+                                        "type": "GreatestAmongPlayers",
+                                        "players": "EachOpponent",
+                                        "inner": {
+                                            "type": "AggregateBattlefield",
+                                            "player": "You",
+                                            "filter": "creature"
+                                        }
                                     },
                                     "operator": "GT",
                                     "right": {
@@ -4912,7 +4917,11 @@
                                     "filter": "basicland"
                                 },
                                 "storeAs": "gathered0",
-                                "search": true
+                                "search": true,
+                                "searcher": {
+                                    "type": "ControllerOf",
+                                    "targetDescription": "target"
+                                }
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -4943,7 +4952,8 @@
                             {
                                 "type": "ShuffleLibrary",
                                 "target": "TargetController"
-                            }
+                            },
+                            "EmitLibrarySearchedEvent"
                         ]
                     },
                     "decisionMaker": "TargetController"
@@ -11193,7 +11203,7 @@
                         "NameEqualsChosenComponent"
                     ]
                 },
-                "nonManaAbilitiesOnly": true,
+                "abilities": "NON_MANA",
                 "anyZone": true
             },
             {
@@ -11645,29 +11655,26 @@
                     }
                 },
                 {
-                    "type": "ForEach",
-                    "space": {
-                        "type": "IterationSpace.Players",
-                        "players": "ActivePlayerFirst"
+                    "type": "ForceSacrifice",
+                    "filter": "permanent",
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "ActivePlayerFirst"
                     },
-                    "body": {
-                        "type": "ForceSacrifice",
-                        "filter": "permanent",
-                        "target": "Controller",
-                        "dynamicCount": {
-                            "type": "Divide",
-                            "numerator": {
-                                "type": "AggregateBattlefield",
-                                "player": "You",
-                                "filter": "permanent"
-                            },
-                            "denominator": {
-                                "type": "Fixed",
-                                "amount": 2
-                            },
-                            "roundUp": false
-                        }
-                    }
+                    "dynamicCount": {
+                        "type": "Divide",
+                        "numerator": {
+                            "type": "AggregateBattlefield",
+                            "player": "You",
+                            "filter": "permanent"
+                        },
+                        "denominator": {
+                            "type": "Fixed",
+                            "amount": 2
+                        },
+                        "roundUp": false
+                    },
+                    "countPerPlayer": true
                 }
             ]
         }
@@ -14910,7 +14917,8 @@
                     "gate": "Gate.MayDecide",
                     "then": {
                         "type": "CopyTargetSpell",
-                        "target": "TriggeringEntity"
+                        "target": "TriggeringEntity",
+                        "mayChooseNewTargets": false
                     }
                 },
                 "triggerRestriction": {
@@ -18663,7 +18671,8 @@
                 "oncePerTurn": true,
                 "fromZones": [
                     "Hand"
-                ]
+                ],
+                "duringYourTurnOnly": true
             }
         ]
     },

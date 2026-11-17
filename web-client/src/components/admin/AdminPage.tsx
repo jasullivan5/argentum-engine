@@ -4,18 +4,20 @@
  *  1. a signed-in account flagged as admin — taken straight in, using its normal auth token, or
  *  2. the bootstrap `X-Admin-Password`, entered once and kept in sessionStorage for the session.
  *
- * Once in, it's a hub that routes to the admin areas (Stats / AI vs humans / Live overview / Activity / Players). The bootstrap
+ * Once in, it's a hub that routes to the admin areas (Stats / AI vs humans / Live overview / Activity / Players). Each area
+ * is its own URL under `/admin/*` (see {@link useAdminNav}), so browser Back/Forward and refresh keep the admin's place. The bootstrap
  * password is only needed to create the first admin: sign in with it, open Players, and promote an
  * account — that account can then reach the dashboard with its own sign-in.
  */
 import { useCallback, useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Navigate, useNavigate, useParams } from 'react-router-dom'
 import { AdminDashboard } from './AdminDashboard'
 import { AdminActivity } from './AdminActivity'
 import { AdminAiVsHuman } from './AdminAiVsHuman'
 import { AdminLiveOverview } from './AdminLiveOverview'
 import { AdminPlayers } from './AdminPlayers'
-import { AdminHub, type AdminArea } from './AdminHub'
+import { AdminHub, isAdminArea } from './AdminHub'
+import { useAdminNav } from './adminNav'
 import { PageShell, pageStyles } from '@/components/ui/PageShell'
 import { devStyles } from './DevPage'
 import type { AdminAuth } from '@/api/adminAuth'
@@ -32,7 +34,8 @@ export function AdminPage() {
   const [access, setAccess] = useState<Access>('pending')
   /** Bootstrap password if that's how we got in, else null (use the signed-in account's token). */
   const [auth, setAuth] = useState<AdminAuth>(null)
-  const [view, setView] = useState<'hub' | AdminArea>('hub')
+  const { open, up } = useAdminNav()
+  const [area, itemId] = (useParams()['*'] ?? '').split('/').filter(Boolean)
 
   const [passwordDraft, setPasswordDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -101,7 +104,6 @@ export function AdminPage() {
     if (result.ok) {
       sessionStorage.setItem('adminPassword', passwordDraft)
       setAuth(passwordDraft)
-      setView('hub')
       setAccess('granted')
     } else {
       setError(result.error ?? 'Login failed')
@@ -130,24 +132,38 @@ export function AdminPage() {
     )
   }
 
-  if (view === 'stats') {
-    return <AdminDashboard auth={auth} onBack={() => setView('hub')} />
+  // An unknown area, or a sub-path on an area that has none, falls back to the hub rather than a blank page.
+  if (area != null && (!isAdminArea(area) || (itemId != null && area !== 'players'))) {
+    return <Navigate to="/admin" replace />
   }
-  if (view === 'ai') {
-    return <AdminAiVsHuman auth={auth} onBack={() => setView('hub')} />
+
+  const toHub = () => up('')
+  if (area === 'stats') {
+    return <AdminDashboard auth={auth} onBack={toHub} />
   }
-  if (view === 'live') {
-    return <AdminLiveOverview auth={auth} onBack={() => setView('hub')} />
+  if (area === 'ai') {
+    return <AdminAiVsHuman auth={auth} onBack={toHub} />
   }
-  if (view === 'activity') {
-    return <AdminActivity auth={auth} onBack={() => setView('hub')} />
+  if (area === 'live') {
+    return <AdminLiveOverview auth={auth} onBack={toHub} />
   }
-  if (view === 'players') {
-    return <AdminPlayers auth={auth} onBack={() => setView('hub')} />
+  if (area === 'activity') {
+    return <AdminActivity auth={auth} onBack={toHub} />
+  }
+  if (area === 'players') {
+    return (
+      <AdminPlayers
+        auth={auth}
+        selectedId={itemId ?? null}
+        onSelect={(id) => open(`players/${encodeURIComponent(id)}`)}
+        onCloseDetail={() => up('players')}
+        onBack={toHub}
+      />
+    )
   }
 
   const authLabel = auth ? 'Signed in with the admin password' : `Signed in as ${user?.displayName ?? 'admin'}`
-  return <AdminHub onNavigate={setView} authLabel={authLabel} />
+  return <AdminHub onNavigate={open} authLabel={authLabel} />
 }
 
 // ============================================================================

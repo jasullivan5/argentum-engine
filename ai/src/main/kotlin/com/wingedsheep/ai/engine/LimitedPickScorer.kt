@@ -3,18 +3,14 @@ package com.wingedsheep.ai.engine
 import com.wingedsheep.ai.llm.CardSummary
 
 /**
- * Color-aware draft-pick scoring, shared by the AI bot ([EngineAiPlayerController.chooseDraftPick],
- * Winston, Grid) and the human-facing "Suggest Pick" advisor
- * ([com.wingedsheep.ai.assist.HeuristicDraftAdvisor]).
+ * Color-aware draft-pick scoring behind the human-facing "Heuristic" "Suggest Pick" advisor
+ * ([com.wingedsheep.ai.assist.HeuristicDraftAdvisor]). The AI bot no longer drafts with it — it picks
+ * with the Draftsim scorer ([EngineAiPlayerController.chooseDraftPick]), the "Draftsim" advisor's
+ * engine — but [parseCmc] is still shared.
  *
- * Operates on [CardSummary] — the minimal card shape both callers already have (the bot receives it
- * from the draft message, the advisor builds it from the resolved [com.wingedsheep.sdk.model.CardDefinition]).
- * Keeping a single scorer means a human's suggestion always matches what the bot would pick.
- *
- * Higher score = better pick. Scores are unbounded raw values (rarity floor ~2, bombs ~22+); the
- * advisor normalizes them to a 0–100 display scale. This is deliberately the same heuristic the bot
- * has always used — it is *not* the richer effect-tree [LimitedCardRater] (which needs a full
- * CardDefinition the draft message doesn't carry).
+ * Operates on [CardSummary], which carries no effect tree, so it reads card quality off rarity and
+ * oracle-text keywords. Higher score = better pick. Scores are unbounded raw values (rarity floor
+ * ~2, bombs ~22+); the advisor normalizes them to a 0–100 display scale.
  */
 object LimitedPickScorer {
 

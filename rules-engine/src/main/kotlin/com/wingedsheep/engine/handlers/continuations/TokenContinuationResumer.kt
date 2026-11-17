@@ -65,11 +65,13 @@ class TokenContinuationResumer(
             val created = TokenCreationReplacementHelper.createAttachedPermanentCopies(
                 state,
                 continuation.attachedPermanentId,
-                context.controllerId,
+                continuation.tokenControllerId ?: context.controllerId,
                 continuation.tokenCount,
                 cardRegistry = services.cardRegistry,
                 staticAbilityHandler = StaticAbilityHandler(services.cardRegistry),
-                predicateEvaluator = services.predicateEvaluator
+                predicateEvaluator = services.predicateEvaluator,
+                rootEffect = continuation.originalEffect,
+                context = context
             )
             val result = com.wingedsheep.engine.handlers.effects.token.TokenEntryGroups.stamp(created,
                 com.wingedsheep.engine.handlers.effects.token.TokenEntryGroups.group(context))

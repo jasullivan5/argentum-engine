@@ -42,7 +42,7 @@ class ImprisonedInTheMoonScenarioTest : FunSpec({
     }
 
     test("enchanting a nonland creature turns it into a colorless land, losing creature-ness, " +
-        "colors, and abilities — but keeping its creature subtypes and legendary supertype") {
+        "colors, abilities and creature types — but keeping its legendary supertype") {
         val driver = createDriver()
         driver.initMirrorMatch(deck = Deck.of("Island" to 40), startingLife = 20)
 
@@ -69,12 +69,10 @@ class ImprisonedInTheMoonScenarioTest : FunSpec({
         projected.hasLostAllAbilities(ragavan) shouldBe true
         projected.hasKeyword(ragavan, Keyword.HASTE) shouldBe false
 
-        // Subtypes are NOT cleared by this effect (only card types and abilities are) — per the
-        // 2016-07-13 ruling that a Plains enchanted by this stays a Plains. The same applies to
-        // a creature's subtypes: Ragavan keeps "Monkey"/"Pirate" even though it's no longer a
-        // creature.
-        projected.hasSubtype(ragavan, "Monkey") shouldBe true
-        projected.hasSubtype(ragavan, "Pirate") shouldBe true
+        // CR 205.1a: the creature types go with the lost creature card type — a land can't be a
+        // Monkey Pirate. (Land types stay, per the ruling that an enchanted Plains is still a Plains.)
+        projected.hasSubtype(ragavan, "Monkey") shouldBe false
+        projected.hasSubtype(ragavan, "Pirate") shouldBe false
 
         // Still legendary — CR 205.4b: changing card types/subtypes never changes supertypes.
         projected.isLegendary(ragavan) shouldBe true

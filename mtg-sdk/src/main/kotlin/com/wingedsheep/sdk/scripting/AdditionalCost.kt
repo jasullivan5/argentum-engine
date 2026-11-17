@@ -23,7 +23,7 @@ import kotlinx.serialization.Serializable
  * zone, tap permanents) live in the [CostAtom] vocabulary and are carried here by [Atom]. The remaining
  * subtypes are genuinely casting-context-specific: the "X or pay mana" wrapper ([OrPay], plus
  * [BlightOrPay] which has no standalone cost to wrap), pipeline-storage flow
- * (Behold/ExileFromStorage/Composite), per-target life, variable exile, and the cross-zone
+ * (Behold/ExileFromStorage/Composite), per-target life, variable exile/discard, and the cross-zone
  * [ChooseEntity] pick.
  */
 @Serializable
@@ -78,29 +78,40 @@ sealed interface AdditionalCost : TextReplaceable<AdditionalCost> {
     }
 
     /**
-     * Exile a variable number of cards from a zone as an additional cost.
-     * The player chooses how many matching cards to exile (at least [minCount]).
-     * Example: "Exile X creature cards from your graveyard" for Chill Haunting
+     * Exile or discard a variable number of cards as an additional cost. The player chooses how many
+     * matching cards (at least [minCount]).
+     *  - `EXILE` — "exile X creature cards from your graveyard" (Chill Haunting), from [fromZone].
+     *  - `DISCARD` — "discard X cards" (Channeled Force), always from the hand; a real discard, so
+     *    discard triggers and madness see it.
      *
-     * The number exiled is the spell's X (CR 107.3a), stamped onto its X value — so a flashback cost
-     * of this shape gives a `{X}` spell its X without paying the `{X}` (Summons of Saruman). The card
-     * being cast is never in its own pool: it's on the stack before costs are paid (CR 601.2a).
+     * The number chosen is the spell's X (CR 107.3a), stamped onto its X value — so a flashback cost
+     * of this shape gives a `{X}` spell its X without paying the `{X}` (Summons of Saruman), and a
+     * spell with no `{X}` reads it as `DynamicAmount.XValue` (Channeled Force). The card being cast
+     * is never in its own pool: it's on the stack before costs are paid (CR 601.2a).
      *
-     * @property minCount Minimum number of cards to exile (default 1)
-     * @property filter Which cards can be exiled
-     * @property fromZone Zone to exile from
+     * @property action what is done with each chosen card.
+     * @property minCount Minimum number of cards (default 1; `0` when X may be 0)
+     * @property filter Which cards can be chosen
+     * @property fromZone Zone the cards come from — `HAND` for `DISCARD`
      */
-    @SerialName("ExileVariableCards")
+    @SerialName("VariableCards")
     @Serializable
-    data class ExileVariableCards(
+    data class VariableCards(
+        val action: CardCostAction = CardCostAction.EXILE,
         val minCount: Int = 1,
         val filter: GameObjectFilter = GameObjectFilter.Any,
         val fromZone: CostZone = CostZone.GRAVEYARD
     ) : AdditionalCost {
-        override val description: String = buildString {
-            append("Exile X ")
-            append(filter.description)
-            append("s from your ${fromZone.description}")
+        init {
+            require(action != CardCostAction.DISCARD || fromZone == CostZone.HAND) {
+                "A discard cost takes cards from the hand"
+            }
+        }
+
+        override val description: String = when (action) {
+            CardCostAction.EXILE -> "Exile X ${filter.description}s from your ${fromZone.description}"
+            CardCostAction.DISCARD ->
+                if (filter == GameObjectFilter.Any) "Discard X cards" else "Discard X ${filter.description}s"
         }
 
         override fun applyTextReplacement(replacer: TextReplacer): AdditionalCost {
@@ -119,17 +130,19 @@ sealed interface AdditionalCost : TextReplaceable<AdditionalCost> {
      *  - `TAP` — untapped permanents you control; a cost, not the {T} symbol, so summoning sickness
      *    doesn't matter (Explosive Singularity).
      *  - `EXILE` with [fromZone] `HAND` — cards in your hand other than the spell itself (the
-     *    Kamigawa: Neon Dynasty March cycle). Exiling permanents for a discount isn't printed, so
-     *    `EXILE` is hand-only for now.
+     *    Kamigawa: Neon Dynasty March cycle) — or `GRAVEYARD` — cards in your graveyard (Gorex, the
+     *    Tombshell). Exiling permanents for a discount isn't printed, so `EXILE` is hand/graveyard
+     *    only. The exiled cards are *exiled with* the spell (CR 607.2q linked abilities): they join the
+     *    linked-exile pile of the permanent it becomes, so "a card exiled with Gorex" reads them.
      *
      * Closest neighbours: [CostAtom.VariablePermanents] (a variable-count cost whose count becomes
-     * the ability's X, never a discount, and battlefield-only) and [ExileVariableCards] (the count is
+     * the ability's X, never a discount, and battlefield-only) and [VariableCards] (the count is
      * the spell's X). Here the count is a *price*, not a value the effect reads.
      *
      * @property action what is done with each chosen object.
      * @property filter which objects may be chosen.
      * @property reductionPerUnit generic mana taken off per object chosen.
-     * @property fromZone where the chosen objects are: `BATTLEFIELD`, or `HAND` for `EXILE`.
+     * @property fromZone where the chosen objects are: `BATTLEFIELD`, or `HAND` / `GRAVEYARD` for `EXILE`.
      */
     @SerialName("AnyNumberForCostReduction")
     @Serializable
@@ -141,13 +154,14 @@ sealed interface AdditionalCost : TextReplaceable<AdditionalCost> {
     ) : AdditionalCost {
         init {
             require(
-                if (action == PermanentCostAction.EXILE) fromZone == CostZone.HAND else fromZone == CostZone.BATTLEFIELD
+                if (action == PermanentCostAction.EXILE) fromZone == CostZone.HAND || fromZone == CostZone.GRAVEYARD
+                else fromZone == CostZone.BATTLEFIELD
             ) { "AnyNumberForCostReduction: $action from $fromZone is not supported" }
         }
 
         override val description: String get() =
             "You may ${choice.replaceFirstChar { it.lowercase() }}. This spell costs {$reductionPerUnit} " +
-                "less to cast for each ${if (fromZone == CostZone.HAND) "card" else singular()} " +
+                "less to cast for each ${if (fromZone == CostZone.BATTLEFIELD) singular() else "card"} " +
                 "${when (action) {
                     PermanentCostAction.SACRIFICE -> "sacrificed"
                     PermanentCostAction.TAP -> "tapped"
@@ -158,14 +172,14 @@ sealed interface AdditionalCost : TextReplaceable<AdditionalCost> {
         val choice: String get() = when (action) {
             PermanentCostAction.SACRIFICE -> "Sacrifice any number of ${plural()}"
             PermanentCostAction.TAP -> "Tap any number of untapped ${plural()} you control"
-            PermanentCostAction.EXILE -> "Exile any number of ${cardsNoun()} from your hand"
+            PermanentCostAction.EXILE -> "Exile any number of ${cardsNoun()} from your ${fromZone.description}"
         }
 
         private fun singular(): String = filter.copy(controllerPredicate = null).description
 
         private fun plural(): String = com.wingedsheep.sdk.scripting.util.pluralNounPhrase(singular())
 
-        // A colour-only filter describes itself as "white"; a hand pick is always of cards.
+        // A colour-only filter describes itself as "white"; a hand or graveyard pick is always of cards.
         private fun cardsNoun(): String = filter.description.let {
             if (it.endsWith("card")) com.wingedsheep.sdk.scripting.util.pluralNounPhrase(it) else "$it cards"
         }
@@ -275,6 +289,31 @@ sealed interface AdditionalCost : TextReplaceable<AdditionalCost> {
         val minCount: Int = 0
     ) : AdditionalCost {
         override val description: String = "Pay X life"
+    }
+
+    /**
+     * Have other players gain life as the cost — "rather than pay this spell's mana cost, you may
+     * have **an opponent** gain 3 life" (Invigorate) or "… have **each other player** gain 6 life"
+     * (Reverent Silence). Only ever printed as the non-mana half of a [SelfAlternativeCost].
+     *
+     * With [eachOtherPlayer] false the caster names one opponent as the cost is paid (CR 601.2h); the
+     * engine offers one cast per opponent who could gain life, and the pick travels in
+     * [AdditionalCostPayment.lifeGainRecipient]. A player who *can't* gain life can't be made to gain
+     * it to pay, but one whose gain would be *replaced* (Sulfuric Vortex) still can — the cost's
+     * action is then replaced like any other life gain (Invigorate ruling, 2020-08-07).
+     *
+     * @property amount Life each recipient gains
+     * @property eachOtherPlayer Every other player gains [amount], rather than one opponent of the
+     *           caster's choice
+     */
+    @SerialName("OthersGainLife")
+    @Serializable
+    data class OthersGainLife(
+        val amount: Int,
+        val eachOtherPlayer: Boolean = false
+    ) : AdditionalCost {
+        override val description: String =
+            if (eachOtherPlayer) "Have each other player gain $amount life" else "Have an opponent gain $amount life"
     }
 
     /**
@@ -515,6 +554,10 @@ sealed interface AdditionalCost : TextReplaceable<AdditionalCost> {
     }
 }
 
+/** What [AdditionalCost.VariableCards] does with each card the caster chooses. */
+@Serializable
+enum class CardCostAction { EXILE, DISCARD }
+
 /**
  * Zones that cards can be exiled from as an additional cost.
  */
@@ -605,6 +648,15 @@ data class AdditionalCostPayment(
     val blightTargets: List<EntityId> = emptyList(),
 
     /**
+     * The permanent chosen to take the counters of a
+     * [com.wingedsheep.sdk.scripting.costs.CostAtom.PutCountersOnPermanent] spell cost — "put a
+     * -1/-1 counter on a creature you control" (Lethal Sting). Its own channel rather than
+     * [blightTargets]: blight is a keyword action a later "if the blight cost was paid" reads, and
+     * this cost is not blight even when it places the same counter.
+     */
+    val counterPlacementTargets: List<EntityId> = emptyList(),
+
+    /**
      * X chosen for [AdditionalCost.BlightVariable] — the number of -1/-1
      * counters placed on [blightTargets] (singular target). Zero when no
      * variable-blight cost is in play, or when the player chose X = 0.
@@ -622,7 +674,22 @@ data class AdditionalCostPayment(
      * counters of `counterType` from `entityId`. The engine validates that the sum
      * matches the cost's totalCount and that each creature has enough of each type.
      */
-    val distributedCounterRemovals: List<DistributedCounterRemoval> = emptyList()
+    val distributedCounterRemovals: List<DistributedCounterRemoval> = emptyList(),
+
+    /**
+     * The opponent the caster named to gain life for an [AdditionalCost.OthersGainLife] "an
+     * opponent gains N life" cost. Pre-filled on each per-opponent cast the engine offers; `null`
+     * is accepted only when exactly one opponent could gain the life.
+     */
+    val lifeGainRecipient: EntityId? = null,
+
+    /**
+     * How many cards a [com.wingedsheep.sdk.scripting.costs.CostAtom.Mill] cost mills, chosen by the
+     * payer when the order of the mill replacements that apply to them changes the count (a doubler
+     * next to a "+4", CR 616.1). `null` when there was no order to choose; the engine accepts only a
+     * count some order actually produces.
+     */
+    val millCount: Int? = null
 ) {
     /** Check if any costs were paid */
     val isEmpty: Boolean
@@ -637,9 +704,11 @@ data class AdditionalCostPayment(
                 tappedPermanents.isEmpty() &&
                 bouncedPermanents.isEmpty() &&
                 blightTargets.isEmpty() &&
+                counterPlacementTargets.isEmpty() &&
                 blightAmount == 0 &&
                 payXLifeAmount == 0 &&
-                distributedCounterRemovals.isEmpty()
+                distributedCounterRemovals.isEmpty() &&
+                lifeGainRecipient == null
 
     companion object {
         val NONE = AdditionalCostPayment()

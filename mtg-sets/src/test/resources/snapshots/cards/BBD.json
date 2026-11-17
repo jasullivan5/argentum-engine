@@ -1,3 +1,76 @@
+// Archfiend of Despair
+{
+    "name": "Archfiend of Despair",
+    "manaCost": "{6}{B}{B}",
+    "typeLine": "Creature — Demon",
+    "oracleText": "Flying\nYour opponents can't gain life.\nAt the beginning of each end step, each opponent loses life equal to the life that player lost this turn. (Damage causes loss of life.)",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Archfiend of Despair:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END",
+                    "player": "Each"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": "EachOpponent"
+                    },
+                    "body": {
+                        "type": "LoseLife",
+                        "amount": {
+                            "type": "TurnTracking",
+                            "player": "You",
+                            "tracker": "LIFE_LOST_AMOUNT"
+                        },
+                        "target": "Controller"
+                    }
+                },
+                "descriptionOverride": "At the beginning of each end step, each opponent loses life equal to the life that player lost this turn."
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "PreventLifeGain",
+                "appliesTo": {
+                    "type": "LifeGainEvent",
+                    "player": "EachOpponent"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "44",
+        "rarity": "MYTHIC",
+        "artist": "Josh Hass",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/1/11d8b7ac-fb65-4496-9d9f-184fa8ad8012.jpg?1783934864",
+        "rulings": [
+            {
+                "date": "2018-06-08",
+                "text": "Archfiend of Despair's last ability counts only how much life was lost. It doesn't care whether a player also gained life."
+            },
+            {
+                "date": "2018-06-08",
+                "text": "The amount of life to lose is determined only as Archfiend of Despair's triggered ability resolves. For example, if you control two of them and an opponent lost 3 life earlier in the turn, the first ability to resolve would have that player lose 3 life, and the second would have that player lose 6 life."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Bountiful Promenade
 {
     "name": "Bountiful Promenade",
@@ -58,6 +131,232 @@
     "colorIdentityOverride": [
         "GREEN",
         "WHITE"
+    ]
+}
+
+// Chakram Retriever
+{
+    "name": "Chakram Retriever",
+    "manaCost": "{4}{U}",
+    "typeLine": "Creature — Elemental Dog",
+    "oracleText": "Partner with Chakram Slinger (When this creature enters, target player may put Chakram Slinger into their hand from their library, then shuffle.)\nWhenever you cast a spell during your turn, untap target creature.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 4
+    },
+    "keywordAbilities": [
+        {
+            "type": "Partner",
+            "kind": {
+                "type": "With",
+                "name": "Chakram Slinger"
+            }
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Chakram Retriever:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        }
+                    },
+                    "body": {
+                        "type": "Gated",
+                        "gate": "Gate.MayDecide",
+                        "then": {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "GatherCards",
+                                    "source": {
+                                        "type": "FromZone",
+                                        "zone": "Library",
+                                        "filter": "name:Chakram Slinger"
+                                    },
+                                    "storeAs": "searchable",
+                                    "search": true
+                                },
+                                {
+                                    "type": "SelectFromCollection",
+                                    "from": "searchable",
+                                    "selection": {
+                                        "type": "ChooseUpTo",
+                                        "count": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        }
+                                    },
+                                    "storeSelected": "found",
+                                    "prompt": "Search your library for a card named Chakram Slinger to put into your hand",
+                                    "selectedLabel": "Put into your hand"
+                                },
+                                {
+                                    "type": "MoveCollection",
+                                    "from": "found",
+                                    "destination": {
+                                        "type": "ToZone",
+                                        "zone": "Hand"
+                                    },
+                                    "revealed": true
+                                },
+                                "ShuffleLibrary",
+                                "EmitLibrarySearchedEvent"
+                            ]
+                        }
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0"
+                }
+            },
+            {
+                "id": "Chakram Retriever:2",
+                "trigger": "SpellCastEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "TapUntap",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t1"
+                    },
+                    "tap": false
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature"
+                    },
+                    "id": "t1"
+                },
+                "triggerRestriction": "IsYourTurn"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "15",
+        "rarity": "UNCOMMON",
+        "artist": "Dmitry Burmak",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/5/b57d518c-21bb-4451-8248-9ee838460c09.jpg?1783934874",
+        "rulings": [
+            {
+                "date": "2018-06-08",
+                "text": "\"Partner with [name]\" represents two abilities. The first is a triggered ability: \"When this permanent enters the battlefield, target player may search their library for a card named [name], reveal it, put it into their hand, then shuffle their library.\""
+            },
+            {
+                "date": "2018-06-08",
+                "text": "Note that the target player searches their library (which may be affected by effects such as that of Stranglehold) and that the card they find is revealed, even though these words aren't included in the ability's reminder text."
+            },
+            {
+                "date": "2018-06-08",
+                "text": "Chakram Retriever's last ability resolves before the spell that caused it to trigger."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Generous Patron
+{
+    "name": "Generous Patron",
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature — Elf Advisor",
+    "oracleText": "When this creature enters, support 2. (Put a +1/+1 counter on each of up to two other target creatures.)\nWhenever you put one or more counters on a creature you don't control, draw a card.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Generous Patron:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": "IterationSpace.Targets",
+                    "body": {
+                        "type": "AddCounters",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
+                        "count": 1,
+                        "target": {
+                            "type": "ContextTarget",
+                            "index": 0
+                        }
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "count": 2,
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "creature",
+                        "excludeSelf": true
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "When this creature enters, support 2 — put a +1/+1 counter on each of up to two other target creatures."
+            },
+            {
+                "id": "Generous Patron:2",
+                "trigger": {
+                    "type": "CountersPlacedEvent",
+                    "counterType": null,
+                    "filter": "creature ctrl:opponent",
+                    "placedBy": "You"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "Whenever you put one or more counters on a creature you don't control, draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "70",
+        "rarity": "RARE",
+        "artist": "Lucas Graciano",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/9/59ea095b-af0e-4178-b6f4-816abb635fc0.jpg?1783934853",
+        "rulings": [
+            {
+                "date": "2018-06-08",
+                "text": "If you put one or more counters on multiple creatures you don't control at the same time, such as by supporting two different creatures you don't control, Generous Patron's last ability triggers for each of those creatures."
+            },
+            {
+                "date": "2018-06-08",
+                "text": "Support can target a creature another player controls."
+            },
+            {
+                "date": "2018-06-08",
+                "text": "If a creature enters the battlefield with counters under another player's control, that player is the player who puts those counters on it, even if you control the spell or ability putting that creature onto the battlefield."
+            },
+            {
+                "date": "2018-06-08",
+                "text": "Generous Patron's last ability triggers even if the counters you put on another player's creatures aren't +1/+1 counters."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -214,6 +513,96 @@
     ]
 }
 
+// Jubilant Mascot
+{
+    "name": "Jubilant Mascot",
+    "manaCost": "{2}{W}",
+    "typeLine": "Creature — Homunculus",
+    "oracleText": "At the beginning of combat on your turn, you may pay {3}{W}. If you do, support 2. (Put a +1/+1 counter on each of up to two other target creatures.)",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Jubilant Mascot:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "BEGIN_COMBAT"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.MayPay",
+                        "cost": {
+                            "type": "PayManaCost",
+                            "cost": "{3}{W}"
+                        }
+                    },
+                    "then": {
+                        "type": "ForEach",
+                        "space": "IterationSpace.Targets",
+                        "body": {
+                            "type": "AddCounters",
+                            "counterType": "PLUS_ONE_PLUS_ONE",
+                            "count": 1,
+                            "target": {
+                                "type": "ContextTarget",
+                                "index": 0
+                            }
+                        }
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "count": 2,
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "creature",
+                        "excludeSelf": true
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "At the beginning of combat on your turn, you may pay {3}{W}. If you do, support 2 — put a +1/+1 counter on each of up to two other target creatures."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "28",
+        "rarity": "UNCOMMON",
+        "artist": "Filip Burburan",
+        "flavorText": "The competition is but one aspect of the spectacle.",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/c/cc7c73fd-e5f8-40e6-97ed-bfff0d6cf8d8.jpg?1783934871",
+        "rulings": [
+            {
+                "date": "2018-06-08",
+                "text": "You choose the target creatures to support when Jubilant Mascot's triggered ability is put onto the stack, but you don't choose whether to pay {3}{W} until the ability resolves."
+            },
+            {
+                "date": "2018-06-08",
+                "text": "You can't put more than one +1/+1 counter on any one target using the support action."
+            },
+            {
+                "date": "2018-06-08",
+                "text": "Support can target a creature another player controls."
+            },
+            {
+                "date": "2018-06-08",
+                "text": "If a spell with support has other abilities that target creatures, those abilities and the support ability can target the same creature."
+            },
+            {
+                "date": "2018-06-08",
+                "text": "If some, but not all, targets for a spell become illegal, the remaining targets are affected as appropriate. If all of a spell's targets become illegal, that spell doesn't resolve."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Luxury Suite
 {
     "name": "Luxury Suite",
@@ -340,6 +729,144 @@
     ]
 }
 
+// Najeela, the Blade-Blossom
+{
+    "name": "Najeela, the Blade-Blossom",
+    "manaCost": "{2}{R}",
+    "typeLine": "Legendary Creature — Human Warrior",
+    "oracleText": "Whenever a Warrior attacks, you may have its controller create a 1/1 white Warrior creature token that's tapped and attacking.\n{W}{U}{B}{R}{G}: Untap all attacking creatures. They gain trample, lifelink, and haste until end of turn. After this phase, there is an additional combat phase. Activate only during combat.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Najeela, the Blade-Blossom:1",
+                "trigger": {
+                    "type": "AttackEvent",
+                    "filter": "creature Warrior"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "CreateToken",
+                        "power": 1,
+                        "toughness": 1,
+                        "colors": [
+                            "WHITE"
+                        ],
+                        "creatureTypes": [
+                            "Warrior"
+                        ],
+                        "imageUri": "https://cards.scryfall.io/normal/front/d/3/d36e3c0e-a759-4adc-aa2f-61b13c0f786d.jpg?1783934653",
+                        "controller": {
+                            "type": "PlayerRef",
+                            "player": "ControllerOfTriggeringEntity"
+                        },
+                        "tapped": true,
+                        "attacking": true,
+                        "attackDefender": "CONTROLLER_CHOOSES"
+                    }
+                },
+                "descriptionOverride": "Whenever a Warrior attacks, you may have its controller create a 1/1 white Warrior creature token that's tapped and attacking."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Najeela, the Blade-Blossom:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{W}{U}{B}{R}{G}"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Group",
+                                "filter": {
+                                    "baseFilter": "creature attacking"
+                                }
+                            },
+                            "body": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "TapUntap",
+                                        "target": "IterationEntity",
+                                        "tap": false
+                                    },
+                                    {
+                                        "type": "GrantKeyword",
+                                        "keyword": "TRAMPLE",
+                                        "target": "IterationEntity"
+                                    },
+                                    {
+                                        "type": "GrantKeyword",
+                                        "keyword": "LIFELINK",
+                                        "target": "IterationEntity"
+                                    },
+                                    {
+                                        "type": "GrantKeyword",
+                                        "keyword": "HASTE",
+                                        "target": "IterationEntity"
+                                    }
+                                ]
+                            }
+                        },
+                        "AddCombatPhase"
+                    ]
+                },
+                "restrictions": [
+                    {
+                        "type": "DuringPhase",
+                        "phase": "COMBAT"
+                    }
+                ],
+                "descriptionOverride": "{W}{U}{B}{R}{G}: Untap all attacking creatures. They gain trample, lifelink, and haste until end of turn. After this phase, there is an additional combat phase. Activate only during combat."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "62",
+        "rarity": "MYTHIC",
+        "artist": "Matt Stewart",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/c/2cb1d1da-6077-46b5-8c63-39882b8016f2.jpg?1783934856",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "Although the tokens created by Najeela's first ability are attacking, they were never declared as attacking creatures (for the purposes of abilities that trigger whenever a creature attacks, for example)."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "Untapping an attacking creature doesn't remove it from combat."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "There is no main phase before the additional combat phase. This means that, for example, you can't activate an equip ability between combats."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "The controller of each Warrior token created by Najeela chooses which player or planeswalker it's attacking. The tokens don't have to be attacking the same player or planeswalker as the creature that caused the ability to trigger. They can even be attacking players or planeswalkers that weren't being attacked."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLUE",
+        "BLACK",
+        "RED",
+        "GREEN"
+    ]
+}
+
 // Saltwater Stalwart
 {
     "name": "Saltwater Stalwart",
@@ -386,6 +913,69 @@
         "imageUri": "https://cards.scryfall.io/normal/front/a/e/ae11adef-57b1-4f39-951b-cd4d5c0a0b80.jpg?1783934865"
     },
     "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Sea of Clouds
+{
+    "name": "Sea of Clouds",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "This land enters tapped unless you have two or more opponents.\n{T}: Add {W} or {U}.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Sea of Clouds:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "WHITE"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Sea of Clouds:2",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "BLUE"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersTapped",
+                "unlessCondition": {
+                    "type": "Compare",
+                    "left": "PlayerCount",
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "84",
+        "rarity": "RARE",
+        "artist": "Florian de Gesincourt",
+        "flavorText": "Skybridges from across Kylem converge at the grand stadium of Valor's Reach.",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/8/080aebe8-535e-4632-b733-8aba98abff22.jpg?1783934847",
+        "rulings": [
+            {
+                "date": "2018-06-08",
+                "text": "If you began the game with two or more opponents but now only have one opponent left, these lands enter the battlefield tapped."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
         "BLUE"
     ]
 }

@@ -100,10 +100,13 @@ class ExileLibraryUntilManaValueExecutor(private val zones: ZoneTransitionServic
     private fun resolvePlayers(player: Player, state: GameState, context: EffectContext): List<EntityId> {
         return when (player) {
             Player.EachDefendingPlayer -> com.wingedsheep.engine.mechanics.combat.CombatDefenders.allDefendingPlayersInApnapOrder(state)
+            Player.EachAttackedPlayer -> com.wingedsheep.engine.mechanics.combat.CombatDefenders.attackedPlayersInApnapOrder(state)
             Player.Each, Player.ActivePlayerFirst -> state.activePlayers
             Player.EachStartingWithYou -> state.turnOrderStartingWith(context.controllerId)
+            Player.EachStartingWithNextOpponent -> state.turnOrderStartingWithNextOpponent(context.controllerId)
             Player.You -> listOf(context.controllerId)
             Player.EachOpponent -> state.getOpponents(context.controllerId)
+            Player.EachOtherPlayer -> state.getOtherPlayers(context.controllerId)
             Player.TargetOpponent -> listOfNotNull(
                 TargetResolutionUtils.resolvePlayerRef(player, context, state)
             )

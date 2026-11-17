@@ -13,8 +13,11 @@ import com.wingedsheep.engine.state.components.stack.ActivatedAbilityOnStackComp
 import com.wingedsheep.engine.state.components.stack.ChosenTarget
 import com.wingedsheep.engine.state.components.stack.TargetsComponent
 import com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComponent
+import com.wingedsheep.engine.event.TriggerContext
+import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.effects.CopyTargetSpellEffect
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.effects.CopyTargetSpellOrAbilityEffect
 import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 import kotlin.reflect.KClass
@@ -54,10 +57,19 @@ class CopyTargetSpellOrAbilityExecutor(
         effect: CopyTargetSpellOrAbilityEffect,
         context: EffectContext
     ): EffectResult {
+        // "Copy that spell or ability" names the triggering object, which may have been countered
+        // by now: the copies are still made from it as it last existed on the stack (CR 608.2h).
+        // A departed spell is the spell executor's own fallback; a countered ability is read here.
+        val departedRef = context.objectReferences.triggering
+            ?.takeIf { effect.target == EffectTarget.TriggeringEntity }
         val targetId = context.resolveTarget(effect.target)
+            ?: departedRef?.takeIf { state.departedSpellEntity(it) != null }?.let {
+                return spellExecutor.execute(state, CopyTargetSpellEffect(effect.target, copies = effect.copies), context)
+            }
+            ?: departedRef?.takeIf { state.departedAbility(it) != null }?.entityId
             ?: return EffectResult.error(state, "No target spell or ability to copy")
 
-        val container = state.getEntity(targetId)
+        val container = stackObjectOrLastKnown(state, targetId)
             ?: return EffectResult.error(state, "Target spell or ability entity not found on stack")
 
         val isAbility = container.has<TriggeredAbilityOnStackComponent>() ||
@@ -125,7 +137,7 @@ class CopyTargetSpellOrAbilityExecutor(
             var copiesLeft = remainingCopies
 
             while (copiesLeft > 0) {
-                val container = currentState.getEntity(abilityEntityId)
+                val container = stackObjectOrLastKnown(currentState, abilityEntityId)
                     ?: return ExecutionResult.success(currentState, allEvents) // source gone — stop
                 val targetRequirements = container.get<TargetsComponent>()?.targetRequirements
                     ?: emptyList()
@@ -144,7 +156,8 @@ class CopyTargetSpellOrAbilityExecutor(
                 // Legal targets are found from the *copier's* perspective (its source), matching
                 // how new targets for a copy are validated — not from the copied ability's entity.
                 val legalTargetsMap = legalTargetsFor(
-                    currentState, targetFinder, targetRequirements, controllerId, copierSourceId
+                    currentState, targetFinder, targetRequirements, controllerId, copierSourceId,
+                    container.get<TriggeredAbilityOnStackComponent>()?.triggerContext
                 )
 
                 // CR 707.10c: no legal replacement for some requirement — the copy is still made,
@@ -210,7 +223,7 @@ class CopyTargetSpellOrAbilityExecutor(
             targets: List<ChosenTarget> = emptyList(),
             targetRequirements: List<TargetRequirement> = emptyList()
         ): ExecutionResult {
-            val container = state.getEntity(abilityEntityId)
+            val container = stackObjectOrLastKnown(state, abilityEntityId)
                 ?: return ExecutionResult.error(state, "Ability to copy no longer on stack")
 
             container.get<TriggeredAbilityOnStackComponent>()?.let { triggered ->
@@ -238,14 +251,26 @@ class CopyTargetSpellOrAbilityExecutor(
             targetFinder: TargetFinder,
             targetRequirements: List<TargetRequirement>,
             controllerId: EntityId,
-            sourceId: EntityId?
+            sourceId: EntityId?,
+            triggerContext: TriggerContext?
         ): Map<Int, List<EntityId>> {
+            // A copied trigger keeps its trigger (CR 707.10), so a restriction reading
+            // Player.TriggeringPlayer ("another target player", The Lord of Pain) sees the same player.
+            val triggerBinding = triggerContext?.let {
+                PredicateContext(controllerId = controllerId, sourceId = sourceId,
+                    triggeringEntityId = it.triggeringEntityId, triggeringPlayerId = it.triggeringPlayerId)
+            }
             val map = mutableMapOf<Int, List<EntityId>>()
             for ((index, requirement) in targetRequirements.withIndex()) {
-                map[index] = targetFinder.findLegalTargets(state, requirement, controllerId, sourceId)
+                map[index] = targetFinder.findLegalTargets(state, requirement, controllerId, sourceId,
+                    triggeringEntityId = triggerContext?.triggeringEntityId, pipelineContext = triggerBinding)
             }
             return map
         }
+
+        /** The ability on the stack, or — once it was countered — as it last existed there. */
+        private fun stackObjectOrLastKnown(state: GameState, entityId: EntityId): ComponentContainer? =
+            state.getEntity(entityId) ?: state.departedAbilities[entityId]?.ability
 
         private fun sourceNameOf(container: ComponentContainer): String =
             container.get<TriggeredAbilityOnStackComponent>()?.sourceName

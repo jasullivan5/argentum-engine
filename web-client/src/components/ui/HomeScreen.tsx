@@ -16,13 +16,11 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useGameStore } from '@/store/gameStore.ts'
-import type { TournamentFormat } from '@/types'
 import { randomBackground } from '@/utils/background.ts'
 import { PreferencesButton } from '@/components/preferences/PreferencesButton'
 import { ChatButton } from '@/components/messages/ChatButton'
 import { ReplayViewer, type GameSummary } from '../admin/ReplayViewer'
 import type { ReplayData } from '@/replay/reconstructSnapshots.ts'
-import { labelForFormat } from '@/utils/deckLegality'
 import { useAuthStore } from '@/store/authStore'
 import { useConnectName } from '@/store/useConnectName'
 import { AuthWidget } from '@/components/auth/AuthWidget'
@@ -36,6 +34,7 @@ import { FullscreenButton } from './FullscreenButton'
 import { PlayHub } from './PlayHub'
 import { SetupRail } from './SetupRail'
 import { FindOpponentPanel } from '../matchmaking/FindOpponentPanel'
+import { PublicLobbyList, type PublicLobbyEntry, type PublicQuickGameSummary, type PublicTournamentSummary } from './PublicLobbyList'
 import { useApplyRecipe } from '../lobby/useApplyRecipe'
 import { loadLobbyId, clearLobbyId } from '@/store/slices/shared'
 import styles from './GameUI.module.css'
@@ -55,31 +54,6 @@ const MAKER_PORTFOLIO_URL = 'https://wingedsheep.com'
  * nginx serves the directory index directly instead of leaning on the SPA fallback.
  */
 const CONTRIBUTING_GUIDE_URL = '/contribute/'
-
-interface PublicTournamentSummary {
-  lobbyId: string
-  state: string
-  playerCount: number
-  maxPlayers: number
-  format: TournamentFormat
-  setNames: string[]
-  boosterCount: number
-  gamesPerMatch: number
-  deckFormat?: string | null
-}
-
-interface PublicQuickGameSummary {
-  lobbyId: string
-  playerCount: number
-  maxPlayers: number
-  setCode: string | null
-  hostName: string | null
-  format?: string | null
-}
-
-type PublicLobbyEntry =
-  | ({ kind: 'tournament' } & PublicTournamentSummary)
-  | ({ kind: 'quickGame' } & PublicQuickGameSummary)
 
 interface LiveQuickGameSummary {
   gameSessionId: string
@@ -361,7 +335,23 @@ export function HomeScreen({
             </button>
             <button type="button" className={home.navItem} onClick={() => setShowReplays(true)}>Replays</button>
             {/* "Which cards of a set can I actually play with?" is a deckbuilding question. */}
-            <button type="button" className={home.navItem} onClick={() => navigate('/set-completion')}>Sets</button>
+            <button
+              type="button"
+              className={home.navItem}
+              onClick={() => navigate('/set-completion')}
+              title="How much of every Magic set Argentum can play today"
+            >
+              Sets
+            </button>
+            {/* "Which set should I draft or play sealed?" — the guide to the fully playable sets. */}
+            <button
+              type="button"
+              className={home.navItem}
+              onClick={() => navigate('/sets')}
+              title="Compare the sets you can draft or play sealed and find one that suits you"
+            >
+              Set guide
+            </button>
             <button type="button" className={home.navItem} onClick={() => navigate('/learn')}>Learn</button>
             <button
               type="button"
@@ -489,6 +479,7 @@ export function HomeScreen({
           <button type="button" className={home.navItem} onClick={() => navigate('/library')}>Decks &amp; Cubes</button>
           <button type="button" className={home.navItem} onClick={() => navigate('/cards')}>Cards</button>
           <button type="button" className={home.navItem} onClick={() => navigate('/set-completion')}>Sets</button>
+          <button type="button" className={home.navItem} onClick={() => navigate('/sets')}>Set guide</button>
           <button type="button" className={home.navItem} onClick={() => navigate('/learn')}>Learn</button>
           <button
             type="button"
@@ -695,56 +686,6 @@ function GuideIcon() {
   )
 }
 
-function PublicLobbyList({
-  lobbies,
-  error,
-  onlinePlayers,
-  onJoin,
-}: {
-  lobbies: PublicLobbyEntry[]
-  error: string | null
-  onlinePlayers: number | null
-  onJoin: (entry: PublicLobbyEntry) => void
-}) {
-  if (lobbies.length === 0 && !error && (onlinePlayers ?? 0) === 0) return null
-
-  return (
-    <div className={styles.publicTournamentPanel}>
-      <div className={styles.publicTournamentHeader}>
-        <span className={styles.publicTournamentTitle}>Public Lobbies</span>
-        <div className={styles.publicTournamentHeaderRight}>
-          {onlinePlayers !== null && onlinePlayers > 0 && (
-            <span className={styles.onlinePlayersBadge}>
-              <span className={styles.onlinePlayersDot} />
-              {onlinePlayers} online
-            </span>
-          )}
-          {lobbies.length > 0 && (
-            <span className={styles.publicTournamentCount}>{lobbies.length}</span>
-          )}
-        </div>
-      </div>
-      {lobbies.length === 0 && !error ? (
-        <p className={styles.publicTournamentEmpty}>No public lobbies right now.</p>
-      ) : error && lobbies.length === 0 ? (
-        <p className={styles.publicTournamentEmpty}>{error}</p>
-      ) : (
-        lobbies.map((entry) => (
-          <div key={`${entry.kind}-${entry.lobbyId}`} className={styles.publicTournamentRow}>
-            <div className={styles.publicTournamentInfo}>
-              <span className={styles.publicTournamentName}>{publicLobbyName(entry)}</span>
-              <span className={styles.publicTournamentMeta}>{publicLobbyMeta(entry)}</span>
-            </div>
-            <button onClick={() => onJoin(entry)} className={styles.publicTournamentJoinButton}>
-              Join
-            </button>
-          </div>
-        ))
-      )}
-    </div>
-  )
-}
-
 function LiveGameList({
   games,
   onSpectate,
@@ -795,62 +736,12 @@ function liveGameMeta(game: LiveGameEntry): string {
   return `${nbsp('Quick Game')} · ${lifeSummary}`
 }
 
-function publicLobbyName(entry: PublicLobbyEntry): string {
-  if (entry.kind === 'tournament') {
-    if (entry.format === 'PREMADE_DECKS') return 'Premade Decks Tournament'
-    return entry.setNames.join(' + ') || 'Tournament'
-  }
-  return entry.hostName ? `${entry.hostName}'s Quick Game` : 'Quick Game'
-}
-
 /**
  * Non-breaking spaces inside each fact, so the rail's narrow column only ever wraps at a `·` —
  * "1/2" and "players" on separate lines read as two facts rather than one.
  */
 function nbsp(text: string): string {
   return text.replace(/ /g, ' ')
-}
-
-function publicLobbyMeta(entry: PublicLobbyEntry): string {
-  const seats = nbsp(`${entry.playerCount}/${entry.maxPlayers} players`)
-  if (entry.kind === 'tournament') {
-    const series = entry.gamesPerMatch > 1 ? nbsp(`${entry.gamesPerMatch} games per matchup`) : null
-    if (entry.format === 'PREMADE_DECKS') {
-      const parts = [nbsp('Premade Decks')]
-      if (entry.deckFormat) parts.push(nbsp(labelForFormat(entry.deckFormat)))
-      parts.push(seats)
-      if (series) parts.push(series)
-      return parts.join(' · ')
-    }
-    const packs = nbsp(`${entry.boosterCount} ${entry.format === 'DRAFT' ? 'packs' : 'boosters'}`)
-    const parts = [nbsp(formatTournamentFormat(entry.format)), packs, seats]
-    if (series) parts.push(series)
-    return parts.join(' · ')
-  }
-  const parts = [nbsp('Quick Game')]
-  if (entry.setCode) parts.push(entry.setCode)
-  if (entry.format) parts.push(nbsp(labelForFormat(entry.format)))
-  parts.push(seats)
-  return parts.join(' · ')
-}
-
-function formatTournamentFormat(format: PublicTournamentSummary['format']): string {
-  switch (format) {
-    case 'WINSTON_DRAFT':
-      return 'Winston Draft'
-    case 'GRID_DRAFT':
-      return 'Grid Draft'
-    case 'DRAFT':
-      return 'Draft'
-    case 'COMMANDER_DRAFT':
-      return 'Commander Draft'
-    case 'SEALED':
-      return 'Sealed'
-    case 'COMMANDER_SEALED':
-      return 'Commander Sealed'
-    case 'PREMADE_DECKS':
-      return 'Premade Decks'
-  }
 }
 
 /**

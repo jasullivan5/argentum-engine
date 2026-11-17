@@ -61,7 +61,7 @@ object AnteSettlement {
             val owner = container.get<OwnerComponent>()?.playerId ?: card.ownerId ?: return@mapNotNull null
             val original = container.get<OriginalOwnerComponent>()?.playerId ?: owner
             val wonFromAnte = winnerId != null && id in inAnte
-            val finalOwner = if (wonFromAnte) winnerId!! else owner
+            val finalOwner = if (wonFromAnte) winnerId else owner
             if (finalOwner == original) return@mapNotNull null
             AnteTransfer(
                 cardId = id,

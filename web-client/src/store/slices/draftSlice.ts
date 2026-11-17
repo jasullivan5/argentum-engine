@@ -152,9 +152,10 @@ export const createDraftSlice: SliceCreator<DraftSlice> = (set, get) => ({
     set((state) => {
       if (!state.deckBuildingState) return state
 
-      // Enforce 4-copy limit (except basic lands, but those are managed via landCounts)
+      // Enforce the lobby's copy cap, if any (basic lands are managed via landCounts)
+      const cap = state.deckBuildingState.maxCopiesPerCard
       const currentCount = state.deckBuildingState.deck.filter((c) => c === cardName).length
-      if (currentCount >= 4) return state
+      if (cap != null && currentCount >= cap) return state
 
       const newDeck = [...state.deckBuildingState.deck, cardName]
       saveDeckState(newDeck, state.deckBuildingState.landCounts)
@@ -230,7 +231,7 @@ export const createDraftSlice: SliceCreator<DraftSlice> = (set, get) => ({
     set((state) => {
       if (!state.deckBuildingState) return state
 
-      // Cap each non-basic card at the available pool count and at 4 copies.
+      // Cap each non-basic card at the available pool count and at the lobby's copy cap, if any.
       const poolCounts: Record<string, number> = {}
       for (const card of state.deckBuildingState.cardPool) {
         poolCounts[card.name] = (poolCounts[card.name] ?? 0) + 1
@@ -243,7 +244,7 @@ export const createDraftSlice: SliceCreator<DraftSlice> = (set, get) => ({
 
       const newDeck: string[] = []
       for (const [name, requestedCount] of Object.entries(requested)) {
-        const cap = Math.min(poolCounts[name] ?? 0, 4)
+        const cap = Math.min(poolCounts[name] ?? 0, state.deckBuildingState.maxCopiesPerCard ?? Infinity)
         const final = Math.min(requestedCount, cap)
         for (let i = 0; i < final; i++) newDeck.push(name)
       }

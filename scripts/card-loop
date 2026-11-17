@@ -140,7 +140,15 @@ TRIAGE="Triage format ($GAPS), three sections:
 
 The status file is the list's missing cards: \`scripts/card-list-status '$LIST' --out $STATUS\`. It reads what's
 implemented from the checkout it runs in, so run it at the start of every build or triage step rather than
-trusting an old copy."
+trusting an old copy.
+
+A list whose first line is \`# set: <CODE>\` is a whole set: a card stays missing until <CODE> itself has it, even
+when it is implemented elsewhere. Run \`just assay-ready <CODE> --names\` to see which: a card whose canonical is
+already in the corpus is READY and needs only its \`Printing\` row in <CODE>
+(\`scripts/generate-reprints.py --set <CODE> --cards-from <list>\`); a basic land is READY and needs the set's
+\`basicLand(...)\` val plus its \`basicLands\` override (mirror a finished set), never a \`Printing\` row; and
+\`just check-card-printing\` on each says when a canonical sits in a later set than its earliest real printing and
+must be relocated."
 
 BATCH="Take up to 15 '## Ready' cards in list order. Hand them to ONE subagent (two, each with half, if more than
    eight cards) that reads the add-card skill and SDK reference once and implements the cards one after another,

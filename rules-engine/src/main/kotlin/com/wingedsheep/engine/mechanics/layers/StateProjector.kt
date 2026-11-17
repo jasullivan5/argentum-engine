@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.mechanics.layers
 
+import com.wingedsheep.engine.mechanics.targeting.TypeQualityProtection
 import com.wingedsheep.engine.handlers.ConditionEvaluator
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.EffectContext
@@ -13,6 +14,7 @@ import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.battlefield.chosenCreatureType
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.identity.FaceDownComponent
+import com.wingedsheep.engine.state.components.identity.copiableCardComponent
 import com.wingedsheep.engine.state.components.identity.FaceDownModeComponent
 import com.wingedsheep.engine.state.components.identity.RingBearerComponent
 import com.wingedsheep.engine.state.components.identity.ToxicComponent
@@ -20,6 +22,7 @@ import com.wingedsheep.engine.state.components.identity.TextChanges
 import com.wingedsheep.engine.state.components.identity.TextReplacementComponent
 import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.scripting.ZoneScopedStaticAbility
 import com.wingedsheep.sdk.core.AbilityFlag
 import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.scripting.Duration
@@ -109,18 +112,23 @@ class StateProjector {
                 // Disguise (CR 702.168a) and cloak (CR 701.58a) list one more: ward {2}. It is part
                 // of this characteristic-defining effect, not an ability of the card underneath,
                 // so it lives on the mode and ends the moment the permanent is turned face up.
+                // The effect that put it onto the battlefield face down may specify others instead
+                // (CR 708.2a) — Tezzeret, Cruel Machinist's "They're 5/5 artifact creatures".
+                // copiableCardComponent() is the one mapping of those face-down values; the copy
+                // effects, the client view and this base all read it.
+                val faceDownCard = container.copiableCardComponent()
                 val faceDownWard = container.get<FaceDownModeComponent>()?.mode?.faceDownWard
                 projectedValues[entityId] = MutableProjectedValues(
-                    power = 2,
-                    toughness = 2,
+                    power = faceDownCard?.baseStats?.basePower ?: 2,
+                    toughness = faceDownCard?.baseStats?.baseToughness ?: 2,
                     keywords = if (faceDownWard != null) {
                         mutableSetOf(Keyword.WARD.name)
                     } else {
                         mutableSetOf()
                     },
-                    colors = mutableSetOf(),
-                    types = mutableSetOf("CREATURE"),
-                    subtypes = mutableSetOf(),
+                    colors = faceDownCard?.colors?.mapTo(linkedSetOf()) { it.name } ?: mutableSetOf(),
+                    types = faceDownCard?.let { extractTypes(it) } ?: mutableSetOf("CREATURE"),
+                    subtypes = faceDownCard?.typeLine?.subtypes?.mapTo(linkedSetOf()) { it.value } ?: mutableSetOf(),
                     controllerId = container.get<ControllerComponent>()?.playerId,
                     isFaceDown = true
                 )
@@ -373,8 +381,10 @@ class StateProjector {
                 projectedValues[effect.sourceId]?.lostAllAbilities == true) continue
             // "Can't block" is a rules effect, not a characteristic: it applies once Layer 6 has
             // settled who still has which ability (CR 613.11), so a lose-all-abilities effect
-            // strips a static's restriction whatever the two timestamps are.
-            if (effect.modification is Modification.SetCantBlock) {
+            // strips a static's restriction whatever the two timestamps are. Zilortha's "lethal
+            // damage … is determined by their power" is the same kind of rules effect.
+            if (effect.modification is Modification.SetCantBlock ||
+                effect.modification is Modification.SetLethalDamageByPower) {
                 deferredCantBlock += effect to startedBeforeAbility
                 continue
             }
@@ -387,22 +397,6 @@ class StateProjector {
             effectApplicator.applyEffect(effect, state, projectedValues,
                 restrictionSurvivesSourceAbilityRemoval = startedBeforeAbility)
         }
-        // A static ability's effect exists only while its source has the ability (CR 604.2): a
-        // Craven Giant that lost all abilities can block, and so can a creature whose "can't
-        // block" came from an enchantment that lost its abilities. A restriction created by a
-        // resolved spell or ability is independent of anyone's abilities (CR 611.2a), as is one
-        // belonging to an effect that started applying before Layer 6 (CR 613.6).
-        for ((effect, startedBeforeAbility) in deferredCantBlock) {
-            if (effect.fromStaticAbility && !startedBeforeAbility &&
-                effect.sourceId !in staticRemoveAllAbilitiesSources && !gainedAfterRemoval(effect) &&
-                projectedValues[effect.sourceId]?.lostAllAbilities == true) continue
-            effectApplicator.applyEffect(withKeywordSetResolved(effect), state, projectedValues)
-        }
-        for ((effect, startedBeforeAbility) in deferredCantAttack) {
-            effectApplicator.applyEffect(withKeywordSetResolved(effect), state, projectedValues,
-                restrictionSurvivesSourceAbilityRemoval = startedBeforeAbility)
-        }
-
         // Rule 122.1b: re-apply keyword counters after Layer 6.
         // Counters that grant a keyword are themselves abilities of the object. When a "loses
         // all abilities" effect (Layer 6) was applied above, those counter-granted keywords
@@ -500,6 +494,37 @@ class StateProjector {
         // Apply counters (layer 7d)
         effectApplicator.applyCounters(state, projectedValues)
 
+        // The deferred "can't block" / "can't attack" restrictions affect game rules, so they apply
+        // after all other continuous effects (CR 613.11) — once every characteristic is settled, P/T
+        // included — and a group that reads keywords or P/T is re-resolved here: Temur Charm's
+        // "creatures with power 3 or less can't block this turn" and Rumbling Ruin's frozen count
+        // keep tracking power as counters and pumps change it. A locked CR 613.6 group keeps its
+        // frozen set.
+        //
+        // A static ability's effect exists only while its source has the ability (CR 604.2): a
+        // Craven Giant that lost all abilities can block, and so can a creature whose "can't
+        // block" came from an enchantment that lost its abilities (likewise a Zilortha that lost
+        // its abilities no longer judges lethal damage by power). A restriction created by a
+        // resolved spell or ability is independent of anyone's abilities (CR 611.2a), as is one
+        // belonging to an effect that started applying before Layer 6 (CR 613.6).
+        fun withFinalSetResolved(effect: ContinuousEffect): ContinuousEffect {
+            val filter = effect.affectsFilter ?: return effect
+            if (!filterResolver.isKeywordDependentFilter(filter) &&
+                !filterResolver.isPowerToughnessDependentFilter(filter)) return effect
+            return effect.copy(affectedEntities = lockAffected(effect,
+                filterResolver.resolveAffectedEntities(state, effect.sourceId, filter, projectedValues, effect.controllerId)))
+        }
+        for ((effect, startedBeforeAbility) in deferredCantBlock) {
+            if (effect.fromStaticAbility && !startedBeforeAbility &&
+                effect.sourceId !in staticRemoveAllAbilitiesSources && !gainedAfterRemoval(effect) &&
+                projectedValues[effect.sourceId]?.lostAllAbilities == true) continue
+            effectApplicator.applyEffect(withFinalSetResolved(effect), state, projectedValues)
+        }
+        for ((effect, startedBeforeAbility) in deferredCantAttack) {
+            effectApplicator.applyEffect(withFinalSetResolved(effect), state, projectedValues,
+                restrictionSurvivesSourceAbilityRemoval = startedBeforeAbility)
+        }
+
         // Post-layer pass: grant CANT_BE_BLOCKED to creatures qualifying via
         // CantBeBlockedWhilePropertyAtMost (Tetsuko Umezawa, Fugitive; Stature, Size Shifter).
         // Must happen after all P/T layers so projected power/toughness is final.
@@ -576,6 +601,7 @@ class StateProjector {
                 baseToughness = v.baseToughness,
                 name = v.name,
                 keywords = v.keywords,
+                grantedKeywordInstances = v.grantedKeywordInstances,
                 staticAbilities = v.staticAbilities.toList(),
                 staticAbilitySourceIds = v.staticAbilitySourceIds.toList(),
                 enchantmentRestrictions = v.enchantmentRestrictions.toList(),
@@ -587,17 +613,21 @@ class StateProjector {
                 isSuspected = v.isSuspected,
                 cantAttack = v.cantAttack,
                 attacksWithoutTapping = v.attacksWithoutTapping,
+                lethalDamageByPower = v.lethalDamageByPower,
                 canAttackAsThoughHasty = v.canAttackAsThoughHasty,
                 cantBlock = v.cantBlock,
                 cantBeTurnedFaceUp = v.cantBeTurnedFaceUp,
                 mustAttack = v.mustAttack,
                 mustAttackPlayer = v.mustAttackPlayer,
+                mustAttackOtherThan = v.mustAttackOtherThan.toList(),
                 mustBlock = v.mustBlock,
                 cantBeBlockedExceptByFilters = v.cantBeBlockedExceptByFilters.toList(),
                 canOnlyBlockCreaturesWithFilters = v.canOnlyBlockCreaturesWithFilters.toList(),
                 additionalBlockCount = v.additionalBlockCount,
                 manaAbilityLifeTax = v.manaAbilityLifeTax,
                 lostAllAbilities = v.lostAllAbilities,
+                lostAllAbilitiesTimestamp = v.lostAllAbilitiesTimestamp,
+                keepsManaAbilities = v.keepsManaAbilities,
                 hasExileOnDeathAbility = v.hasExileOnDeathAbility,
                 basicLandTypesSetByEffect = v.basicLandTypesSetByEffect
             )
@@ -636,8 +666,46 @@ class StateProjector {
             state,
             finalValues,
             crossZoneGrants,
-            collectCrossZoneCardTypes(state, sortedEffects, projectedValues, finalValues)
+            collectCrossZoneCardTypes(state, sortedEffects, projectedValues, finalValues),
+            collectOffBattlefieldColors(state, sortedEffects, projectedValues, finalValues)
         )
+    }
+
+    /**
+     * The off-battlefield half of color-setting statics (Mycosynth Lattice: "All cards that aren't
+     * on the battlefield, spells, and permanents are colorless"). Layer 5 above only touched
+     * permanents; here each [Modification.ChangeColor] carrying an [Modification.OffBattlefieldReach]
+     * becomes a rule [ProjectedState.offBattlefieldColors] applies per object on demand, in layer
+     * order, so a later one overrides an earlier one as CR 613.7's timestamps would. Rules are read
+     * lazily rather than resolved into a map because a spell is briefly off the stack list while it
+     * resolves and must still be reached. Allocates nothing without such an effect.
+     */
+    private fun collectOffBattlefieldColors(
+        state: GameState,
+        sortedEffects: List<ContinuousEffect>,
+        projectedValues: Map<EntityId, MutableProjectedValues>,
+        finalValues: Map<EntityId, ProjectedValues>
+    ): List<OffBattlefieldColorRule> {
+        val grants = sortedEffects.filter { (it.modification as? Modification.ChangeColor)?.offBattlefield != null }
+        if (grants.isEmpty()) return emptyList()
+        val eligibilityProjection by lazy { ProjectedState(state, finalValues) }
+        return grants.mapNotNull { effect ->
+            val mod = effect.modification as Modification.ChangeColor
+            val reach = mod.offBattlefield ?: return@mapNotNull null
+            val controllerId = projectedValues[effect.sourceId]?.controllerId ?: return@mapNotNull null
+            val players = when (reach.players) {
+                com.wingedsheep.sdk.scripting.references.Player.Each -> state.turnOrder.toSet()
+                com.wingedsheep.sdk.scripting.references.Player.EachOpponent -> state.turnOrder.filterTo(mutableSetOf()) { it != controllerId }
+                com.wingedsheep.sdk.scripting.references.Player.You -> setOf(controllerId)
+                // SetColors' init admits only the three above; anything else reaches nobody.
+                else -> emptySet()
+            }
+            val context = com.wingedsheep.engine.handlers.PredicateContext(controllerId = controllerId, sourceId = effect.sourceId)
+            val unrestricted = reach.eligibility.cardPredicates.isEmpty()
+            OffBattlefieldColorRule(players, mod.colors, effect.sourceId, reach.eligibility) { id ->
+                unrestricted || predicateEvaluator.matches(state, eligibilityProjection, id, reach.eligibility, context)
+            }
+        }
     }
 
     /**
@@ -761,13 +829,13 @@ class StateProjector {
                 values.keywords.add("${textReplacement.replaceCreatureType(landType).uppercase()}WALK")
             }
 
-            val protectionSubtypePrefix = "PROTECTION_FROM_SUBTYPE_"
+            val protectionSubtypePrefix = TypeQualityProtection.SUBTYPE_PREFIX
             val protectionKeywords = values.keywords.filter { it.startsWith(protectionSubtypePrefix) }
             values.keywords.removeAll(protectionKeywords.toSet())
             for (keyword in protectionKeywords) {
-                val originalSubtype = keyword.removePrefix(protectionSubtypePrefix)
-                val transformed = textReplacement.applyToCreatureType(originalSubtype).uppercase()
-                values.keywords.add("$protectionSubtypePrefix$transformed")
+                val (originalSubtype, cardType) = TypeQualityProtection.split(keyword.removePrefix(protectionSubtypePrefix))
+                val transformed = textReplacement.applyToCreatureType(originalSubtype)
+                values.keywords.add(TypeQualityProtection.subtypeKeyword(transformed, cardType))
             }
 
             // Rewrite protection-from-color keywords for color-word changes (Crystal Spray:
@@ -844,46 +912,54 @@ class StateProjector {
             val continuousEffectComponent = container.get<ContinuousEffectSourceComponent>()
             if (continuousEffectComponent != null) {
                 val textReplacement = TextChanges.merge(globalText, container.get<TextReplacementComponent>())
-                effects.addAll(continuousEffectComponent.effects.map { effect ->
+                val sourceTimestamp = container.get<com.wingedsheep.engine.state.components.battlefield.TimestampComponent>()?.timestamp
+                    ?: state.timestamp
+                for (effect in continuousEffectComponent.effects) {
                     val effectiveFilter = if (textReplacement != null && effect.affectsFilter != null) {
                         effect.affectsFilter.applyTextReplacement(textReplacement)
                     } else {
                         effect.affectsFilter
                     }
-                    ContinuousEffect(
+                    val collected = ContinuousEffect(
                         sourceId = entityId,
-                        timestamp = container.get<com.wingedsheep.engine.state.components.battlefield.TimestampComponent>()?.timestamp
-                            ?: state.timestamp,
+                        timestamp = sourceTimestamp,
                         modification = effect.modification,
                         affectedEntities = filterResolver.resolveAffectedEntities(state, entityId, effectiveFilter, projectedValues),
                         sourceCondition = effect.sourceCondition,
                         affectsFilter = effectiveFilter,
                         groupId = effect.groupId
                     )
-                })
+                    effects.add(collected)
+                    val mod = effect.modification
+                    if (mod is Modification.GrantStaticAbility && mod.holderEffects.isNotEmpty()) {
+                        addGrantedHolderEffects(state, projectedValues, collected, mod.holderEffects, effects)
+                    }
+                }
             }
         }
 
-        // 1a. Static abilities that function from a graveyard (CR 113.6b — Anger's "As long as
-        // Anger is in your graveyard and you control a Mountain, creatures you control have
-        // haste"). Lowered once per card at entity creation ([ZoneStaticEffectsComponent]), so the
-        // per-projection cost is one component read per graveyard card.
+        // 1a. Static abilities that function from a graveyard or the command zone (CR 113.6b —
+        // Anger's "As long as Anger is in your graveyard and you control a Mountain, creatures you
+        // control have haste"). Lowered once per card at entity creation
+        // ([ZoneStaticEffectsComponent]), so the per-projection cost is one component read per card
+        // in those zones.
         //
         // "You" is the card's owner (CR 108.4a / 109.5: an object with no controller is read
         // through its owner) — passed as `youId` for the affected set and as the effect's
         // [ContinuousEffect.controllerId] fallback, which the later re-resolves and the
-        // [EffectApplicator]'s condition check both read, since a graveyard card has no projected
-        // controller of its own.
+        // [EffectApplicator]'s condition check both read, since a card outside the battlefield has
+        // no projected controller of its own.
         //
         // Timestamp: CR 613.7a gives the effect its object's timestamp, and CR 613.7d stamps an
-        // object as it enters a zone. The engine doesn't record graveyard entry, so the current
-        // state timestamp stands in — every printed graveyard static is a keyword or stat grant,
-        // whose order among same-layer effects doesn't change the result.
-        for (playerId in state.turnOrder) {
-            for (entityId in state.getZone(playerId, Zone.GRAVEYARD)) {
+        // object as it enters a zone. The engine doesn't record graveyard or command-zone entry, so
+        // the current state timestamp stands in — every printed graveyard or command-zone layer
+        // static is a keyword or stat grant, whose order among same-layer effects doesn't change
+        // the result.
+        for (zone in ZoneScopedStaticAbility.SUPPORTED_ZONES) for (playerId in state.turnOrder) {
+            for (entityId in state.getZone(playerId, zone)) {
                 val container = state.getEntity(entityId) ?: continue
                 val zoneEffects = container.get<ZoneStaticEffectsComponent>()
-                    ?.effectsByZone?.get(Zone.GRAVEYARD) ?: continue
+                    ?.effectsByZone?.get(zone) ?: continue
                 val ownerId = container.get<CardComponent>()?.ownerId ?: playerId
                 for (effect in zoneEffects) {
                     effects.add(
@@ -945,19 +1021,11 @@ class StateProjector {
 
         // 2. Collect floating effects (from resolved spells like Giant Growth)
         for (floating in state.floatingEffects) {
-            if (floating.duration is Duration.WhileSourceTapped) {
-                val sourceId = floating.sourceId
-                if (sourceId == null || !state.getBattlefield().contains(sourceId) ||
-                    state.getEntity(sourceId)?.has<TappedComponent>() != true) {
-                    continue
-                }
-            }
-            if (floating.duration is Duration.WhileSourceTappedAndAffectedPowerAtMostSource) {
-                val sourceId = floating.sourceId
-                if (sourceId == null || !state.getBattlefield().contains(sourceId) ||
-                    state.getEntity(sourceId)?.has<TappedComponent>() != true) {
-                    continue
-                }
+            if ((floating.duration is Duration.WhileSourceTapped ||
+                    floating.duration is Duration.WhileSourceTappedAndAffectedPowerAtMostSource) &&
+                !GrantDurationGate.sourceTapped(state, floating)
+            ) {
+                continue
             }
             if (floating.duration is Duration.WhileSourceOnBattlefield) {
                 val sourceId = floating.sourceId
@@ -976,13 +1044,10 @@ class StateProjector {
             }
             // Seasinger — both halves at once. The battlefield and tapped halves are checkable
             // here; the source-controller half joins WhileYouControlSource's post-Layer-2 sweep.
-            if (floating.duration is Duration.WhileYouControlSourceAndSourceTapped) {
-                val sourceId = floating.sourceId
-                if (sourceId == null || !state.getBattlefield().contains(sourceId) ||
-                    state.getEntity(sourceId)?.has<TappedComponent>() != true
-                ) {
-                    continue
-                }
+            if (floating.duration is Duration.WhileYouControlSourceAndSourceTapped &&
+                !GrantDurationGate.sourceTapped(state, floating)
+            ) {
+                continue
             }
             // "for as long as [the source Aura/Equipment] remains attached to it" — gate the whole
             // effect on the source still being on the battlefield (CR 611.2b). The per-affected
@@ -1082,7 +1147,7 @@ class StateProjector {
                         // comes back if that reverses. Distinct from the latching Duration.While…
                         // gates above.
                         sourceCondition = floating.effect.sourceCondition,
-                        // "for as long as you control it" (e.g. suspend haste — CR 702.62g):
+                        // "for as long as you control it" (e.g. suspend haste — CR 702.62a):
                         // the gate is applied after Layer 2, against the projected controller,
                         // so the effect drops the instant another player gains control.
                         controllerGate = if (floating.duration is Duration.WhileControlledByController) {
@@ -1153,6 +1218,46 @@ class StateProjector {
         }
 
         return effects
+    }
+
+    /**
+     * A static grant of an ability that generates a continuous effect of its own — a Rune's
+     * Equipment has "Equipped creature gets +1/+1 and has trample". Each holder generates that
+     * effect as if the ability were printed on it: sourced from the holder (so the holder losing
+     * its abilities stops it), filters resolved relative to the holder, and timestamped at the later
+     * of the holder's and the granter's (CR 613.7a). [ContinuousEffect.grantedBy] stops it when the
+     * granter loses its abilities or the grant's own condition fails.
+     */
+    private fun addGrantedHolderEffects(
+        state: GameState,
+        projectedValues: Map<EntityId, MutableProjectedValues>,
+        grant: ContinuousEffect,
+        holderEffects: List<ContinuousEffectData>,
+        out: MutableList<ContinuousEffect>
+    ) {
+        for (holderId in grant.affectedEntities) {
+            if (!state.getBattlefield().contains(holderId)) continue
+            val holderTimestamp = state.getEntity(holderId)
+                ?.get<com.wingedsheep.engine.state.components.battlefield.TimestampComponent>()?.timestamp
+                ?: grant.timestamp
+            for (data in holderEffects) {
+                out.add(
+                    ContinuousEffect(
+                        sourceId = holderId,
+                        timestamp = maxOf(holderTimestamp, grant.timestamp),
+                        modification = data.modification,
+                        affectedEntities = filterResolver.resolveAffectedEntities(state, holderId, data.affectsFilter, projectedValues),
+                        sourceCondition = data.sourceCondition,
+                        affectsFilter = data.affectsFilter,
+                        // Namespaced by granter so it can't share a CR 613.6 lock with the holder's own groups.
+                        groupId = data.groupId?.let { "granted-${grant.sourceId.value}-$it" },
+                        abilityGainedAt = grant.timestamp,
+                        grantedBy = grant.sourceId,
+                        grantCondition = grant.sourceCondition
+                    )
+                )
+            }
+        }
     }
 
     /**

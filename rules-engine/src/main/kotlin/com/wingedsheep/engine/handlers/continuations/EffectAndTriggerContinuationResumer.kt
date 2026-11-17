@@ -75,6 +75,7 @@ class EffectAndTriggerContinuationResumer(
                     sourceId = continuation.sourceId,
                     triggeringEntityId = continuation.triggerContext?.triggeringEntityId,
                     triggeringPlayerId = continuation.triggerContext?.triggeringPlayerId,
+                    triggerContext = continuation.triggerContext,
                     xValue = continuation.triggerContext?.xValue,
                     storedCollections = pipeline?.storedCollections ?: emptyMap(),
                     chosenValues = pipeline?.chosenValues ?: emptyMap(),
@@ -137,12 +138,6 @@ class EffectAndTriggerContinuationResumer(
                 ?.let { alignedRequirements.add(it.withCount(targetIds.size)) }
         }
 
-        // The target decision doubled as the "you may" question and the player declined: the
-        // ability would resolve doing nothing, so it isn't put on the stack at all.
-        if (continuation.consentAtTargeting && selectedTargets.isEmpty()) {
-            return checkForMore(state, emptyList())
-        }
-
         // Zero-target resolution path. Two cases:
         //  - `elseEffect != null`: the ability has explicit "...; otherwise, X" wording —
         //    swap to that effect (Conditional/elseEffect pattern).
@@ -156,6 +151,7 @@ class EffectAndTriggerContinuationResumer(
                 sourceId = continuation.sourceId,
                 sourceName = continuation.sourceName,
                 sourceBattlefieldTimestamp = continuation.sourceBattlefieldTimestamp,
+                lastKnownSourceSnapshot = continuation.lastKnownSourceSnapshot,
                 objectReferences = continuation.objectReferences,
                 controllerId = continuation.controllerId,
                 effect = continuation.elseEffect,
@@ -176,31 +172,33 @@ class EffectAndTriggerContinuationResumer(
 
         // A divided effect with two or more targets announces its division now, as the ability goes
         // on the stack (CR 603.3d applies CR 601.2d to triggered abilities). A dynamic total (Ureni —
-        // "X = lands you control") is evaluated here so the player divides the correct amount.
-        if (selectedTargets.size > 1) {
-            val division = AnnouncedDivision.of(continuation.effect)
-            if (division != null) {
-                val amountContext = com.wingedsheep.engine.handlers.EffectContext(
-                    sourceId = continuation.sourceId,
-                    objectReferences = continuation.objectReferences,
-                    controllerId = continuation.controllerId,
-                    // A last-known total (Quirion Beastcaller's counters) reads the trigger context.
-                    triggeringEntityId = continuation.triggerContext?.triggeringEntityId,
-                    triggeringPlayerId = continuation.triggerContext?.triggeringPlayerId,
-                    triggerContext = continuation.triggerContext,
-                    xValue = continuation.triggerContext?.xValue,
-                    pipeline = continuation.carriedPipeline ?: com.wingedsheep.engine.handlers.PipelineState.EMPTY,
-                )
-                val total = AnnouncedDivision.total(state, division, amountContext, amountEvaluator)
-                val prompt = when (val unit = AnnouncedDivision.counterUnit(division)) {
-                    null -> "Divide $total damage among ${selectedTargets.size} targets"
-                    else -> "Distribute $total $unit${if (total != 1) "s" else ""} among ${selectedTargets.size} targets"
-                }
-                val minPerTarget = AnnouncedDivision.minPerTarget(division)
-                return createTriggerDistributionDecision(
-                    state, continuation, selectedTargets, alignedRequirements, total, prompt, minPerTarget
-                )
+        // "X = lands you control") is evaluated here so the player divides the correct amount. An
+        // "up to" division (Lathiel) is announced for a single target too: how many it gets is
+        // still the controller's choice.
+        val division = AnnouncedDivision.of(continuation.effect)
+        if (division != null && (selectedTargets.size > 1 || (selectedTargets.size == 1 && AnnouncedDivision.isPartial(division)))) {
+            val amountContext = com.wingedsheep.engine.handlers.EffectContext(
+                sourceId = continuation.sourceId,
+                objectReferences = continuation.objectReferences,
+                controllerId = continuation.controllerId,
+                // A last-known total (Quirion Beastcaller's counters) reads the trigger context.
+                triggeringEntityId = continuation.triggerContext?.triggeringEntityId,
+                triggeringPlayerId = continuation.triggerContext?.triggeringPlayerId,
+                triggerContext = continuation.triggerContext,
+                xValue = continuation.triggerContext?.xValue,
+                pipeline = continuation.carriedPipeline ?: com.wingedsheep.engine.handlers.PipelineState.EMPTY,
+            )
+            val total = AnnouncedDivision.total(state, division, amountContext, amountEvaluator)
+            val partial = AnnouncedDivision.isPartial(division)
+            val among = if (selectedTargets.size == 1) "1 target" else "${selectedTargets.size} targets"
+            val prompt = when (val unit = AnnouncedDivision.counterUnit(division)) {
+                null -> "Divide $total damage among $among"
+                else -> "Distribute ${if (partial) "up to " else ""}$total $unit${if (total != 1) "s" else ""} among $among"
             }
+            val minPerTarget = AnnouncedDivision.minPerTarget(division)
+            return createTriggerDistributionDecision(
+                state, continuation, selectedTargets, alignedRequirements, total, prompt, minPerTarget, partial
+            )
         }
 
         val abilityComponent = TriggeredAbilityOnStackComponent(
@@ -208,6 +206,7 @@ class EffectAndTriggerContinuationResumer(
             sourceId = continuation.sourceId,
             sourceName = continuation.sourceName,
             sourceBattlefieldTimestamp = continuation.sourceBattlefieldTimestamp,
+            lastKnownSourceSnapshot = continuation.lastKnownSourceSnapshot,
             objectReferences = continuation.objectReferences,
             controllerId = continuation.controllerId,
             effect = continuation.effect,
@@ -220,8 +219,7 @@ class EffectAndTriggerContinuationResumer(
             xValue = continuation.triggerContext?.xValue,
             carriedPipeline = continuation.carriedPipeline,
             interveningIf = continuation.interveningIf,
-            isBackup = continuation.isBackup,
-            consentAnsweredAtTargeting = continuation.consentAtTargeting
+            isBackup = continuation.isBackup
         )
 
         val stackResult = services.stackResolver.putTriggeredAbility(
@@ -247,6 +245,7 @@ class EffectAndTriggerContinuationResumer(
         total: Int,
         prompt: String,
         minPerTarget: Int,
+        allowPartial: Boolean = false,
     ): ExecutionResult {
         val sourceName = continuation.sourceId.let { sourceId ->
             state.getEntity(sourceId)?.get<CardComponent>()?.name
@@ -271,7 +270,8 @@ class EffectAndTriggerContinuationResumer(
             ),
             totalAmount = total,
             targets = targetEntityIds,
-            minPerTarget = minPerTarget
+            minPerTarget = minPerTarget,
+            allowPartial = allowPartial
         ) }
 
         val distributionContinuation = TriggerDamageDistributionContinuation(
@@ -279,6 +279,7 @@ class EffectAndTriggerContinuationResumer(
             sourceId = continuation.sourceId,
             sourceName = continuation.sourceName,
             sourceBattlefieldTimestamp = continuation.sourceBattlefieldTimestamp,
+            lastKnownSourceSnapshot = continuation.lastKnownSourceSnapshot,
             objectReferences = continuation.objectReferences,
             controllerId = continuation.controllerId,
             effect = continuation.effect,
@@ -314,6 +315,7 @@ class EffectAndTriggerContinuationResumer(
             sourceId = continuation.sourceId,
             sourceName = continuation.sourceName,
             sourceBattlefieldTimestamp = continuation.sourceBattlefieldTimestamp,
+            lastKnownSourceSnapshot = continuation.lastKnownSourceSnapshot,
             objectReferences = continuation.objectReferences,
             controllerId = continuation.controllerId,
             effect = continuation.effect,
@@ -476,8 +478,8 @@ class EffectAndTriggerContinuationResumer(
                 // WhenCondition, DoAction, MayPayX, MayPayAnyAmountOfLife and OnceEachTurn never
                 // push this (yes/no) continuation — WhenCondition and OnceEachTurn resolve
                 // synchronously in the executor, DoAction via the action-drain
-                // GatedActionContinuation, the two pay-X gates via their number-chooser
-                // continuations — so these branches are unreachable, present only for exhaustiveness.
+                // GatedActionContinuation, the two pay-X gates via their own continuations
+                // (MayPayXContinuation answers its yes/no too) — so these branches are unreachable, present only for exhaustiveness.
                 is Gate.WhenCondition -> continuation.then
                 is Gate.DoAction -> continuation.then
                 is Gate.MayPayX -> continuation.then

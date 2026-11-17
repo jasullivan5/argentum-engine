@@ -1336,7 +1336,10 @@
             "script": {
                 "spellEffect": {
                     "type": "PlayAdditionalLands",
-                    "count": 1
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
                 }
             }
         }
@@ -1749,6 +1752,7 @@
                     "storeMovedAs": "moved2"
                 },
                 "ShuffleLibrary",
+                "EmitLibrarySearchedEvent",
                 {
                     "type": "Gated",
                     "gate": {
@@ -1775,17 +1779,17 @@
                                         }
                                     ]
                                 },
-                                "storeMatching": "matching4"
+                                "storeMatching": "matching5"
                             },
                             {
                                 "type": "ConditionalOnCollection",
-                                "collection": "matching4",
+                                "collection": "matching5",
                                 "ifNotEmpty": {
                                     "type": "Gated",
                                     "gate": "Gate.MayDecide",
                                     "then": {
                                         "type": "CastFromCollectionWithoutPayingCost",
-                                        "from": "matching4"
+                                        "from": "matching5"
                                     }
                                 }
                             }
@@ -1803,11 +1807,11 @@
                             }
                         ]
                     },
-                    "storeMatching": "matching8"
+                    "storeMatching": "matching9"
                 },
                 {
                     "type": "MoveCollection",
-                    "from": "matching8",
+                    "from": "matching9",
                     "destination": {
                         "type": "ToZone",
                         "zone": "Hand"
@@ -4186,9 +4190,13 @@
                 "interveningIf": {
                     "type": "Compare",
                     "left": {
-                        "type": "AggregateBattlefield",
-                        "player": "EachOpponent",
-                        "filter": "land"
+                        "type": "GreatestAmongPlayers",
+                        "players": "EachOpponent",
+                        "inner": {
+                            "type": "AggregateBattlefield",
+                            "player": "You",
+                            "filter": "land"
+                        }
                     },
                     "operator": "GT",
                     "right": {
@@ -5366,7 +5374,10 @@
                         "amount": 1
                     }
                 },
-                "interveningIf": "AnyEnteredOrWasCastFromExile",
+                "interveningIf": {
+                    "type": "AnyEnteredOrWasCastFrom",
+                    "zone": "Exile"
+                },
                 "oncePerTurn": true,
                 "descriptionOverride": "Whenever one or more nontoken creatures enter, if one or more of them entered from exile or was cast from exile, you draw a card. This ability triggers only once each turn."
             }
@@ -7120,13 +7131,13 @@
                     "abilities": [
                         {
                             "type": "TransformPermanent",
-                            "setSubtypes": [
-                                "Dragon"
-                            ],
                             "filter": {
                                 "baseFilter": "permanent",
                                 "scope": "Self"
-                            }
+                            },
+                            "setCreatureSubtypes": [
+                                "Dragon"
+                            ]
                         },
                         {
                             "type": "SetBasePowerToughnessStatic",
@@ -9091,6 +9102,9 @@
         "power": 0,
         "toughness": 1
     },
+    "keywords": [
+        "SKULK"
+    ],
     "script": {
         "triggeredAbilities": [
             {
@@ -9136,20 +9150,6 @@
                             }
                         ]
                     }
-                }
-            }
-        ],
-        "staticAbilities": [
-            {
-                "type": "CantBeBlockedBy",
-                "blockerFilter": {
-                    "cardPredicates": [
-                        "IsCreature",
-                        {
-                            "type": "PowerGreaterThanEntity",
-                            "reference": "Self"
-                        }
-                    ]
                 }
             }
         ],
@@ -10742,20 +10742,31 @@
                         }
                     },
                     "then": {
-                        "type": "CreateAuraToken",
-                        "tokenName": "Young Hero Role",
-                        "target": {
-                            "type": "BoundVariable",
-                            "name": "t0"
-                        }
+                        "type": "ReflexiveTrigger",
+                        "action": {
+                            "type": "Composite",
+                            "effects": []
+                        },
+                        "optional": false,
+                        "reflexiveEffect": {
+                            "type": "CreateAuraToken",
+                            "tokenName": "Young Hero Role",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        "reflexiveTargetRequirements": [
+                            {
+                                "type": "TargetObject",
+                                "filter": {
+                                    "baseFilter": "creature ctrl:you"
+                                },
+                                "id": "t0"
+                            }
+                        ],
+                        "descriptionOverride": "create a Young Hero Role token attached to target creature you control."
                     }
-                },
-                "targetRequirement": {
-                    "type": "TargetObject",
-                    "filter": {
-                        "baseFilter": "creature ctrl:you"
-                    },
-                    "id": "t0"
                 }
             }
         ]
@@ -12700,46 +12711,54 @@
             "modes": [
                 {
                     "effect": {
-                        "type": "ForEach",
-                        "space": {
-                            "type": "IterationSpace.Players",
-                            "players": "ActivePlayerFirst"
-                        },
-                        "body": {
-                            "type": "Composite",
-                            "effects": [
-                                {
-                                    "type": "GatherCards",
-                                    "source": {
-                                        "type": "FromZone",
-                                        "zone": "Hand"
-                                    },
-                                    "storeAs": "hand"
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "ForEach",
+                                "space": {
+                                    "type": "IterationSpace.Players",
+                                    "players": "ActivePlayerFirst"
                                 },
-                                {
-                                    "type": "SelectFromCollection",
-                                    "from": "hand",
-                                    "selection": {
-                                        "type": "ChooseExactly",
-                                        "count": {
-                                            "type": "Fixed",
-                                            "amount": 2
+                                "body": {
+                                    "type": "Composite",
+                                    "effects": [
+                                        {
+                                            "type": "GatherCards",
+                                            "source": {
+                                                "type": "FromZone",
+                                                "zone": "Hand"
+                                            },
+                                            "storeAs": "hand"
+                                        },
+                                        {
+                                            "type": "SelectFromCollection",
+                                            "from": "hand",
+                                            "selection": {
+                                                "type": "ChooseExactly",
+                                                "count": {
+                                                    "type": "Fixed",
+                                                    "amount": 2
+                                                }
+                                            },
+                                            "storeSelected": "chosenToDiscard",
+                                            "prompt": "Choose 2 cards to discard"
                                         }
-                                    },
-                                    "storeSelected": "discarded",
-                                    "prompt": "Choose 2 cards to discard"
+                                    ]
                                 },
-                                {
-                                    "type": "MoveCollection",
-                                    "from": "discarded",
-                                    "destination": {
-                                        "type": "ToZone",
-                                        "zone": "Graveyard"
-                                    },
-                                    "moveType": "Discard"
+                                "collectCollections": {
+                                    "chosenToDiscard": "discarded_by_each_player"
                                 }
-                            ]
-                        }
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "discarded_by_each_player",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Graveyard"
+                                },
+                                "moveType": "Discard"
+                            }
+                        ]
                     },
                     "description": "Each player discards two cards"
                 },
@@ -15484,33 +15503,44 @@
                         }
                     },
                     "then": {
-                        "type": "Composite",
-                        "effects": [
-                            {
-                                "type": "TapUntap",
-                                "target": {
-                                    "type": "BoundVariable",
-                                    "name": "t0"
+                        "type": "ReflexiveTrigger",
+                        "action": {
+                            "type": "Composite",
+                            "effects": []
+                        },
+                        "optional": false,
+                        "reflexiveEffect": {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "TapUntap",
+                                    "target": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    }
+                                },
+                                {
+                                    "type": "AddCounters",
+                                    "counterType": "STUN",
+                                    "count": 1,
+                                    "target": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    }
                                 }
-                            },
+                            ]
+                        },
+                        "reflexiveTargetRequirements": [
                             {
-                                "type": "AddCounters",
-                                "counterType": "STUN",
-                                "count": 1,
-                                "target": {
-                                    "type": "BoundVariable",
-                                    "name": "t0"
-                                }
+                                "type": "TargetObject",
+                                "filter": {
+                                    "baseFilter": "creature ctrl:opponent"
+                                },
+                                "id": "t0"
                             }
-                        ]
+                        ],
+                        "descriptionOverride": "tap target creature an opponent controls and put a stun counter on it."
                     }
-                },
-                "targetRequirement": {
-                    "type": "TargetObject",
-                    "filter": {
-                        "baseFilter": "creature ctrl:opponent"
-                    },
-                    "id": "t0"
                 }
             }
         ]
@@ -15872,20 +15902,31 @@
                         }
                     },
                     "then": {
-                        "type": "CreateAuraToken",
-                        "tokenName": "Sorcerer Role",
-                        "target": {
-                            "type": "BoundVariable",
-                            "name": "t0"
-                        }
+                        "type": "ReflexiveTrigger",
+                        "action": {
+                            "type": "Composite",
+                            "effects": []
+                        },
+                        "optional": false,
+                        "reflexiveEffect": {
+                            "type": "CreateAuraToken",
+                            "tokenName": "Sorcerer Role",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        "reflexiveTargetRequirements": [
+                            {
+                                "type": "TargetObject",
+                                "filter": {
+                                    "baseFilter": "creature ctrl:you"
+                                },
+                                "id": "t0"
+                            }
+                        ],
+                        "descriptionOverride": "create a Sorcerer Role token attached to target creature you control."
                     }
-                },
-                "targetRequirement": {
-                    "type": "TargetObject",
-                    "filter": {
-                        "baseFilter": "creature ctrl:you"
-                    },
-                    "id": "t0"
                 }
             }
         ]
@@ -17748,7 +17789,7 @@
                                 {
                                     "type": "Not",
                                     "predicate": {
-                                        "type": "SharesNameWithPermanentYouControl",
+                                        "type": "SharesNameWithYourCard",
                                         "filter": "token"
                                     }
                                 }
@@ -17787,7 +17828,7 @@
                                 {
                                     "type": "Not",
                                     "predicate": {
-                                        "type": "SharesNameWithPermanentYouControl",
+                                        "type": "SharesNameWithYourCard",
                                         "filter": "token"
                                     }
                                 }
@@ -21613,7 +21654,7 @@
                                     {
                                         "type": "Not",
                                         "predicate": {
-                                            "type": "SharesNameWithPermanentYouControl",
+                                            "type": "SharesNameWithYourCard",
                                             "filter": "permanent",
                                             "excludeSelf": true
                                         }

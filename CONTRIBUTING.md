@@ -53,7 +53,7 @@ just card-list-status my-deck.txt   # what your deck is missing, read from your 
 just contribute                     # guided: pick cards, agent, model, mode — and go
 ```
 
-`just contribute` checks your tools (JDK 21+, `just`, `git`, `jq`, and Claude
+`just contribute` checks your tools (JDK 25+, `just`, `git`, `jq`, and Claude
 Code or Codex) and asks three things: what to build (paste your decklist, or
 pick a set), which model, and how to deliver it. Then it starts a loop that
 works through the missing cards one unit at a time:

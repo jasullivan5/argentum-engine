@@ -2,6 +2,7 @@ package com.wingedsheep.engine.handlers.effects.token
 
 import com.wingedsheep.engine.state.components.identity.copiableCardComponent
 import com.wingedsheep.engine.state.components.identity.copiableDoubleFacedComponent
+import com.wingedsheep.engine.state.components.identity.copiableContainer
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.core.GameEvent
@@ -55,14 +56,53 @@ class CreateTokenCopyOfSourceExecutor(
         state: GameState,
         effect: CreateTokenCopyOfSourceEffect,
         context: EffectContext
-    ): EffectResult = createTokens(
-        state, effect, context, context.controllerId,
+    ): EffectResult {
+        // "Created under your control instead" (Crafty Cutpurse) before any other token replacement.
+        val controllerId = when (val redirect = TokenCreationReplacementHelper.redirectController(
+            state, context.controllerId, context, effect, predicateEvaluator
+        )) {
+            is TokenControllerRedirect.Resolved -> redirect.controllerId
+            is TokenControllerRedirect.Ask -> return redirect.result
+        }
         // Token-count replacements (Doubling Season, Parallel Lives) apply to token copies too.
         // Applied once here, never by the token-by-token resume that re-enters createTokens.
-        TokenCreationReplacementHelper.applyCountReplacements(
-            state, context.controllerId, effect.count, predicateEvaluator = predicateEvaluator
-        ),
-    )
+        val count = TokenCreationReplacementHelper.applyCountReplacements(
+            state, controllerId, effect.count, predicateEvaluator = predicateEvaluator
+        )
+        // "If one or more tokens would be created under your control, that many … are created
+        // instead" (Holo-Engineer) replaces token copies too; the copy's characteristics are what
+        // its filter reads. The end-step exile rider still applies to the substitutes.
+        copySource(state, context)?.copiableCardComponent()?.let { sourceCard ->
+            val prospective = sourceCopyCharacteristics(sourceCard, effect, context, controllerId)
+            TokenCreationReplacementHelper.substituteIfReplaced(
+                state, prospective, controllerId, count, context, effect,
+                predicateEvaluator, staticAbilityHandler, cardRegistry,
+                riders = TokenRiders(exileAtStep = effect.exileAtStep),
+            )?.let { return it }
+        }
+        return createTokens(state, effect, context, controllerId, count)
+    }
+
+    /** The source whose copiable values the tokens copy — the live object, or its last-known state. */
+    private fun copySource(state: GameState, context: EffectContext): ComponentContainer? {
+        val sourceId = context.sourceId ?: return null
+        // An ability keeps the source's copiable values after it leaves, including when a
+        // source token has ceased to exist or the card has returned as a different permanent.
+        val departedSource = context.lastKnownSourceSnapshot
+            ?.takeIf { context.sourceReferenceLost || sourceId !in state.getBattlefield() }
+            ?.copiableContainer()
+        return departedSource ?: state.getEntity(sourceId)
+    }
+
+    /** The token copy's characteristics: the source's copiable values plus the "except …" clause. */
+    private fun sourceCopyCharacteristics(
+        sourceCard: CardComponent,
+        effect: CreateTokenCopyOfSourceEffect,
+        context: EffectContext,
+        controllerId: EntityId,
+    ): CardComponent =
+        CopyExceptionApplier.apply(sourceCard, effect.copyExceptions, context.resolvingTriggeredAbility)
+            .copy(ownerId = controllerId, isDoubleFaced = false)
 
     /**
      * Create [count] token copies of the effect's source. Split out of [execute] so the
@@ -78,8 +118,7 @@ class CreateTokenCopyOfSourceExecutor(
     ): EffectResult {
         val sourceId = context.sourceId
             ?: return EffectResult.success(state)
-
-        val sourceContainer = state.getEntity(sourceId)
+        val sourceContainer = copySource(state, context)
             ?: return EffectResult.success(state)
 
         val sourceCard = sourceContainer.copiableCardComponent()
@@ -96,8 +135,7 @@ class CreateTokenCopyOfSourceExecutor(
         // Copy the source's CardComponent, re-homing the token to the controller. `isDoubleFaced`
         // is cleared, not inherited: a token is not a card (CR 111.1), so it never answers a
         // "double-faced card" question — see CreateTokenCopyOfTargetExecutor.
-        val tokenCard = CopyExceptionApplier.apply(sourceCard, exceptions, context.resolvingTriggeredAbility)
-            .copy(ownerId = controllerId, isDoubleFaced = false)
+        val tokenCard = sourceCopyCharacteristics(sourceCard, effect, context, controllerId)
 
         val cappedCount = com.wingedsheep.engine.core.GameLimits.cappedTokenCount(count, "source-copy tokens")
         for (index in 0 until cappedCount) {
@@ -132,6 +170,14 @@ class CreateTokenCopyOfSourceExecutor(
             newState = newState.withEntity(tokenId, container)
 
             // Add to battlefield
+            newState = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy.applyBeforeEntry(newState, tokenId, cardRegistry, predicateEvaluator)
+            // A battlefield-entry replacement sends it elsewhere instead (Hallowed Moonlight).
+            val diverted = TokenEntryRedirect.divert(newState, tokenId, state, predicateEvaluator, cardRegistry)
+            if (diverted != null) {
+                newState = diverted.state
+                events.add(diverted.event)
+                continue
+            }
             newState = com.wingedsheep.engine.handlers.effects.BattlefieldEntry
                 .place(newState, controllerId, tokenId)
 
@@ -226,7 +272,8 @@ class CreateTokenCopyOfSourceExecutor(
                         sourceId = sourceId,
                         objectReferences = context.objectReferences,
                         sourceName = sourceCard.name,
-                        controllerId = controllerId
+                        // The creating ability's controller, even when the copy went to someone else.
+                        controllerId = context.controllerId
                     )
                 )
             }

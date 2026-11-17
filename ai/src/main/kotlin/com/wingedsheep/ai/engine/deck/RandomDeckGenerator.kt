@@ -18,8 +18,15 @@ class RandomDeckGenerator(
     val cardPool: List<CardDefinition>,
     val basicLandVariants: List<CardDefinition> = emptyList(),
     val setCodes: List<String> = emptyList(),
-    private val random: Random = Random.Default
+    private val random: Random = Random.Default,
+    /** Total cards, lands included. 100 for the Highlander formats. */
+    private val deckSize: Int = DECK_SIZE,
+    private val landCount: Int = LAND_COUNT,
+    /** Copies allowed of a non-basic card; 1 builds a singleton deck. */
+    private val maxCopies: Int = MAX_COPIES,
 ) {
+    private val spellCount = deckSize - landCount
+
     companion object {
         const val DECK_SIZE = 60
         const val LAND_COUNT = 24
@@ -139,14 +146,14 @@ class RandomDeckGenerator(
 
         // Calculate target counts for each CMC bucket
         val targetCounts = MANA_CURVE.mapValues { (_, percentage) ->
-            (SPELL_COUNT * percentage).toInt()
+            (spellCount * percentage).toInt()
         }.toMutableMap()
 
-        // Adjust to ensure we hit exactly SPELL_COUNT
+        // Adjust to ensure we hit exactly spellCount
         val totalTarget = targetCounts.values.sum()
-        if (totalTarget < SPELL_COUNT) {
+        if (totalTarget < spellCount) {
             // Add remaining to CMC 3 (the most flexible spot)
-            targetCounts[3] = (targetCounts[3] ?: 0) + (SPELL_COUNT - totalTarget)
+            targetCounts[3] = (targetCounts[3] ?: 0) + (spellCount - totalTarget)
         }
 
         // Fill each CMC bucket
@@ -158,9 +165,9 @@ class RandomDeckGenerator(
                 if (added >= targetCount) break
 
                 val currentCount = cardCounts[card.name] ?: 0
-                if (currentCount < MAX_COPIES) {
+                if (currentCount < maxCopies) {
                     // Add 1-4 copies depending on how many we still need
-                    val maxToAdd = minOf(MAX_COPIES - currentCount, targetCount - added)
+                    val maxToAdd = minOf(maxCopies - currentCount, targetCount - added)
                     val copiesToAdd = if (maxToAdd >= 2) random.nextInt(1, maxToAdd + 1) else maxToAdd
 
                     repeat(copiesToAdd) {
@@ -181,7 +188,7 @@ class RandomDeckGenerator(
                     for (card in adjacentCards) {
                         if (added >= targetCount) break
                         val currentCount = cardCounts[card.name] ?: 0
-                        if (currentCount < MAX_COPIES) {
+                        if (currentCount < maxCopies) {
                             selected.add(card)
                             cardCounts[card.name] = currentCount + 1
                             added++
@@ -192,18 +199,18 @@ class RandomDeckGenerator(
         }
 
         // If we still don't have enough cards, fill with any available cards
-        while (selected.size < SPELL_COUNT) {
+        while (selected.size < spellCount) {
             val shuffledAvailable = available.shuffled(random)
             for (card in shuffledAvailable) {
-                if (selected.size >= SPELL_COUNT) break
+                if (selected.size >= spellCount) break
                 val currentCount = cardCounts[card.name] ?: 0
-                if (currentCount < MAX_COPIES) {
+                if (currentCount < maxCopies) {
                     selected.add(card)
                     cardCounts[card.name] = currentCount + 1
                 }
             }
             // Prevent infinite loop if we truly can't fill the deck
-            if (available.all { (cardCounts[it.name] ?: 0) >= MAX_COPIES }) {
+            if (available.all { (cardCounts[it.name] ?: 0) >= maxCopies }) {
                 break
             }
         }
@@ -219,12 +226,12 @@ class RandomDeckGenerator(
         // An all-colorless pool (see `pickColors`) has no colour to weight by. Generic costs still
         // need lands, so give it one basic type rather than dividing by zero.
         if (colors.isEmpty()) {
-            return mapOf(COLOR_TO_LAND.getValue(Color.entries.random(random)) to LAND_COUNT)
+            return mapOf(COLOR_TO_LAND.getValue(Color.entries.random(random)) to landCount)
         }
         if (colors.size == 1) {
             // Mono-color: all lands of that color
             val landName = COLOR_TO_LAND[colors.first()]!!
-            return mapOf(landName to LAND_COUNT)
+            return mapOf(landName to landCount)
         }
 
         // Count colored mana symbols in the deck
@@ -239,8 +246,8 @@ class RandomDeckGenerator(
 
         // If no colored symbols (all colorless spells), split evenly
         if (colorWeights.isEmpty()) {
-            val splitCount = LAND_COUNT / colors.size
-            val remainder = LAND_COUNT % colors.size
+            val splitCount = landCount / colors.size
+            val remainder = landCount % colors.size
             return colors.mapIndexed { index, color ->
                 val landName = COLOR_TO_LAND[color]!!
                 val count = splitCount + if (index < remainder) 1 else 0
@@ -260,10 +267,10 @@ class RandomDeckGenerator(
 
             val count = if (index == sortedColors.lastIndex) {
                 // Last color gets remaining lands
-                LAND_COUNT - assignedLands
+                landCount - assignedLands
             } else {
                 val proportion = weight / totalWeight
-                (LAND_COUNT * proportion).toInt().coerceAtLeast(1)
+                (landCount * proportion).toInt().coerceAtLeast(1)
             }
 
             lands[landName] = count

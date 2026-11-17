@@ -150,7 +150,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       ] },
       { kind: 'h', text: 'Side column' },
       { kind: 'ul', items: [
-        'Public Lobbies — open lobbies anyone may join, with an online-player count. Refreshes every few seconds.',
+        'Open lobbies — public lobbies anyone may join, newest first, with an online-player count. Each shows the table (1v1, Free-for-All, tournament…), what is being played, who is hosting and who has joined, and how many seats are left. Seats taken by AI players are marked apart from people — square pips and a robot badge — so you can tell a table of humans from one padded with AI. With many lobbies, filter by 1v1 / Multiplayer / Tournaments or search by host, set or format. Refreshes every few seconds.',
         'Live Games — games in progress, each with a Spectate button.',
         'A Learn to Play row, and for guests a reminder of what a free account adds.',
       ] },
@@ -333,6 +333,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         'Play with — AI (starts right away), Friends (an invite link) or Anyone (a public lobby that shows up on everyone’s home screen).',
         'AI opponents — how many AI seats to fill, where the mode allows a choice.',
         'Mode-specific picks — the draft style, Standard or Commander boosters, the set, which deck you bring, or where a multiplayer table’s decks come from (your decks, Jump In, sealed or draft).',
+        'Set — for Draft and Sealed (and a table whose decks come from them), the set the packs are opened from. Pick “Random Set” at the top of the list and the server rolls one when the event starts; nobody sees which until then.',
         'Random deck from — whenever the server rolls your deck (the Random deck mode, or “Random deck” picked as your Constructed deck), optionally pin the set it is built from. Left on “Any set”, the server picks one set for the whole table: an opponent also on “Any set”, or an AI opponent on its default, plays the same set as you.',
       ] },
       { kind: 'p', text: 'Your choices are remembered per mode. The footer says what happens next — one game, or an event with stages — and the button says exactly what it will do: Play, Start draft, Open boosters, Create lobby or Open public lobby.' },
@@ -364,11 +365,36 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     section: 'modes',
     title: 'Cards: Bring a deck',
     summary:
-      'Play a deck you built or pasted. Optionally restrict everyone to a constructed format — Standard, Pioneer, Modern, Pauper, Legacy, Vintage, Commander, Brawl, Standard Brawl or Premodern.',
+      'Play a deck you built or pasted. Optionally restrict everyone to a constructed format — Standard, Pioneer, Modern, Pauper, Legacy, Vintage, Commander, Brawl, Standard Brawl, Premodern, Highlander or Canadian Highlander.',
     body: [
       { kind: 'p', text: '“No restriction” lets any legal-in-the-engine card in. The restriction is checked when a deck is submitted, not when it is built.' },
     ],
-    related: ['deckbuilder'],
+    related: ['deckbuilder', 'highlander'],
+  },
+  {
+    id: 'highlander',
+    section: 'modes',
+    title: 'Highlander and Canadian Highlander',
+    summary:
+      '100-card singleton decks without a commander, over the Vintage card pool, at 20 life. Canadian Highlander adds a points list: the strongest cards cost points, and a deck may spend at most 10.',
+    body: [
+      { kind: 'p', text: 'Both are deck-legality choices, not separate modes: pick one as the format in the deckbuilder, as the restriction under Cards → Bring a deck, or as the Constructed format in matchmaking. The game itself plays like any 1v1 constructed game.' },
+      {
+        kind: 'table',
+        head: ['', 'Highlander', 'Canadian Highlander'],
+        rows: [
+          ['Deck size', 'At least 100', 'At least 100'],
+          ['Copies', 'One of each card except basic lands', 'One of each card except basic lands'],
+          ['Card pool', 'Vintage (restricted cards allowed)', 'Vintage (restricted cards allowed)'],
+          ['Points', 'None', 'At most 10, from the format’s points list'],
+          ['Sideboard', 'Allowed', 'None — the format has no sideboards'],
+        ],
+      },
+      { kind: 'p', text: 'With Canadian Highlander picked, the deckbuilder shows each pointed card’s cost on its row and the deck’s total beside the card count.' },
+      { kind: 'tip', text: 'The points list changes a few times a year. Argentum follows the format’s official list; see the link below for the current one.' },
+    ],
+    related: ['cards-bring-a-deck', 'deck-legality', 'matchmaking'],
+    links: [{ label: 'Canadian Highlander points list', href: 'https://www.canadianhighlander.ca/points-list/' }],
   },
   {
     id: 'cards-random',
@@ -398,7 +424,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     section: 'modes',
     title: 'Jump In',
     summary: 'Choose two themed 20-card Jumpstart packs and play their combined deck. Lands are included, so there is nothing to build.',
-    body: [{ kind: 'p', text: 'Start with Jumpstart 2022, or select the original Jumpstart set in the lobby. Each pick offers three different themes, with a published pack variant behind each. Explore any pack card by card before choosing. On your second pick your first pack stays on screen, and hovering an offer shows the colors and curve of the deck the two would make — you can still swap your first pack until you choose the second. After two picks, your exact 40-card deck is submitted automatically. Play a bracket with friends or AI opponents, or sit everyone down at one Free-for-All table; only complete, implemented packs without banned cards are offered.' }],
+    body: [{ kind: 'p', text: 'Choose which Jumpstart packs to play under Packs from: Foundations Jumpstart (the default), Jumpstart 2022 or the original Jumpstart. The lobby can switch between them until you start. Each pick offers three different themes, with a published pack variant behind each. Explore any pack card by card before choosing. On your second pick your first pack stays on screen, and hovering an offer shows the colors and curve of the deck the two would make — you can still swap your first pack until you choose the second. After two picks, your exact 40-card deck is submitted automatically. Play a bracket with friends or AI opponents, or sit everyone down at one Free-for-All table; only complete, implemented packs without banned cards are offered.' }],
     related: ['roster-solo', 'roster-friend', 'event-round-robin', 'table-free-for-all'],
   },
   {
@@ -409,7 +435,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       'Open boosters and build a 40-card deck from what you got. Standard sealed uses 6 boosters by default; Commander Sealed opens Commander-shaped packs and builds a 60-card deck around a commander from your pool — up to 8 players share the pool, then play a 1v1 bracket or sit down as one pod at 40 life.',
     body: [
       { kind: 'p', text: 'The host picks the sets (mix several, or add a deferred “Random Set” that stays hidden until the game starts), how many boosters each player opens, and whether boosters are per-set or “chaos” — each pack mixing every selected set.' },
-      { kind: 'p', text: 'A per-set booster opens like that set’s paper pack: 8-card packs for Arabian Nights, Antiquities, The Dark and Fallen Empires, each card as common as it was on the print sheet; Midnight Hunt’s and Crimson Vow’s two double-faced cards; March of the Machine’s battle; a Play Booster’s own wildcard odds, and its land slot when that can be a common dual or gain land. Foils, The List, Special Guests and bonus-sheet cards aren’t included, and a basic land only comes in a pack when it shares the slot with nonbasic lands — you get basics free while building.' },
+      { kind: 'p', text: 'A per-set booster opens like that set’s paper pack: 8-card packs for Arabian Nights, Antiquities, The Dark and Fallen Empires, each card as common as it was on the print sheet; Midnight Hunt’s and Crimson Vow’s two double-faced cards; March of the Machine’s battle; a Play Booster’s own wildcard odds, and its land slot when that can be a common dual or gain land. Foils, The List, Special Guests and bonus-sheet cards aren’t included, and a basic land only comes in a pack when it shares the slot with nonbasic lands — you get basics free while building. Snow-covered basics and Wastes are the exception: Limited doesn’t hand them out, so you play only the ones you open or draft (Oath of the Gatewatch prints Wastes at common).' },
     ],
     related: ['limited-deckbuilding', 'cards-draft', 'cards-cube'],
   },
@@ -532,8 +558,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       'Exactly four players in two teams of two (CR 810). Each team shares one 30-life total, takes its turns together, and attacks and blocks as one unit.',
     body: [
       { kind: 'p', text: 'Teams are randomised at game start by default, re-rolled every game. Switch to “Choose teams” and the host can click each player’s team chip to assign them by hand.' },
+      { kind: 'p', text: 'Blocking is one team declaration. You can select highlighted creatures from either teammate’s board and assign them against attacks on either teammate. Confirm Blocks submits the whole team’s choices together; No Blocks declares no blockers for the team. If an effect gives different players control of those choices, each chooses their own portion in turn. Earlier choices stay visible as arrows; the game declares the blocks only after the combined choice is legal.' },
     ],
-    related: ['table-team-vs-team'],
+    related: ['table-team-vs-team', 'targeting-and-combat'],
   },
   {
     id: 'table-team-vs-team',
@@ -559,8 +586,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     body: [
       { kind: 'p', text: 'Standings show wins–losses–draws, points and game win rate; hovering a row spells out the tiebreakers actually used (opponents’ match win %, game win %, opponents’ game win %, life differential).' },
       { kind: 'p', text: 'Odd player counts give someone a bye each round. When a round ends, everyone readies up for the next one; the host can add an extra round after the bracket completes.' },
+      { kind: 'p', text: 'Matches are a single game by default; the host can make them best of three, with sideboarding between games. “Each pair meets” plays the whole bracket more than once, each meeting its own match.' },
     ],
-    related: ['ranked', 'axis-limits'],
+    related: ['best-of-three', 'ranked', 'axis-limits'],
   },
   {
     id: 'playing-for-ante',
@@ -611,7 +639,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       'Profile (from the account menu) shows your record at a glance, your recent games with both decks and their replays, and your recent tournaments. You can change your display name and avatar here.',
     body: [
       { kind: 'ul', items: [
-        'Games, wins, losses and win rate.',
+        'Games, wins, losses and win rate — only games everyone actually played (see “Which games count”).',
         'Recent games, ten to a page — open Decks to see both players’ lists, Watch the replay, or Share its link.',
         'Spoils — the cards you’ve won in games played for ante, and a count of the ones you lost.',
         'Recent tournaments, each opening its final standings and replays.',
@@ -620,7 +648,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       { kind: 'p', text: 'Click your avatar to choose one. Portraits offers 56 painted characters — the creature types of each colour, from Kithkin and Loxodon to Phyrexians and Eldrazi. Card art lets you search for any card, pick the printing whose art you like, and drag and zoom the circle to frame the part you want. Your avatar shows in the account menu, on your public profile, to friends and in messages, on the match intro, and as your portrait at the table, with your life total beneath it. At a table of three or more it leads your name on the player rail and board labels, and anyone spectating or watching the replay sees it beside your name too. “Use my initial” goes back to the letter. Avatars need an account; guests show their initial, and AI opponents sit behind a portrait of their own.' },
       { kind: 'p', text: 'Everyone also has a public profile at `/u/<id>` that anyone can open without signing in. It shows the same statistics and recent games but never your decklists. “This is how others see your profile” marks your own.' },
     ],
-    related: ['stats', 'friends', 'guest-vs-account', 'playing-for-ante'],
+    related: ['stats', 'stats-what-counts', 'friends', 'guest-vs-account', 'playing-for-ante'],
   },
   {
     id: 'stats',
@@ -629,10 +657,33 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     summary:
       'The Stats page is a dashboard of how you play: record and win rate, ranked ratings, the colours, card types, curve, creature types, modes and sets you play most, head-to-heads and your most-played cards.',
     body: [
-      { kind: 'p', text: 'Head to head lists your most-played human opponents (AI games are left out) with your record against each, linked to their profiles. Most-played cards preview on hover. The tournament panel lists the events you played.' },
+      { kind: 'p', text: 'The bar at the top narrows everything below it. Against picks who you played: Everyone, Humans (every opponent was a person) or AI (every opponent was the AI). A multiplayer game with both people and the AI at the table shows only under Everyone. Period limits it to the last year, 90, 30 or 7 days. Your choice stays in the page address, so a reload or a shared link keeps it.' },
+      { kind: 'p', text: 'Under your record, “vs humans” and “vs AI” show both records for the period side by side; click one to filter to it.' },
+      { kind: 'p', text: 'Head to head lists your most-played human opponents (AI games are left out) with your record against each, linked to their profiles. Most-played cards preview on hover. The tournament panel lists the events you played; ratings and tournaments ignore the filter.' },
+      { kind: 'p', text: 'Games where someone never played — a tournament game you missed, or a concession before anyone took an action — are left out of every number. See “Which games count”.' },
       { kind: 'p', text: 'Stats need an account; games played as a guest are not counted.' },
     ],
-    related: ['ranked', 'profile'],
+    related: ['stats-what-counts', 'ranked', 'profile'],
+  },
+  {
+    id: 'stats-what-counts',
+    section: 'community',
+    title: 'Which games count',
+    summary:
+      'A game counts toward your record only if you took an action in it after the mulligan — and so did at least one opponent.',
+    body: [
+      { kind: 'p', text: 'Your record measures games you actually played. Two kinds of game are left out:' },
+      { kind: 'ul', items: [
+        'A game you never played — for example a tournament game that started while you were away, which the disconnect timer conceded for you.',
+        'A game someone conceded before doing anything past the mulligan.',
+      ] },
+      { kind: 'p', text: 'Taking an action means making a play of your own: playing a land, casting a spell, activating an ability, attacking or blocking, or making a choice the game asked for. Keeping or mulliganing, passing priority, and conceding don’t count, because the game passes for you automatically when you aren’t there.' },
+      { kind: 'p', text: 'When your opponent never played, the win they handed you is left out too. In a multiplayer game only the seat that didn’t play is left out; everyone who kept playing still has a result.' },
+      { kind: 'p', text: 'These games still appear in your recent games, marked “Not counted”, so you can see what happened.' },
+      { kind: 'h', text: 'Tournaments' },
+      { kind: 'p', text: 'When a player leaves a tournament, the matches they had left are forfeited: they lose each one and their opponents win it. Standings and placement still include those forfeits. Your tournament record shows only the matches that were played, with the forfeits listed beside it.' },
+    ],
+    related: ['stats', 'profile', 'tournament-flow'],
   },
   {
     id: 'friends',
@@ -752,7 +803,8 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         ['Minimum deck size', '40, 50, 60, 75 or 100; singleton on or off'],
         ['Teams', 'Random, or Choose teams (click a team chip)'],
         ['Free-for-All attacks', 'Left only, Right only, or Any opponent'],
-        ['Games per matchup', '1–5 (brackets)'],
+        ['Match', 'Best of 1 or Best of 3 (brackets; best of 3 is the default)'],
+        ['Each pair meets', 'Once to 5 times (brackets)'],
         ['Ranked', 'Casual or Ranked (1v1 only)'],
         ['Visibility', 'Private or Public'],
         ['AI assistance', 'Off or On — enables Suggest Pick and Auto-build'],
@@ -796,7 +848,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       ] },
       { kind: 'p', text: 'In a lobby, + Add AI adds a seat and the host removes one with ×. Each AI seat has its own deck chooser: Auto (the server rolls a deck, or the AI builds from its pool), From sets, or Pick a deck — any saved, example or pasted deck. Commander needs a picked Commander deck, so the AI’s commander can start in the command zone.' },
       { kind: 'p', text: 'Want a different timer, pack count or deck size, or AI seats with chosen decks? Under the launch panel’s Play button, “Open a lobby to change them” opens the same game as a lobby instead of starting it. Change what you like, then press Start.' },
-      { kind: 'p', text: 'On Auto, the AI matches the deck you bring. Play a starter deck or your own list and the AI plays from the same set or sets: another starter deck from them when there is one — Boros Mice meets one of the other Bloomburrow tribes — otherwise a deck built from those sets, 60 cards against a 60-card deck and a sealed pool against a 40-card one. The AI seat’s row in the lobby names the sets it will use. Choose From sets or Pick a deck to decide yourself.' },
+      { kind: 'p', text: 'On Auto, the AI matches the deck you bring. Play a starter deck or your own list and the AI plays from the same set or sets: another starter deck from them when there is one — Boros Mice meets one of the other Bloomburrow tribes — otherwise a deck built from those sets, 60 cards against a 60-card deck and a sealed pool against a 40-card one. Bring a constructed deck drawn from many sets — a Standard deck, say — and the AI builds a fresh deck for the format yours was built for, so a Standard deck meets a different Standard deck each game. That is the format your saved deck or starter deck names (a Highlander deck meets a Highlander deck); a pasted list is matched to the narrowest of Standard, Pioneer, Modern, Legacy and Vintage it is legal in. The AI seat’s row in the lobby names the sets or the format it will use. Choose From sets or Pick a deck to decide yourself.' },
       { kind: 'p', text: 'There is a single AI strength; it is not adjustable. In a draft or sealed event the AI drafts and builds its own deck from what it is dealt.' },
       { kind: 'tip', text: 'Against the AI, the game-over screen offers Play Again, which rebuilds the same game in one click.' },
     ],
@@ -821,13 +873,32 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     summary:
       'Three to eight players: either one shared game — Free-for-All, Two-Headed Giant or Team vs. Team — or a round-robin bracket of 1v1 matches with standings. Choose “Anyone” to list the lobby publicly so strangers can join.',
     body: [
-      { kind: 'p', text: 'Everyone joins with the same invite code, or from Public Lobbies on the home screen when the lobby’s visibility is Public. A lobby holds as many seats as its table allows; the host starts once everyone has arrived.' },
+      { kind: 'p', text: 'Everyone joins with the same invite code, or from Open lobbies on the home screen when the lobby’s visibility is Public. A lobby holds as many seats as its table allows; the host starts once everyone has arrived.' },
       { kind: 'p', text: 'A group can bring their own decks or share a limited pool: sealed and draft both work at a multiplayer table as well as in a bracket.' },
     ],
     related: ['table-free-for-all', 'table-two-headed-giant', 'table-team-vs-team', 'event-round-robin', 'lobby-screen'],
   },
 
   // ── Draft & Sealed ─────────────────────────────────────────────────────
+  {
+    id: 'set-guide',
+    section: 'limited',
+    title: 'Choosing a set: the Set guide',
+    summary:
+      'Set guide, in the home screen’s top bar, lists every set that is fully playable for sealed and draft, with how its games play, what wins them, and power, speed and complexity ratings to compare them by. The play screen links to it under its set choice.',
+    body: [
+      { kind: 'p', text: 'Each set has a short summary on its tile — how a game of it feels and what decides it — a “Try it if you like” line, three five-step meters and its theme tags. The ratings compare the sets here with each other as Limited formats, not with Magic as a whole: Power is how strong the cards are, Speed how quickly games tend to end, Complexity how much there is to keep track of.' },
+      { kind: 'ul', items: [
+        'Quick filters answer the usual questions — Easy to learn, Fast & aggressive, Slow & grindy, High power, Before 2008 — and theme chips narrow it to sets built around creature types, graveyards, spells, artifacts and so on. Search also matches mechanics and tips, so `foretell` finds Kaldheim. Hover a theme tag or mechanic to see what it means for a game.',
+        'Click a set to read about it up close: how its games play, three tips for drafting and playing it, what each of its mechanics does to a game, its draft archetypes, and a line on its world.',
+        '+ Compare on up to four sets, then Compare, puts them side by side. The address bar keeps the comparison, so it can be shared.',
+        'Map lays every set out by speed and complexity, coloured by power, for a feel of the whole catalogue at once.',
+      ] },
+      { kind: 'tip', text: 'The lobby’s set picker shows the same pitch and ratings for whichever set you point at, so you can decide without leaving the lobby.' },
+      { kind: 'p', text: 'Sets that are only partly implemented are not in the guide; Implementation progress, linked from its header, shows how far each one has come.' },
+    ],
+    related: ['set-completion', 'draft-archetypes', 'draft-formats'],
+  },
   {
     id: 'draft-picking',
     section: 'limited',
@@ -876,7 +947,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         'Auto-build proposes the best deck it can make from your pool, lands included. If you have already started, it becomes Complete deck and keeps your picks while it fills the gaps.',
         'When the engine finds several decks, the strip under the top bar lists them as Builds — click one to switch. Undo puts back the deck you had before, as long as you haven’t edited it since.',
         'Card scores rates every card in your pool, and in your deck list, so you can make the cuts yourself. Scores use your deck so far for colour context; when the deck changes, the strip offers Re-score. Click Card scores again to hide them.',
-        'With more than one engine on the server, the picker at the start of the AI group chooses which one Auto-build and Card scores use.',
+        'With more than one engine on the server, the picker at the start of the AI group chooses which one Auto-build and Card scores use. The default, Draftsim, is the builder the AI opponents build their own limited decks with; Heuristic is a simpler colour-and-curve builder.',
       ] },
       { kind: 'tip', text: 'Assistance is off by default, so nobody in a competitive pod gets it unless the host turns it on for everyone. A draft or sealed game against the AI starts right away, so you choose it on the launch panel instead, under AI assistance.' },
     ],
@@ -909,8 +980,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         'Basic Lands has + / − per type and a Suggest button that fills the land count from your colours.',
         'In a Commander pool, the crown on a legendary creature (or a card that says it can be your commander) makes it your commander, and the ♛ Identity toggle restricts the pool to its colour identity. With one commander crowned, crowning a legal partner — another Partner card, a Background for a “Choose a Background” commander, and so on — adds it as a second commander; the identity is then both commanders’ combined.',
       ] },
+      { kind: 'p', text: 'You can play every copy of a card you opened or drafted — five Shocks in your pool means up to five Shocks in your deck. The host can turn on Copy limit → Max 4 under Rules in the lobby to cap every card except basic lands at 4 copies, as in constructed. Cube Pool Play always caps at 4.' },
       { kind: 'p', text: 'Submit Deck stays disabled until the deck is big enough, and says how many cards it still needs. After submitting you can still press Edit Deck until the first round begins. Export gives an MTG Arena-format list to copy or download.' },
-      { kind: 'p', text: 'The cards you leave out become your sideboard — the “outside the game” cards that wish-style effects can fetch. There is no sideboarding between games: the deck you submit plays every round.' },
+      { kind: 'p', text: 'The cards you leave out become your sideboard — the “outside the game” cards that wish-style effects can fetch. It also holds ten of each basic land (Plains, Island, Swamp, Mountain, Forest), as Limited rules let you add basics to your sideboard, so Living Wish or The Holodeck can fetch one. There is no sideboarding between games: the deck you submit plays every round.' },
       { kind: 'p', text: 'Save Deck on the standings screen keeps the deck in My Decks, with the exact printings you opened or drafted.' },
     ],
     related: ['cards-sealed', 'cards-draft', 'draft-assist', 'cube-pool-play', 'outside-the-game'],
@@ -923,7 +995,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       'Between matches you are on the standings screen: your next opponent, a Ready button, the live table, and buttons to share the event, watch replays, and view or save your deck.',
     body: [
       { kind: 'ol', items: [
-        'Everyone submits a deck. Before round 1 you can still Edit Deck.',
+        'Everyone submits a deck. Before round 1 — and between matches — you can Edit Deck to rebuild from your pool.',
         'The screen shows “Next Match: vs X” — or “Sitting out this round” on a bye.',
         'Press Ready for Next Round. The count shows how many are ready; the round starts when everyone is.',
         'Play your match. Matches still running elsewhere are listed live, with both life totals and a ▶ Watch button.',
@@ -933,7 +1005,23 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       { kind: 'p', text: 'Leave Tournament (confirm with a second click) drops you from the event. If a player disconnects, everyone sees a countdown banner; others can extend it by a minute, and kick them once two minutes have passed.' },
       { kind: 'p', text: 'Anyone can follow the event from its tournament link, and every finished match’s replay is under Replays.' },
     ],
-    related: ['event-round-robin', 'limited-deckbuilding', 'spectating', 'replays', 'disconnects', 'playing-for-ante'],
+    related: ['event-round-robin', 'best-of-three', 'limited-deckbuilding', 'spectating', 'replays', 'disconnects', 'playing-for-ante'],
+  },
+  {
+    id: 'best-of-three',
+    section: 'limited',
+    title: 'Best of three and sideboarding',
+    summary:
+      'A bracket can play best-of-three matches: first to two game wins. Between games you can swap cards between your deck and your sideboard, and the loser of the last game picks who plays first.',
+    body: [
+      { kind: 'p', text: 'The host picks Match: Best of 1 or Best of 3 in the lobby’s event settings. A best-of-three ends as soon as someone has two game wins; a drawn game doesn’t count toward them, and if three games pass without a second win, more game wins takes the match (equal is a draw).' },
+      { kind: 'p', text: 'When a game ends and the match isn’t over, the game-over card lets you go straight on with the deck you just played: Ready for game 2, or — if you choose who goes first — Play first or Draw first. Sideboard first opens the sideboarding screen instead.' },
+      { kind: 'p', text: 'On the sideboarding screen, your sideboard is everything in your pool you didn’t put in your deck. Click a sideboard card to bring it in, click a card in your deck list to take it out, and use + / − for basic lands. The footer lists what you changed against your registered deck; Reset puts it back.' },
+      { kind: 'p', text: 'If you lost the last game you choose Play first or Draw first. After a drawn game, whoever chose last time chooses again. Press Ready for game 2 — the game starts when both players are ready, and Keep editing takes your Ready back until then, even if you readied from the game-over card.' },
+      { kind: 'p', text: 'Sideboard changes last for the rest of that match. Your next match starts from the deck you registered; to change that, use Edit Deck on the standings screen between matches.' },
+      { kind: 'p', text: 'Jumpstart and Commander decks stay as registered between games, and brought decks can only swap with the sideboard they were submitted with.' },
+    ],
+    related: ['tournament-flow', 'event-round-robin', 'limited-deckbuilding'],
   },
   {
     id: 'cube-building',
@@ -1062,16 +1150,16 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     section: 'playing',
     title: 'Flipping cards (Chaos Orb, Falling Star)',
     summary:
-      'Cards that tell you to flip them onto the table — Chaos Orb, Falling Star — are played for real: the battlefield is laid out as a card table, you aim, press and hold to swing, and let go with the needle on the gold line. Your aim and your timing decide what it lands on.',
+      'Cards that tell you to flip them onto the table — Chaos Orb, Falling Star — are played for real: the battlefield is laid out as a card table, you spin the card up and flick it at what you want to hit. How hard, which way and how much spin you put on it decide what it lands on.',
     body: [
       { kind: 'p', text: 'When Chaos Orb’s ability or a Falling Star spell resolves, a table opens with every permanent lying where it would on a paper battlefield — creatures in front, lands at the back, tapped cards sideways, Auras and Equipment peeking out from behind what they’re attached to. Your side is at the bottom; the card sits in your hand at the edge, and the card’s text is shown above the table.' },
       { kind: 'ol', items: [
-        'Aim — move over the table. The crosshair is your aim and the dashed card shows where a perfect release lands; anything it would affect lights up red, your own permanents amber, and what it can’t affect grey (Chaos Orb spares tokens; Falling Star only hits creatures). A clean flip lands within a few millimetres of your aim, so aim carefully.',
-        'Swing — press and hold. The swing starts the moment you press, so aim first. The needle swings up and down the gauge, and the dashed card slides with it: below the gold line the card falls short, back towards your own permanents; above it, it sails long. Your hand also sways left and right — the dot under the card — pulling the flip to that side, so let go with it centred. Every swing is quicker than the last, and hold too long and your hand starts to shake.',
-        'Let go — release with the needle on the gold line to land on your aim. Let go far too low and the card won’t turn over completely, which means it does nothing.',
+        'Read the table — move over it to see what a card resting there would cover: anything it would affect lights up red, your own permanents amber, and what it can’t affect grey (Chaos Orb spares tokens; Falling Star only hits creatures).',
+        'Spin it up — press and hold, then circle the pointer. Each circle winds spin into the card, shown on the gauge beside the table; stop circling and the spin slowly bleeds away. Below the red band it can’t turn over completely, in the gold band it flies true, and above it the card wobbles, scatters and skids on after it lands.',
+        'Flick — swipe towards your target and let go while you’re still moving. The direction of the swipe is the line the card flies, its speed is how far it goes: a faster flick carries further. Nothing shows where it will land — that’s your hand’s job. Letting go with the pointer standing still keeps the card in your hand, so you can try again.',
       ] },
-      { kind: 'p', text: 'The server decides where it lands from your aim and release, so every player sees the same flight. If it turned over, it affects everything it came to rest on, yours included: Chaos Orb destroys each nontoken permanent it touches and then itself; Falling Star deals 3 damage to each creature it lands on and taps them. Your opponent watches the same flip from their side of the table.' },
-      { kind: 'tip', text: 'Aim at the seam between two cards to take both — a precise aim and a clean release can. Your first swing is the slowest, so it’s usually the one to take. Space works as the swing button too, and Esc stops a swing without throwing.' },
+      { kind: 'p', text: 'The server decides where it lands from your flick, so every player sees the same flight. If it turned over, it affects everything it came to rest on, yours included: Chaos Orb destroys each nontoken permanent it touches and then itself; Falling Star deals 3 damage to each creature it lands on and taps them. Your opponent watches the same flip from their side of the table.' },
+      { kind: 'tip', text: 'Flick at the seam between two cards to take both. Wind the spin a little past the gold before you flick — it bleeds away as you swipe. Esc or a right-click drops the wind-up without throwing.' },
     ],
     related: ['decisions', 'game-table'],
   },
@@ -1118,11 +1206,11 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     summary:
       'Auto passes for you whenever you have nothing worth doing. Stops pauses on opponent spells and abilities, on combat damage, and in a declare attackers step where nothing attacks. Full Control gives you priority at every single step.',
     body: [
-      { kind: 'p', text: 'The button cycles Auto → Stops → Full Control. Auto is right for most games; switch to Full Control when you need a specific window, such as responding in your own upkeep. Games start in Auto unless you pick another starting mode in Preferences.' },
+      { kind: 'p', text: 'The button cycles Auto → Stops → Full Control. Auto is right for most games; switch to Full Control when you need a specific window, such as responding in your own upkeep. Full Control also lets you order your own simultaneous triggers. Games start in Auto unless you pick another starting mode in Preferences.' },
       { kind: 'p', text: 'Auto never passes when you have a decision that matters — it is a convenience, not a rules shortcut.' },
       { kind: 'p', text: 'In Auto and Stops your own spells and abilities pass straight to your opponent. To respond to one of your own — Overkill on the creature whose Jaws of Defeat trigger is waiting, say — switch that kind on under Hold priority over my own in Preferences, or play that turn in Full Control.' },
     ],
-    related: ['stops', 'yields', 'preferences', 'own-stack-stops'],
+    related: ['stops', 'yields', 'preferences', 'own-stack-stops', 'trigger-order'],
   },
   {
     id: 'stops',
@@ -1164,7 +1252,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         'Starting priority mode — Auto, Stops or Full Control. Every game begins in it; the mode button still switches it for the game you are in.',
         'Always stop at — your standing stops, for your turn and your opponents’. The phase-bar dots edit the same list.',
         'Hold priority over my own — triggered abilities, activated abilities, spells: get priority back while one of yours waits on the stack, whenever you can respond to it.',
-        'Auto-tap mana, Order my triggers automatically, and Follow the action for games with three or more players.',
+        'Auto-tap mana, Order my triggers automatically, Choices with only one answer (answer instantly, answer for me after a short pause, or ask me every time), and Follow the action for games with three or more players.',
       ] },
       { kind: 'h', text: 'Battlefield' },
       { kind: 'p', text: 'Identical permanents — same name, tapped state, counters, damage and so on — collapse into one stack with a count. Lands, creatures and other permanents each have their own rule:' },
@@ -1179,7 +1267,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       { kind: 'p', text: 'Signed in, Message alerts away from home decides whether new messages put an unread count on the chat button and show a preview while you’re in a game, a draft or on another page. The home screen always shows them.' },
       { kind: 'tip', text: 'Changes save as you make them. As a guest they live in this browser; signed in, they follow you to every device.' },
     ],
-    related: ['stops', 'priority-modes', 'own-stack-stops', 'auto-tap', 'trigger-order', 'card-preview', 'messages', 'guest-vs-account'],
+    related: ['stops', 'priority-modes', 'own-stack-stops', 'auto-tap', 'trigger-order', 'forced-choices', 'card-preview', 'messages', 'guest-vs-account'],
   },
   {
     id: 'phase-bar',
@@ -1219,12 +1307,14 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       'When a spell or ability needs an answer — a mode, a value for X, a target, how to split damage, the order of cards — a prompt says what is being asked and by which card. Most prompts have View Battlefield to look at the table before answering.',
     body: [
       { kind: 'ul', items: [
-        'Yes / No — “may” abilities. With several identical triggers, “Yes to all” answers them together.',
+        'Yes / No — choose whether to perform a “may” ability as it resolves. If it targets something, choose the target first; the ability then waits on the stack for responses before asking Yes / No.',
         'Choose mode — pick the required number of modes; escalate and similar costs are shown as you go.',
         'Choose X — a slider with − and + buttons, capped at the most you can pay.',
         'Targets — click a highlighted card or a player’s life total, then Confirm. Optional targets can be declined.',
+        'Any number on the battlefield — click the permanents and life totals you want, then Confirm. All picks every option at once and Clear starts over. Proliferate also offers ★ Recommended: your permanents and you unless a counter hurts them (−1/−1, stun, poison), plus opponents’ permanents and opponents carrying only counters that hurt them. It is a starting point; click to adjust before confirming.',
         'Remove counters as a cost — use the − and + controls on highlighted battlefield permanents. You may remove several counters from one permanent or spread the payment across them; Confirm becomes available when the required total is allocated. Open Adjust allocations in the prompt for a named list when the board is crowded or an attachment is hard to reach.',
         'Divide damage — assign amounts to each target; “Lethal” marks the point where a creature dies.',
+        'Damage replacements — when several effects change incoming damage, choose which applies next. The prompt returns if another choice remains. For a shared prevention shield, choose how much to prevent from each source. Damage is dealt after those choices finish.',
         'Combat damage — with trample, deathtouch or several blockers, you assign attacking damage yourself, split among the blockers however you like (only trample needs every blocker at lethal before damage reaches the player).',
         'Order — cards going to the top of a library get arrow buttons; your own triggers can be dragged into order (see Ordering your triggers).',
         'Search — pick cards from a library, or Fail to Find.',
@@ -1234,31 +1324,53 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       { kind: 'p', text: 'A strip above each prompt names the cards involved — the source, its target, what triggered it — so a long chain of triggers stays readable.' },
       { kind: 'p', text: 'Secret choices stay private until everyone has confirmed. Pick a number in the prompt, or click a highlighted creature to vote for it; Select None submits an optional ballot without a vote. The game log reveals everyone’s choices together after the last answer.' },
     ],
-    related: ['targeting-and-combat', 'yields', 'mana-payment', 'dexterity-flips', 'trigger-order'],
+    related: ['targeting-and-combat', 'yields', 'mana-payment', 'dexterity-flips', 'trigger-order', 'forced-choices'],
+  },
+  {
+    id: 'forced-choices',
+    section: 'playing',
+    title: 'Choices with only one answer',
+    summary:
+      'Some questions have only one legal answer — “you may reveal a Dragon card from your hand” with none in hand, a search with nothing left to find, a mandatory trigger whose only legal target is the creature itself. Unless you set Choices with only one answer to Ask me every time, the game answers those for you — at once, or after a short pause — and a short notice at the top of the board says what it answered.',
+    body: [
+      { kind: 'p', text: 'You are still asked every one of these questions, and your opponent sees you deciding for a moment. That is on purpose: if the game skipped the question whenever you had no answer but “no”, the missing pause would tell your opponent what is in your hand or library. The pause changes every time — usually a second or so, now and then two — so it looks like a person clicking rather than a timer.' },
+      { kind: 'p', text: 'Only questions the server marks as having a single legal answer are answered for you. Anything with a real choice — including which order cards go in — still waits for you, and so does a question that is how you look at cards (“look at the top three…”), so you always get to see them.' },
+      { kind: 'p', text: 'Preferences → Gameplay → Choices with only one answer has three settings. Answer instantly is the fastest: no pause at all, but an observant opponent can tell from the speed that you had no choice — and so, sometimes, what you don’t have in hand. Answer for me (the default) waits the short, human-like pause first, so a forced answer is hard to tell from a quick real one, though an opponent who watches closely may still read something into the timing. Ask me every time shows each of these questions like any other, so you click through them yourself and your timing gives nothing away.' },
+      { kind: 'p', text: 'When everyone at the table can already see that a question has only one answer, there is no pause in either answering setting: a Flametongue Kavu entering with no other creature in play has to target itself, and waiting would hide nothing. The game only skips the pause when every possible answer was in plain view — creatures on the battlefield, cards in graveyards, spells on the stack. If the answer could depend on a card nobody else can see — a hand, a library, a face-down creature — the pause stays.' },
+      { kind: 'p', text: 'With Ask me every time, a “you may…” you can’t actually do (“you may discard a creature card” with no creature card in hand) shows its Yes button greyed out, so No is the only answer.' },
+      { kind: 'tip', text: 'Click the notice to dismiss it early.' },
+    ],
+    related: ['decisions', 'preferences', 'trigger-order'],
   },
   {
     id: 'trigger-order',
     section: 'playing',
     title: 'Ordering your triggers',
     summary:
-      'When several of your abilities trigger at once, they go on the stack in the order they triggered. Turn off Order my triggers automatically (Preferences → Gameplay) to choose the order yourself — scry before you draw, make the token before the counters go out.',
+      'When several of your abilities trigger at once, they go on the stack in the order they triggered. Switch to Full Control for the turn that needs it, or turn off Order my triggers automatically (Preferences → Gameplay), to choose the order yourself — scry before you draw, make the token before the counters go out.',
     body: [
-      { kind: 'p', text: 'With it off, the game stops before your triggers go on the stack and lists them top to bottom in the order they will resolve: the top one resolves first. Drag a row, use its arrows, or press Alt+↑/↓ on it, then Put on the stack. Reset order puts them back in the suggested order.' },
+      { kind: 'p', text: 'Full Control always lets you order them, whatever the preference says — the priority-mode button is the quickest way in, and switching back to Auto or Stops returns to your preference. The first time the game orders your triggers for you where the order could matter, a short notice says so; Always let me order turns the preference off.' },
+      { kind: 'p', text: 'When you order them, the game stops before your triggers go on the stack and lists them top to bottom in the order they will resolve: the top one resolves first. Drag a row, use its arrows, or press Alt+↑/↓ on it, then Put on the stack. Reset order puts them back in the suggested order.' },
       { kind: 'p', text: 'An ability that checks this turn as it resolves — Infusion’s “if you gained life this turn” — is marked checks as it resolves and starts at the bottom, so it sees the life your other triggers gain first. Automatic ordering does the same.' },
       { kind: 'p', text: 'You are only asked when the order can matter. A single trigger, or several copies of the same ability that choose no targets (two Soul Wardens seeing one creature enter), goes straight on the stack. Abilities that need targets pick them after you set the order, one by one.' },
       { kind: 'p', text: 'If your opponent’s abilities triggered at the same moment, the player whose turn it is orders theirs first, so the other player’s end up on top and resolve first.' },
       { kind: 'tip', text: 'Tick Don’t ask again in the prompt to go back to automatic ordering; it takes effect straight away.' },
     ],
-    related: ['preferences', 'decisions', 'yields'],
+    related: ['preferences', 'decisions', 'yields', 'priority-modes'],
   },
   {
     id: 'yields',
     section: 'playing',
     title: 'Yields — stop being asked',
     summary:
-      'Right-click (or long-press) an ability on the stack to open its yield menu: yield until end of turn, always yield, always answer Yes, always answer No, or revoke.',
+      'Tell the game to stop asking about a repeating ability: auto-pass it on the stack, or always answer its “you may” Yes or No. Every copy of the ability follows the same yield.',
     body: [
-      { kind: 'p', text: 'This is the fix for a repeating optional trigger asking you the same question every turn. Active yields are listed in a panel while they are in force, so you can revoke one at any time.' },
+      { kind: 'p', text: 'This is the fix for a repeating trigger asking you the same question every turn. There are three ways in:' },
+      { kind: 'p', text: '• When an ability asks “you may…”, tick Remember my answer under the Yes/No buttons. The answer you give becomes automatic for the rest of the game.' },
+      { kind: 'p', text: '• When an ability is on top of the stack, press the Yield… button under it. Choose Auto-pass this turn, Auto-pass all game, Always answer Yes or Always answer No.' },
+      { kind: 'p', text: '• Right-click any ability on the stack for the same menu.' },
+      { kind: 'p', text: 'An ability you are yielding to shows a small marker on the stack (Auto-pass, Always yes or Always no). All of them are listed in the Active yields panel in the bottom-right corner while they are in force. Click a marker to change it, or press × in the panel to be asked again.' },
+      { kind: 'tip', text: 'Yields never choose targets, order triggers, pick modes or pay costs for you. They only pass priority or answer a plain “you may”.' },
     ],
     shortcuts: ['stack-yield-menu'],
     related: ['priority-modes', 'trigger-order'],
@@ -1284,7 +1396,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       'Drag a card from your hand onto the battlefield to cast it, drag an attacker onto a defender to attack, and drag a blocker onto an attacker to block. Clicking works everywhere dragging does.',
     body: [
       { kind: 'p', text: 'Some abilities require one card from each eligible graveyard. The target prompt shows the total required; after you select a card, the other cards from that graveyard cannot be selected. Deselect it to choose a different card there, then confirm once every required graveyard is covered.' },
-      { kind: 'p', text: 'Clicking a card with more than one way to play opens its action menu — Cast, Play, Turn Face-Up, an activated ability, or View card. A permanent’s abilities are in the same menu.' },
+      { kind: 'p', text: 'Clicking a card with more than one way to play opens its action menu — Cast, Play, Turn Face-Up, an activated ability, or View card. A permanent’s abilities are in the same menu. A long menu — a planeswalker such as Nicol Bolas, Dragon-God that borrows other planeswalkers’ loyalty abilities — scrolls, with a fade at the edge that hides more choices; Cancel always stays in view.' },
       { kind: 'p', text: 'A split card lists each half in its action menu. When a card with Fuse is in your hand, the fused option casts both halves together. Choose and confirm the targets for the left half, then for the right half; the stack shows one spell and players can respond normally.' },
       { kind: 'p', text: 'Repeatable additional costs such as Squad appear as separate cast options: Squad ×1, Squad ×2, and so on. Choose the number of payments in the card’s action menu, then select any cards the cost asks you to discard or exile.' },
       { kind: 'p', text: 'For an activated ability that says “Choose one”, choose the mode and any targets before its costs are paid. Cancel either prompt to keep your mana and permanent untapped. The stack shows the chosen mode so other players can respond. A mode that can be chosen only once stays used even if the ability is countered.' },
@@ -1297,7 +1409,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       { kind: 'p', text: 'A blocked attacker stays blocked even after its blockers die or leave combat. When that happens its red attack chevron turns into a blue Blocked tag, and any attack arrow it has fades to a dashed line, so it does not look like it is still getting through.' },
       { kind: 'p', text: 'Dragging one attacker onto another bands them (CR 702.22) — the drop lights up only when the band would be legal: creatures with banding plus at most one without, or creatures that all share the quality one of them "bands with other" (any number of legendary creatures, when one of them bands with other legendary creatures). On a phone, swipe left and right on the opponent strip to move between boards.' },
     ],
-    related: ['pass-button', 'decisions', 'multiplayer-camera', 'zone-browsers'],
+    related: ['pass-button', 'decisions', 'multiplayer-camera', 'zone-browsers', 'table-two-headed-giant'],
   },
   {
     id: 'zone-browsers',
@@ -1308,6 +1420,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     body: [
       { kind: 'p', text: 'When a spell or ability on the stack targets a card in a graveyard, that card is pulled out beside its pile, marked Targeted with its name and what is targeting it, and the targeting arrow points at it. The stack’s text box names the target too. Hover the card to read it, or click it to open the graveyard, where the targeted card is highlighted.' },
       { kind: 'p', text: 'When a graveyard card can escape, click it in the zone browser and choose its Escape action. The action shows the mana cost and prompts you for any cards to exile. If more than one escape cost is available, choose the one you want. Temporary escape grants expire at the end of the turn.' },
+      { kind: 'p', text: 'A graveyard card you can beam up appears beside your hand, outlined in purple and showing its beam me up cost. Click it and choose its Beam me up action, then click the creature to return — only creatures that can pay are highlighted, so one under Marooned is not — and confirm. When a card like Scotty, Miracle Worker also grants beam me up, each source is its own action, named after the card granting it.' },
       { kind: 'p', text: 'Junk tokens have an action in their card menu during your main phase while the stack is empty. Activate it to sacrifice the token and exile your top card; the exiled card appears translucent beside your hand. Click it to play it before the turn ends, paying its normal cost and following normal timing and land-play limits.' },
       { kind: 'p', text: 'The deck browser has two views: Deck list (everything still in your library) and Library order, which shows cards whose position you know — after a scry, for instance — with the top card marked “Next draw”. When you own cards outside the game, a third view, Outside the game, shows them.' },
     ],
@@ -1325,9 +1438,9 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       { kind: 'p', text: 'Wish is different: it lets you play one card from outside the game this turn, straight from your sideboard. While you may, your Deck pile glows and is marked Play; open it, and the cards you can play now are highlighted on the Outside the game tab. Click one to cast it (or play it, if it’s a land) — you pay for it and follow the usual timing, and a land uses your land drop.' },
       { kind: 'h', text: 'Where your sideboard comes from' },
       { kind: 'table', head: ['Mode', 'Outside the game'], rows: [
-        ['Sealed, Draft, cube Sealed', 'Every card in your pool you didn’t put in your deck.'],
+        ['Sealed, Draft, cube Sealed', 'Every card in your pool you didn’t put in your deck, plus ten of each basic land — Limited rules let you add basics to your sideboard, so a wish or The Holodeck can fetch one. Snow-covered basics and Wastes are there only if you opened them.'],
         ['Your own or a premade deck', 'The sideboard you saved with it — up to 15 cards. A deck with wishes or Learn and an empty sideboard is warned about in the deckbuilder.'],
-        ['Random deck', 'The rest of the boosters it was built from; under a constructed format, a fifteen-card wishboard from the legal pool.'],
+        ['Random deck', 'The rest of the boosters it was built from, plus ten of each basic land; under a constructed format, a fifteen-card wishboard from the legal pool.'],
         ['Momir Basic', 'One wishboard rolled for the game and shared by both players: fifteen cards from every set, with Lessons for the creatures that learn.'],
         ['Cube Pool Play', 'Fifteen random cube cards your deck doesn’t play.'],
       ] },
@@ -1455,13 +1568,13 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     section: 'decks',
     title: 'Formats and deck legality',
     summary:
-      'The deckbuilder’s format dropdown — Standard, Pioneer, Modern, Pauper, Legacy, Vintage, Commander, Brawl, Standard Brawl or Premodern — filters the catalogue to legal cards and checks the deck as you build: “Legal ✓” or “N issues”.',
+      'The deckbuilder’s format dropdown — Standard, Pioneer, Modern, Pauper, Legacy, Vintage, Commander, Brawl, Standard Brawl, Premodern, Highlander or Canadian Highlander — filters the catalogue to legal cards and checks the deck as you build: “Legal ✓” or “N issues”.',
     body: [
       { kind: 'p', text: 'Hover the issue count for the list. Individual rows are flagged too: not legal in the format, too many copies, singleton violations, cards outside the commander’s colour identity.' },
       { kind: 'p', text: 'A lobby can restrict everyone to a format, in which case the deck is checked again when you submit it. “No format” lets in anything the engine implements.' },
       { kind: 'p', text: 'A card that imported but is not implemented yet is kept as a placeholder and marked; it cannot be played until it is.' },
     ],
-    related: ['deckbuilder', 'cards-bring-a-deck', 'set-completion'],
+    related: ['deckbuilder', 'cards-bring-a-deck', 'set-completion', 'highlander'],
   },
   {
     id: 'commander-decks',
@@ -1589,7 +1702,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     section: 'cards',
     title: 'Which cards are implemented',
     summary:
-      'Set Completion, on the home screen under Build & Browse, lists every set and how much of it the engine can actually play. Useful before committing to a deck or picking a set to draft.',
+      'Set Completion, under Sets in the home screen’s top bar, lists every set and how much of it the engine can actually play. Useful before committing to a deck or picking a set to draft.',
     body: [
       { kind: 'p', text: 'The deckbuilder only ever offers implemented cards, so a deck you build there always works. This page is the other direction: it tells you what is missing from a set you had in mind.' },
       { kind: 'p', text: 'Open a set to get its full card list, each card marked implemented or missing. A handful come back “not planned” — cards needing something the engine will never carry, like ante or physical dexterity — and those are left out of every total, so the percentage measures what there is any intention of building.' },
@@ -1599,12 +1712,13 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         'The list opens on Main sets. Switch with the type chips — All types, Commander, Supplemental (Masters, Modern Horizons, Jumpstart, starter sets), Decks & boxes (Duel Decks, Planechase, From the Vault) or Un-sets. Each chip counts the sets it would show with your other filters applied.',
         'Sets outside the main line carry a coloured badge naming their exact type and a matching stripe down the left edge, so a Commander product stands out in the grid.',
         'Once you narrow the list, a line above the grid totals the sets in view. The filters, sort and the open set live in the address bar, so a filtered view can be bookmarked or shared.',
-        'Sort by Newest, Most complete, Most cards done, Most Assay-ready or A–Z.',
-        'Inside a set, filter its cards by Implemented, Missing, ⚡ Assay-ready or Not planned.',
+        'Sort by Newest, Most complete, Most cards done, Most Assay-ready, Least AI-read or A–Z.',
+        'Inside a set, filter its cards by Implemented, Missing, ⚡ Assay-ready, AI gaps or Not planned.',
+        'Set tiles with implemented cards carry an AI-reading score such as “✓ AI 82%”: the share of them the built-in AI fully understands. It fills in a moment after the page loads.',
       ] },
       { kind: 'p', text: 'The second tab, Assay Explorer, is a different question about the same corpus: not which cards are written, but how much of Magic’s printed text the engine can read at all.' },
     ],
-    related: ['card-browser', 'deckbuilder', 'assay-ready', 'assay-explorer'],
+    related: ['set-guide', 'card-browser', 'deckbuilder', 'assay-ready', 'assay-explorer', 'ai-reading'],
   },
   {
     id: 'assay-ready',
@@ -1704,6 +1818,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         'Custom cards: paste a Scryfall card object and play a card that does not exist.',
       ] },
       { kind: 'p', text: 'A replay frame can be opened here directly with Share as scenario, which is the quickest way to reproduce something odd that happened in a real game.' },
+      { kind: 'p', text: 'Scenario games are practice: they are not saved as replays and do not count toward your match history or stats.' },
     ],
     shortcuts: ['scenario-undo'],
     related: ['lab-tools', 'replays', 'assay-custom-cards'],
@@ -1794,16 +1909,60 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
       { kind: 'p', text: 'What each of its views is for:' },
       { kind: 'ul', items: [
         'Overview — the fineness numbers: how much of the corpus round-trips, how much is declined, and how many cards are read whole rather than only in part.',
-        'Cards — the sweep, browsable by set or across the whole corpus, each card showing the lines that read and the ones that did not.',
+        'Cards — the sweep, browsable by set or across the whole corpus, each card showing the lines that read and the ones that did not. An AI column marks which implemented cards the built-in AI reads fully, and the AI gaps filter lists the ones it does not.',
         'Declines — the ranked gap report: which missing piece of grammar blocks the most real cards. This is the backlog putting itself in order.',
         'Grammar — every rule reachable from an ability line, with how many cards actually use each one.',
         'Differential — Assay’s reading of an implemented card set against the hand-written definition, and every place the two disagree.',
         'Parse — paste any Oracle text and read what it becomes, with a caret on the word a decline stopped at.',
       ] },
       { kind: 'p', text: 'The explorer only ever reads public card text — no game, no account, no deck — so it is mounted on every server rather than being a dev-build tool. The first time anyone opens it the server fetches Scryfall’s bulk Oracle data and sweeps it, so the numbers arrive shortly after the page does; the parser and the grammar tree work straight away either way.' },
+      { kind: 'p', text: 'Opening a card shows the printed text, Assay’s reading of each line, and below them an AI reading panel: what the built-in AI understands of each of the card’s abilities.' },
       { kind: 'p', text: 'Differential is the exception. It compares against the project’s own test fixtures, which a deployed server does not ship, so here it reports that it has nothing to compare against. It fills in when the explorer is run from a checkout of the repository.' },
     ],
-    related: ['assay', 'assay-ready', 'set-completion'],
+    related: ['assay', 'assay-ready', 'set-completion', 'ai-reading'],
+  },
+  {
+    id: 'ai-reading',
+    section: 'cards',
+    title: 'What the AI understands of a card',
+    summary:
+      'The built-in AI opponent reads each card through a handful of readers before it plays it. The AI reading panel on an Assay Explorer card page shows, ability by ability, which parts it understands and which it falls back to a generic default on.',
+    body: [
+      { kind: 'p', text: 'The readers answer questions like: does this target help or hurt the creature it lands on, so should it go on mine or on yours? What is this card for — removal, a pump, card draw? Can combat see this pump coming? Is there a good moment to spend this until-end-of-turn effect?' },
+      { kind: 'ul', items: [
+        'Each of the card’s spells and abilities gets a row, marked ✓ read when every reader understood it and ✕ gaps when one did not, with the reason in plain words — “target 1: can’t tell if this helps or hurts”.',
+        'The chip at the top sums it up: “AI reads 3/4 abilities”.',
+        'A missing card that Assay reads whole gets a preview instead: what the AI would understand if the card were implemented the way Assay reads it.',
+        'Static abilities are listed but not checked; the AI sees their effect on the board.',
+      ] },
+      { kind: 'p', text: 'A gap does not stop the card from working. The AI still plays it, using a generic default for that part, which is where it is most likely to misjudge the card.' },
+      { kind: 'p', text: 'Every set on Set Completion gets an AI-reading score: the share of its implemented cards the AI reads with no gaps at all. The tag is banded so the sets needing attention stand out — ✓ 75% or more, ◐ 55–74%, ! under 55% — and sorting by “Least AI-read” puts the weakest first.' },
+      { kind: 'ul', items: [
+        'Click a set’s score, or its AI gaps tab, to see the cards the AI does not fully read, grouped by what it misses — “doesn’t know what the effect is for: AddCountersEffect”. One fix to the AI covers every card in a group, so the biggest groups are the work worth doing first.',
+        'The panel also gives a second, gentler number: how many of the set’s individual abilities are read.',
+        'Pick a group to narrow the card grid to it, or click a card name to open it in the Assay Explorer at its AI reading.',
+        'Each card in the grid wears its own reading: the badge counts the abilities the AI reads (◐ 1/3, or ! when it reads none), and the chips along the bottom name what it misses — Target, Purpose, Combat, Timing, Modes. Hover a card for each gap in plain words; click it to open its AI reading in the Assay Explorer.',
+      ] },
+    ],
+    related: ['assay-explorer', 'set-completion', 'ai-rating'],
+  },
+  {
+    id: 'ai-rating',
+    section: 'cards',
+    title: 'How the AI rates a card',
+    summary:
+      'The “How the AI rates it” panel on an Assay Explorer card page shows the numbers the built-in AI puts on a card: how highly it picks it in a draft or rates it for a deck, and what it counts the card for once it is on the battlefield.',
+    body: [
+      { kind: 'p', text: 'Both numbers are drawn, not just printed. Each sits on a scale, and below it a bar per part of the card — its stats, each keyword, each ability — shows what that part adds, so you can see why a card scores what it does.' },
+      { kind: 'ul', items: [
+        'Draft & deckbuilding is on a 0–5 pick scale: under 1 unplayable, then marginal, solid, premium, and bomb from 3.9. It comes from 17Lands win rates where there are enough games, else a pick table for the set, else an estimate from what the card does. When a table rates the card, the dotted marker shows what the estimate would have said.',
+        'By set lists where the draft AI starts for each set the card is in. A hatched bar means that set’s table does not rate it, and its tag says where the number comes from instead. The AI then adjusts for colours, archetype and removal as the draft goes.',
+        'In play is the card’s worth to the AI’s board evaluation, with ticks for a land, a vanilla 2/2, an Oblivion Ring and a 2/2 flier for scale. Instants and sorceries have none: the AI judges them by what they do when cast.',
+        'What the AI thinks it is for lists what it recognises the card does — removal, card draw, a combat trick — which decides when it casts it and what it aims it at.',
+      ] },
+      { kind: 'p', text: 'When nothing rates a card — no 17Lands data, no pick table in any set — the panel says so: “No draft rating”, and the number is the AI’s own estimate. On Set Completion, a set’s AI gaps tab shows the same split for the whole set: cards its pick table rates, cards borrowed from another set’s table, and cards with no draft rating at all, in amber.' },
+    ],
+    related: ['ai-reading', 'assay-explorer'],
   },
   {
     id: 'assay-custom-cards',

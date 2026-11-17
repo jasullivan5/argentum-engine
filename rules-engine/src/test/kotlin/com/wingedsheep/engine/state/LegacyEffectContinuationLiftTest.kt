@@ -112,7 +112,7 @@ class LegacyEffectContinuationLiftTest : FunSpec({
         // `EffectContinuation` goes through LegacyGameStateSerializer and then this lift.
         val text = checkNotNull(javaClass.getResource("/legacy-suspensions/nested-may/state.json")).readText()
         text.contains("com.wingedsheep.engine.core.EffectContinuation") shouldBe true
-        val decoded = Json(json) { encodeDefaults = true }.decodeFromString<GameState>(text)
+        val decoded = json.decodeFromString<GameState>(text)
         val program = decoded.continuationStack.filterIsInstance<EffectProgram>().single()
         program.root shouldBe CompositeEffect(listOf(Effects.GainLife(3)))
         program.origin shouldBe null

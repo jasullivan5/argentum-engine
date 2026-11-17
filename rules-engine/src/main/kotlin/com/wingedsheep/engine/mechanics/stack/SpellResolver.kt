@@ -28,6 +28,7 @@ import com.wingedsheep.sdk.scripting.targets.*
  * by the type line of the face it was cast as.
  */
 internal class SpellResolver(
+    private val zones: com.wingedsheep.engine.handlers.effects.ZoneTransitionService,
     private val cardRegistry: CardRegistry,
     private val predicateEvaluator: PredicateEvaluator,
     private val targetValidator: ResolutionTargetValidator,
@@ -47,7 +48,7 @@ internal class SpellResolver(
         val targetsComponent = container.get<TargetsComponent>()
 
         // Validate targets if spell has any (including protection check - Rule 702.16)
-        val sourceColors = cardComponent?.colors ?: emptySet()
+        val sourceColors = if (cardComponent == null) emptySet() else state.projectedState.colorSetOf(spellId)
         val sourceSubtypes = cardComponent?.typeLine?.subtypes?.map { it.value }?.toSet() ?: emptySet()
         // `resolvedTargets` is the compacted (drop-illegal) list used as `context.targets`
         // — same shape every executor has always seen. `alignedResolvedTargets` is a parallel
@@ -194,13 +195,13 @@ internal class SpellResolver(
 
         val ownerId = cardComponent?.ownerId ?: spellComponent.casterId
         val cardDef = cardComponent?.let { cardRegistry.getCard(it.name) }
-        // Flashback (printed or granted — Archmage's Newt) or Harmonize (printed or granted —
-        // Songcrafter Mage): a graveyard cast exiles on resolution instead of returning to the
-        // graveyard. A spell cast *with* flashback is exiled even if a conditional flashback's
-        // condition has since lapsed (Viral Spawning), so the recorded alternative cost counts too.
-        val flashbackExile = spellComponent.castFromZone == Zone.GRAVEYARD &&
-            (spellComponent.alternativeCost == AlternativeCostType.FLASHBACK ||
-                FlashbackGrants.effectiveFlashback(
+        // A graveyard cast paid with flashback or beam me up (the recorded cost — see
+        // StackExitRider), or one with flashback (printed or granted — Archmage's Newt) or Harmonize
+        // (printed or granted — Songcrafter Mage), exiles on resolution instead of returning to the
+        // graveyard.
+        val flashbackExile = StackExitRider.paidGraveyardExileCost(spellComponent) ||
+            spellComponent.castFromZone == Zone.GRAVEYARD &&
+            (FlashbackGrants.effectiveFlashback(
                 state, spellId, cardDef, spellComponent.casterId, cardRegistry, predicateEvaluator
             ) != null ||
                 HarmonizeGrants.effectiveHarmonize(state, spellId, cardDef) != null)
@@ -237,13 +238,24 @@ internal class SpellResolver(
         }
         val destinationObject = newState.objectRef(spellId)
         // A card-intrinsic redirect into the library shuffles the card in (Progenitus).
-        if (destZone == Zone.LIBRARY && fizzleRedirect.shuffleIntoLibrary) {
+        val shuffledIn = destZone == Zone.LIBRARY && fizzleRedirect.shuffleIntoLibrary
+        if (shuffledIn) {
             newState = SpellZoneMoves.shuffleOwnerLibrary(newState, ownerId)
         }
         if (destZone == Zone.EXILE && fizzleRedirect.linkSourceId != null) {
             newState = com.wingedsheep.engine.handlers.effects.ZoneMovementUtils
                 .linkExiledToSource(newState, spellId, fizzleRedirect.linkSourceId)
         }
+        // A RedirectZoneChangeWith rider (Dauthi Voidwalker's void counter) is part of the
+        // replacement, so a fizzled spell gets it like any other card headed for that graveyard.
+        val (afterRider, riderEvents) = fizzleRedirect.additionalEffect?.let { extra ->
+            com.wingedsheep.engine.handlers.effects.ZoneMovementUtils.applyReplacementAdditionalEffect(
+                zones, newState, extra, fizzleRedirect.effectControllerId, spellId,
+                sourceId = fizzleRedirect.effectSourceId,
+                riderTiming = fizzleRedirect.riderTiming
+            )
+        } ?: (newState to emptyList())
+        newState = afterRider
 
         return ExecutionResult.success(
             newState,
@@ -256,7 +268,7 @@ internal class SpellResolver(
                     destZone,
                     ownerId, oldObject = state.objectRef(spellId), newObject = destinationObject
                 )
-            )
+            ) + listOfNotNull(LibraryShuffledEvent(ownerId).takeIf { shuffledIn }) + riderEvents
         )
     }
 }

@@ -84,7 +84,7 @@ object KeywordActionReplacements {
         val prefixes = mutableListOf<Effect>()
         for (permanentId in state.getBattlefield()) {
             val container = state.getEntity(permanentId) ?: continue
-            val replacementComponent = container.get<ReplacementEffectSourceComponent>() ?: continue
+            val replacementComponent = state.activeReplacementSource(permanentId) ?: continue
             val sourceControllerId = container.get<ControllerComponent>()?.playerId ?: continue
             for (replacement in replacementComponent.replacementEffects) {
                 if (replacement !is ModifyKeywordAction) continue
@@ -123,7 +123,7 @@ object KeywordActionReplacements {
         var times = 1
         for (permanentId in state.getBattlefield()) {
             val container = state.getEntity(permanentId) ?: continue
-            val replacementComponent = container.get<ReplacementEffectSourceComponent>() ?: continue
+            val replacementComponent = state.activeReplacementSource(permanentId) ?: continue
             val sourceControllerId = state.projectedState.getController(permanentId)
                 ?: container.get<ControllerComponent>()?.playerId
                 ?: continue
@@ -173,7 +173,7 @@ object KeywordActionReplacements {
         }
         for (permanentId in state.getBattlefield()) {
             val container = state.getEntity(permanentId) ?: continue
-            val replacementComponent = container.get<ReplacementEffectSourceComponent>() ?: continue
+            val replacementComponent = state.activeReplacementSource(permanentId) ?: continue
             val controllerId = state.projectedState.getController(permanentId)
                 ?: container.get<ControllerComponent>()?.playerId
                 ?: continue

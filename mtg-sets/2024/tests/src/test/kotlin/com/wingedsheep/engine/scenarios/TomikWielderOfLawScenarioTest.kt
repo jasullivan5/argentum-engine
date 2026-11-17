@@ -14,8 +14,8 @@ import io.kotest.assertions.withClue
  * Three things are worth pinning, and each is a place the engine previously said no:
  *
  *  - **Attackers pointed at your planeswalkers count.** `CreaturesAttackYouEvent` implements
- *    CR 509.1b the narrow way by default (Orim's Prayer), so Tomik has to opt in via
- *    `includePlaneswalkersYouControl`. The planeswalker-only attack is the test that would fail
+ *    CR 508.3b the narrow way by default (Orim's Prayer), so Tomik has to opt in via
+ *    `defenders = YOU_AND_PLANESWALKERS_YOU_CONTROL`. The planeswalker-only attack is the test that would fail
  *    without it.
  *  - **"That opponent" resolves.** `AttackersDeclaredEvent` published an empty `TriggerContext`
  *    before this card, so `Player.TriggeringPlayer` evaluated to null and the life loss went
@@ -51,7 +51,7 @@ class TomikWielderOfLawScenarioTest : ScenarioTestBase() {
             game.handSize(1) shouldBe handBefore + 1
         }
 
-        test("attackers split between you and a planeswalker you control still count — CR 509.1b widened") {
+        test("attackers split between you and a planeswalker you control still count — CR 508.3b widened") {
             val game = scenario()
                 .withPlayers("Tomik", "Attacker")
                 .withCardOnBattlefield(1, "Tomik, Wielder of Law", summoningSickness = false)

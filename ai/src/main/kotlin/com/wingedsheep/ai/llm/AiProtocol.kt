@@ -25,7 +25,9 @@ data class CardSummary(
     val power: Int? = null,
     val toughness: Int? = null,
     val oracleText: String? = null,
-    val rulings: List<CardRuling> = emptyList()
+    val rulings: List<CardRuling> = emptyList(),
+    /** Set the card was opened from, when known (draft packs) — picks which set's ratings apply. */
+    val setCode: String? = null,
 )
 
 data class CardRuling(val date: String, val text: String)

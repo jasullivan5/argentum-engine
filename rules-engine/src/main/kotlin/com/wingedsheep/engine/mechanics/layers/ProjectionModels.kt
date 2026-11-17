@@ -23,19 +23,24 @@ data class ContinuousEffectSourceComponent(
 ) : Component
 
 /**
- * Card-intrinsic: the continuous effects a card's static abilities generate while it sits in a
- * zone *other than the battlefield* — [com.wingedsheep.sdk.scripting.ZoneScopedStaticAbility]
- * (CR 113.6b), e.g. Anger's "As long as Anger is in your graveyard and you control a Mountain,
- * creatures you control have haste".
+ * Card-intrinsic: what a card's static abilities do while it sits in a zone *other than the
+ * battlefield* — [com.wingedsheep.sdk.scripting.ZoneScopedStaticAbility] (CR 113.6b), e.g. Anger's
+ * "As long as Anger is in your graveyard and you control a Mountain, creatures you control have
+ * haste", or The Ur-Dragon's eminence "other Dragon spells you cast cost {1} less" from the command
+ * zone.
  *
  * Stamped once at entity creation by [com.wingedsheep.engine.core.CardEntityFactory] (like
  * [com.wingedsheep.engine.state.components.identity.MadnessComponent]) so it rides the card through
- * every zone, and the registry-free [StateProjector] can read it straight off a graveyard card
- * without a definition lookup per projection. The battlefield never reads it.
+ * every zone, and its readers get it straight off the card without a definition lookup: the
+ * registry-free [StateProjector] collects [effectsByZone] (layer effects), and
+ * [com.wingedsheep.engine.mechanics.mana.CostCalculator] collects [costModifiersByZone]. Both scan
+ * exactly [com.wingedsheep.sdk.scripting.ZoneScopedStaticAbility.SUPPORTED_ZONES], reading only the
+ * entry for the zone the card is in. The battlefield never reads it.
  */
 @Serializable
 data class ZoneStaticEffectsComponent(
-    val effectsByZone: Map<com.wingedsheep.sdk.core.Zone, List<ContinuousEffectData>>
+    val effectsByZone: Map<com.wingedsheep.sdk.core.Zone, List<ContinuousEffectData>> = emptyMap(),
+    val costModifiersByZone: Map<com.wingedsheep.sdk.core.Zone, List<com.wingedsheep.sdk.scripting.ModifySpellCost>> = emptyMap(),
 ) : Component
 
 /**
@@ -219,7 +224,7 @@ data class ContinuousEffect(
     val affectsFilter: AffectsFilter? = null,
     /**
      * When non-null, this effect applies only to affected entities whose *projected* controller
-     * is this player (a "for as long as you control it" gate, e.g. suspend haste — CR 702.62g).
+     * is this player (a "for as long as you control it" gate, e.g. suspend haste — CR 702.62a).
      * Evaluated after Layer 2 control is established, so it tracks control-changing effects.
      */
     val controllerGate: EntityId? = null,
@@ -272,7 +277,17 @@ data class ContinuousEffect(
      * Aura enchantment with enchant creature and 'Enchanted creature has flying,' and it loses all
      * other abilities". Null for printed statics, which any ability loss removes.
      */
-    val abilityGainedAt: Long? = null
+    val abilityGainedAt: Long? = null,
+    /**
+     * For an effect a permanent generates from a static ability another permanent's static grants
+     * it (a Rune's Equipment generating "Equipped creature gets +1/+1"), the granting permanent.
+     * The effect stops when the granter loses all abilities or [grantCondition] fails, because the
+     * holder then no longer has the ability (CR 604.2). The holder's own ability loss is covered by
+     * [sourceId] being the holder. Null for every other effect.
+     */
+    val grantedBy: EntityId? = null,
+    /** The granting static's own condition ("as long as enchanted permanent is an Equipment"), read with [grantedBy] as source. */
+    val grantCondition: Condition? = null
 ) {
     val layer: Layer get() = modification.layer
     val sublayer: Sublayer? get() = modification.sublayer
@@ -380,6 +395,15 @@ sealed interface Modification {
     }
 
     /**
+     * Remove one subtype, leaving every other type and subtype alone — "it isn't an Equipment"
+     * (Dancing Sword). The removal counterpart of [AddSubtype].
+     */
+    @Serializable
+    data class RemoveSubtype(val subtype: String) : Modification {
+        override val layer get() = Layer.TYPE
+    }
+
+    /**
      * Add a subtype (also adds to types set).
      * Used for effects like "is a Wall in addition to its other creature types."
      */
@@ -457,10 +481,11 @@ sealed interface Modification {
     }
 
     /**
-     * Replace all basic land subtypes with the given set (Rule 305.7).
+     * Replace all land subtypes with the given set (Rule 305.7).
      * Used by "is an Island" effects that change a land's basic land types.
-     * Removes existing basic land subtypes (Plains, Island, Swamp, Mountain, Forest)
-     * and replaces them with the specified types.
+     * Removes every existing land type (basic ones and Desert, Gate, Urza's… — see
+     * `Subtype.ALL_LAND_TYPES`), keeps non-land subtypes, and adds the specified types.
+     * An empty set is "loses all land types" (Lithoform Blight).
      */
     @Serializable
     data class SetBasicLandTypes(val subtypes: Set<String>) : Modification {
@@ -502,10 +527,27 @@ sealed interface Modification {
 
     // --- Layer 5: Color-changing ---
 
+    /**
+     * Set the affected objects' colors to exactly [colors] (empty = colorless). [offBattlefield]
+     * carries a `SetColors` static's reach past the battlefield; like [CrossZoneReach] it isn't
+     * read by [EffectApplicator] — [StateProjector] resolves it into the off-battlefield color
+     * overlay that [ProjectedState.colorsOf] consults.
+     */
     @Serializable
-    data class ChangeColor(val colors: Set<String>) : Modification {
+    data class ChangeColor(val colors: Set<String>, val offBattlefield: OffBattlefieldReach? = null) : Modification {
         override val layer get() = Layer.COLOR
     }
+
+    /**
+     * Whose spells (controlled) and cards outside the battlefield (owned) an effect reaches,
+     * [players] read relative to its source's controller; [eligibility] carries the card
+     * predicates an off-battlefield object must match (its printed characteristics).
+     */
+    @Serializable
+    data class OffBattlefieldReach(
+        val players: com.wingedsheep.sdk.scripting.references.Player,
+        val eligibility: GameObjectFilter
+    )
     @Serializable
     data class AddColor(val colors: Set<String>) : Modification {
         override val layer get() = Layer.COLOR
@@ -527,9 +569,19 @@ sealed interface Modification {
     data class GrantKeyword(val keyword: String) : Modification {
         override val layer get() = Layer.ABILITY
     }
-    /** Carries point-of-use static abilities through ability gains and losses, preserving instances. */
+    /**
+     * Carries point-of-use static abilities through ability gains and losses, preserving instances.
+     *
+     * [holderEffects] is [ability] lowered, for a granted ability that is not read at a point of use
+     * but generates a continuous effect of its own (a Rune's "Equipped creature gets +1/+1"): the
+     * projector has each holder generate those effects ([StateProjector] step 1), gated on the
+     * granter through [ContinuousEffect.grantedBy]. Empty for a point-of-use ability.
+     */
     @Serializable
-    data class GrantStaticAbility(val ability: com.wingedsheep.sdk.scripting.StaticAbility) : Modification {
+    data class GrantStaticAbility(
+        val ability: com.wingedsheep.sdk.scripting.StaticAbility,
+        val holderEffects: List<ContinuousEffectData> = emptyList()
+    ) : Modification {
         override val layer get() = Layer.ABILITY
     }
     @Serializable
@@ -542,9 +594,14 @@ sealed interface Modification {
      * Used for effects like Deep Freeze ("loses all other abilities") and Turn to Frog.
      * Clears all keywords and sets the lostAllAbilities flag which suppresses
      * activated abilities, triggered abilities, and static abilities.
+     *
+     * [exceptManaAbilities] is "loses all abilities except mana abilities" (Blood Sun): every
+     * keyword, static, triggered and non-mana activated ability goes, but the object's mana
+     * abilities (CR 605.1a) stay — read through
+     * [com.wingedsheep.engine.mechanics.layers.ProjectedState.hasLostManaAbilities].
      */
     @Serializable
-    data object RemoveAllAbilities : Modification {
+    data class RemoveAllAbilities(val exceptManaAbilities: Boolean = false) : Modification {
         override val layer get() = Layer.ABILITY
     }
 
@@ -627,6 +684,20 @@ sealed interface Modification {
     }
 
     /**
+     * Grants protection from the card type the source chose as it entered, read at apply-time
+     * from the source's `CastChoicesComponent` under [slot] and realized as the same
+     * `PROTECTION_FROM_CARDTYPE_<TYPE>` keyword a fixed card-type protection projects. Nothing is
+     * granted before a type is chosen. Serra's Emissary
+     * (`GrantProtectionFromToGroup(ProtectionScope.ChosenCardType(...))`).
+     */
+    @Serializable
+    data class GrantProtectionFromChosenCardType(
+        val slot: com.wingedsheep.sdk.scripting.ChoiceSlot
+    ) : Modification {
+        override val layer get() = Layer.ABILITY
+    }
+
+    /**
      * Grants each affected entity "protection from the colors of permanents the source's
      * controller controls". Read at apply-time: collects the projected colors of every
      * battlefield permanent controlled by the source's (projected) controller, then adds
@@ -679,6 +750,11 @@ sealed interface Modification {
     data object SetAttacksWithoutTapping : Modification {
         override val layer get() = Layer.ABILITY
     }
+    /** Lethal damage to it is judged by its power, not its toughness — a rule modification (Zilortha). */
+    @Serializable
+    data object SetLethalDamageByPower : Modification {
+        override val layer get() = Layer.ABILITY
+    }
 
     /**
      * Marks a permanent as suspected — the first-class named status for the suspect mechanic.
@@ -709,6 +785,14 @@ sealed interface Modification {
     /** "Attacks a player each combat if able" — sets both `mustAttack` and `mustAttackPlayer`. */
     @Serializable
     data object SetMustAttackPlayer : Modification {
+        override val layer get() = Layer.ABILITY
+    }
+    /**
+     * "Attacks each combat if able and attacks a player other than [playerId] if able" — sets
+     * `mustAttack` and adds [playerId] to `mustAttackOtherThan` (Kardur, Doomscourge).
+     */
+    @Serializable
+    data class SetMustAttackOtherThan(val playerId: EntityId) : Modification {
         override val layer get() = Layer.ABILITY
     }
     @Serializable
@@ -859,6 +943,8 @@ internal data class MutableProjectedValues(
     var baseToughness: Int? = null,
     var name: String? = null,
     val keywords: MutableSet<String> = mutableSetOf(),
+    /** See [com.wingedsheep.engine.mechanics.layers.ProjectedValues.grantedKeywordInstances]. */
+    val grantedKeywordInstances: MutableMap<String, Int> = mutableMapOf(),
     val staticAbilities: MutableList<com.wingedsheep.sdk.scripting.StaticAbility> = mutableListOf(),
     /** Parallel to [staticAbilities]: the source of the effect that gave each entry. */
     val staticAbilitySourceIds: MutableList<EntityId> = mutableListOf(),
@@ -871,17 +957,23 @@ internal data class MutableProjectedValues(
     var isSuspected: Boolean = false,
     var cantAttack: Boolean = false,
     var attacksWithoutTapping: Boolean = false,
+    var lethalDamageByPower: Boolean = false,
     var canAttackAsThoughHasty: Boolean = false,
     var cantBlock: Boolean = false,
     var cantBeTurnedFaceUp: Boolean = false,
     var mustAttack: Boolean = false,
     var mustAttackPlayer: Boolean = false,
+    val mustAttackOtherThan: MutableList<EntityId> = mutableListOf(),
     var mustBlock: Boolean = false,
     val cantBeBlockedExceptByFilters: MutableList<GameObjectFilter> = mutableListOf(),
     val canOnlyBlockCreaturesWithFilters: MutableList<GameObjectFilter> = mutableListOf(),
     var additionalBlockCount: Int = 0,
     var manaAbilityLifeTax: Int = 0,
     var lostAllAbilities: Boolean = false,
+    /** See [com.wingedsheep.engine.mechanics.layers.ProjectedValues.keepsManaAbilities]. */
+    var keepsManaAbilities: Boolean = false,
+    /** See [com.wingedsheep.engine.mechanics.layers.ProjectedValues.lostAllAbilitiesTimestamp]. */
+    var lostAllAbilitiesTimestamp: Long? = null,
     var hasExileOnDeathAbility: Boolean = false,
     /** See [com.wingedsheep.engine.mechanics.layers.ProjectedValues.basicLandTypesSetByEffect]. */
     var basicLandTypesSetByEffect: Boolean = false,

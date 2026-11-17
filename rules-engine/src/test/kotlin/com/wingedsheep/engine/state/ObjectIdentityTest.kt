@@ -233,7 +233,7 @@ class ObjectIdentityTest : FunSpec({
         result.events.filterIsInstance<ZoneChangeEvent>().single().entityId shouldBe cardId
         val reflexive = result.events.filterIsInstance<ReflexiveAbilityTriggeredEvent>().single()
         reflexive.sourceId shouldBe replacementId
-        reflexive.carriedTriggerContext?.triggeringEntityId shouldBe cardId
+        reflexive.carriedTriggerContext.triggeringEntityId shouldBe cardId
     }
 
     test("prevented destruction allocates no destination object") {

@@ -362,6 +362,80 @@
     ]
 }
 
+// Treasure Nabber
+{
+    "name": "Treasure Nabber",
+    "manaCost": "{2}{R}",
+    "typeLine": "Creature — Goblin Rogue",
+    "oracleText": "Whenever an opponent taps an artifact for mana, gain control of that artifact until the end of your next turn.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Treasure Nabber:1",
+                "trigger": {
+                    "type": "PermanentTappedForMana",
+                    "player": "EachOpponent",
+                    "permanentFilter": {
+                        "cardPredicates": [
+                            "IsArtifact"
+                        ]
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "GainControl",
+                    "target": "TriggeringEntity",
+                    "duration": "EndOfYourNextTurn"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "27",
+        "rarity": "RARE",
+        "artist": "Alex Konstad",
+        "flavorText": "The Law of Givesies Backsies is respected by every noble pursuer of shiny things.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/c/6c6049a0-2c13-41ae-8c73-978be8b13031.jpg?1783934335",
+        "rulings": [
+            {
+                "date": "2018-07-13",
+                "text": "An artifact is \"tapped for mana\" when a player activates a mana ability of an artifact that includes {T} (the tap symbol). Notably, tapping an artifact to pay for a spell with the improvise keyword is not tapping that artifact for mana."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "If the artifact leaves the battlefield, Treasure Nabber doesn't nab it from the zone it moved to."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "The artifact remains tapped when you gain control of it."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "If an opponent taps an artifact for mana during your turn, you'll gain control of it and keep control of it until the end of your next turn."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "If you control multiple Treasure Nabbers, their effects all expire at the same time. You won't keep an artifact for any longer."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "If multiple players each control Treasure Nabbers, an artifact tapped for mana will make quite a journey. For example, if player A taps an artifact for mana during their turn, and players B and C are the next players in turn order who control Treasure Nabbers, C's ability resolves before B and C gains control of the artifact. Then B gains control of the artifact. B keeps it during their turn, and then C regains control of the artifact once B's effect expires, then A will have it back after C's expires. However, if B or C taps the artifact for mana, one of them will take it from the other. You may need to pay very careful attention to which effects are still in effect, which have expired, and who owns what."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "In a multiplayer game, if a player leaves the game, all cards that player owns leave as well. If that player controls any nabbed treasures, the effect giving that player control of those artifacts ends."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Windgrace's Judgment
 {
     "name": "Windgrace's Judgment",
@@ -402,4 +476,173 @@
         "flavorText": "Not all who remember Urza do so with fondness.",
         "imageUri": "https://cards.scryfall.io/normal/front/d/8/d8b8f56c-091f-4932-9216-af58f7ea4bd7.jpg?1783934329"
     }
+}
+
+// Yuriko, the Tiger's Shadow
+{
+    "name": "Yuriko, the Tiger's Shadow",
+    "manaCost": "{1}{U}{B}",
+    "typeLine": "Legendary Creature — Human Ninja",
+    "oracleText": "Commander ninjutsu {U}{B} ({U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand or the command zone tapped and attacking.)\nWhenever a Ninja you control deals combat damage to a player, reveal the top card of your library and put that card into your hand. Each opponent loses life equal to that card's mana value.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 3
+    },
+    "keywords": [
+        "NINJUTSU"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Ninjutsu",
+            "cost": "{U}{B}",
+            "commander": true
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Yuriko, the Tiger's Shadow:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    },
+                    "sourceFilter": "creature Ninja ctrl:you"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "gathered0",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Hand"
+                            },
+                            "revealed": true
+                        },
+                        {
+                            "type": "LoseLife",
+                            "amount": {
+                                "type": "StoredCardManaValue",
+                                "collectionName": "gathered0"
+                            },
+                            "target": {
+                                "type": "PlayerRef",
+                                "player": "EachOpponent"
+                            }
+                        }
+                    ]
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "ninjutsu_{U}{B}",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{U}{B}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomReturnToHand",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "IsCreature"
+                                    ],
+                                    "statePredicates": [
+                                        "IsAttacking",
+                                        "IsUnblocked"
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": "Self",
+                    "destination": "Battlefield",
+                    "placement": "TappedAndAttacking",
+                    "fromZone": "Hand",
+                    "attackDefender": "RETURNED_ATTACKER"
+                },
+                "activateFromZone": "Hand",
+                "descriptionOverride": "Ninjutsu {U}{B} ({U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from your hand tapped and attacking.)",
+                "keyword": "NINJUTSU"
+            },
+            {
+                "id": "commander_ninjutsu_{U}{B}",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{U}{B}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomReturnToHand",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "IsCreature"
+                                    ],
+                                    "statePredicates": [
+                                        "IsAttacking",
+                                        "IsUnblocked"
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": "Self",
+                    "destination": "Battlefield",
+                    "placement": "TappedAndAttacking",
+                    "fromZone": "Command",
+                    "attackDefender": "RETURNED_ATTACKER"
+                },
+                "activateFromZone": "Command",
+                "descriptionOverride": "Commander ninjutsu {U}{B} ({U}{B}, Return an unblocked attacker you control to hand: Put this card onto the battlefield from the command zone tapped and attacking.)",
+                "keyword": "NINJUTSU"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "52",
+        "rarity": "RARE",
+        "artist": "Yongjae Choi",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/b/3bd81ae6-e628-447a-a36b-597e63ede295.jpg?1783934325"
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "BLACK"
+    ]
 }

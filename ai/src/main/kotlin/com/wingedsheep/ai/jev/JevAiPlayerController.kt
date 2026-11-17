@@ -30,6 +30,10 @@ class JevAiPlayerController(
         fallback.setDeckList(deckList, archetype)
     }
 
+    override fun setOpponentDeckListSource(source: (EntityId) -> Map<String, Int>?) {
+        fallback.setOpponentDeckListSource(source)
+    }
+
     override fun chooseAction(state: ClientGameState, legalActions: List<LegalActionInfo>,
                               pendingDecision: PendingDecision?, recentGameLog: List<String>): ActionResponse = guarded(
         { fallback.chooseAction(state, legalActions, pendingDecision, recentGameLog) }
@@ -81,8 +85,8 @@ class JevAiPlayerController(
     }
 
     override fun chooseDraftPick(pack: List<CardSummary>, pickedSoFar: List<CardSummary>, packNumber: Int, pickNumber: Int,
-                                 picksRequired: Int, passDirection: String): List<String> = guarded(
-        { fallback.chooseDraftPick(pack, pickedSoFar, packNumber, pickNumber, picksRequired, passDirection) }
+                                 picksRequired: Int, passDirection: String, podSize: Int?): List<String> = guarded(
+        { fallback.chooseDraftPick(pack, pickedSoFar, packNumber, pickNumber, picksRequired, passDirection, podSize) }
     ) {
         session("Draft pack $packNumber pick $pickNumber passing $passDirection. Pool: ${pickedSoFar.map(::summary)}")
             .select("Pick cards for your deck", pack.indices.toList(), picksRequired, picksRequired) { summary(pack[it]) }.map { pack[it].name }

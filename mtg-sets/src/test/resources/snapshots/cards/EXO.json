@@ -103,6 +103,116 @@
     ]
 }
 
+// Coat of Arms
+{
+    "name": "Coat of Arms",
+    "manaCost": "{5}",
+    "typeLine": "Artifact",
+    "oracleText": "Each creature gets +1/+1 for each other creature on the battlefield that shares at least one creature type with it. (For example, if two Goblin Warriors and a Goblin Shaman are on the battlefield, each gets +2/+2.)",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantDynamicStats",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "powerBonus": {
+                    "type": "AggregateBattlefield",
+                    "player": "Each",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "SharesCreatureTypeWith",
+                                "entity": "AffectedEntity"
+                            }
+                        ]
+                    },
+                    "excludeSelf": true
+                },
+                "toughnessBonus": {
+                    "type": "AggregateBattlefield",
+                    "player": "Each",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "SharesCreatureTypeWith",
+                                "entity": "AffectedEntity"
+                            }
+                        ]
+                    },
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "131",
+        "rarity": "RARE",
+        "artist": "Scott M. Fischer",
+        "flavorText": "\"Hup, two, three, four,\nDunno how to count no more.\"\n—Mogg march",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/e/9e32c939-1d64-4082-bafe-59dfa9c054f6.jpg?1783946501",
+        "rulings": [
+            {
+                "date": "2009-10-01",
+                "text": "Sharing multiple creature types doesn't give an additional bonus. Coat of Arms counts creatures, not creature types."
+            },
+            {
+                "date": "2004-10-04",
+                "text": "If a creature has more than one creature type, and one of those types matches the creature you are calculating for, then count that creature. Only one type needs to match in order to get counted."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
+// Culling the Weak
+{
+    "name": "Culling the Weak",
+    "manaCost": "{B}",
+    "typeLine": "Instant",
+    "oracleText": "As an additional cost to cast this spell, sacrifice a creature.\nAdd {B}{B}{B}{B}.",
+    "script": {
+        "spellEffect": {
+            "type": "AddMana",
+            "color": "BLACK",
+            "amount": {
+                "type": "Fixed",
+                "amount": 4
+            }
+        },
+        "additionalCosts": [
+            {
+                "type": "AdditionalAtom",
+                "atom": {
+                    "type": "AtomSacrifice",
+                    "filter": "creature"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "55",
+        "artist": "Scott M. Fischer",
+        "flavorText": "\"The blood of the weak shall be the ink with which we scribe great Yawgmoth's glorious name.\"\n—Stronghold architect, journal",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/0/50c33f18-0a5c-4e46-ab0d-6e450915594f.jpg?1783946521",
+        "rulings": [
+            {
+                "date": "2013-04-15",
+                "text": "You must sacrifice exactly one creature to cast this spell; you cannot cast it without sacrificing a creature, and you cannot sacrifice additional creatures."
+            },
+            {
+                "date": "2013-04-15",
+                "text": "Players can only respond once this spell has been cast and all its costs have been paid. No one can try to destroy the creature you sacrificed to prevent you from casting this spell."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Curiosity
 {
     "name": "Curiosity",
@@ -404,6 +514,160 @@
         "artist": "Randy Elliott",
         "flavorText": "\"Our belief shall be the lance that pierces Volrath's heart.\"",
         "imageUri": "https://cards.scryfall.io/normal/front/b/f/bf1ea89d-4b9d-455f-a7f4-a26026e0c272.jpg"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Peace of Mind
+{
+    "name": "Peace of Mind",
+    "manaCost": "{1}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "{W}, Discard a card: You gain 3 life.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Peace of Mind:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{W}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": "AtomDiscard"
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 3
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "13",
+        "rarity": "UNCOMMON",
+        "artist": "Randy Elliott",
+        "flavorText": "Three are the paths of the soul:\nOne out—roam across the plain,\nOne back—dwell with tribe and tent,\nOne in—turn an enemy's hate.",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/3/c383f12f-da06-4ef0-bf8e-6a8a9cfcc74c.jpg"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Reclaim
+{
+    "name": "Reclaim",
+    "manaCost": "{G}",
+    "typeLine": "Instant",
+    "oracleText": "Put target card from your graveyard on top of your library.",
+    "script": {
+        "spellEffect": {
+            "type": "MoveToZone",
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            },
+            "destination": "Library",
+            "placement": "Top"
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "own:you",
+                    "zone": "Graveyard"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "120",
+        "artist": "Andrew Robinson",
+        "flavorText": "The wise pay as much attention to what they throw away as to what they keep.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/b/2b47c082-57f6-4f69-87e8-a07cad9ef042.jpg?1783946504"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Reconnaissance
+{
+    "name": "Reconnaissance",
+    "manaCost": "{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "{0}: Remove target attacking creature you control from combat and untap it. (If you activate during end of combat, the creature will untap after it deals combat damage.)",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Reconnaissance:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{0}"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "RemoveFromCombat",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        {
+                            "type": "TapUntap",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            },
+                            "tap": false
+                        }
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature attacking ctrl:you"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "Remove target attacking creature you control from combat and untap it."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "17",
+        "rarity": "UNCOMMON",
+        "artist": "Val Mayerik",
+        "flavorText": "War favors the informed.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/1/a16012d8-703c-4385-8769-13e3caba3fc6.jpg?1783946529",
+        "rulings": [
+            {
+                "date": "2004-10-04",
+                "text": "Does not undo any effects which triggered on declaration of attackers or blockers."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "WHITE"

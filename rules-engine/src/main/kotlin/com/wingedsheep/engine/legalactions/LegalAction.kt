@@ -88,6 +88,11 @@ data class LegalAction(
     // Combat
     override val validAttackers: List<EntityId>? = null,
     val mandatoryAttackers: List<EntityId>? = null,
+    /**
+     * The [validAttackers] that can only attack alone (CR 506.5 — Master of Cruelties): a
+     * declaration with one of them and any other attacker is rejected. Null when there are none.
+     */
+    val loneAttackers: List<EntityId>? = null,
     val validAttackTargets: List<EntityId>? = null,
     /**
      * Per-attacker narrowing of [validAttackTargets] (CR 508.1b–c): each attacker chooses its own
@@ -101,6 +106,9 @@ data class LegalAction(
      */
     val attackTargetsByAttacker: Map<EntityId, List<EntityId>>? = null,
     override val validBlockers: List<EntityId>? = null,
+    val blockableAttackers: List<EntityId>? = null,
+    /** Previously submitted teammate choices, displayed but not part of this player's input. */
+    val proposedBlockerAssignments: Map<EntityId, List<EntityId>>? = null,
     val blockerMaxBlockCounts: Map<EntityId, Int>? = null,
     val mandatoryBlockerAssignments: Map<EntityId, List<EntityId>>? = null,
 
@@ -207,6 +215,15 @@ data class LegalAction(
     // Damage distribution
     val requiresDamageDistribution: Boolean = false,
     val totalDamageToDistribute: Int? = null,
+    /**
+     * The division's total for each X the caster may announce, keyed by X — present only when the
+     * total reads the announced X: a spell's mana-paid `{X}` (Shatterskull Smashing: "X damage
+     * divided … If X is 6 or more, … twice X damage divided … instead") or an activation's X cost
+     * (Huatli, Warrior Poet's −X). X is announced before targets and the division
+     * (CR 601.2b, 601.2d), so the client looks the total up for the X it chose; the prices are the
+     * server's. When set, [totalDamageToDistribute] is the X-less reading and is not used.
+     */
+    val totalDamageByX: Map<Int, Int>? = null,
     val minDamagePerTarget: Int? = null,
     /** What the division divides when it isn't damage — "+1/+1 counter" for a counter division. Null means damage. */
     val distributionUnit: String? = null,
@@ -487,6 +504,16 @@ data class AdditionalCostData(
      */
     val sacrificeMinPowerIsX: Boolean = false,
     /**
+     * A cost whose count *is* the X announced with the cast (CR 601.2b): the picker must take
+     * exactly that X — not its floor-or-more. "Sacrifice X creatures" (Eliminate the Competition,
+     * `CostAtom.VariablePermanents.exactly`) on the `SacrificeVariable` picker, and "discard X
+     * cards" (Channeled Force, Nahiri's Wrath, `AdditionalCost.VariableCards`) on the `DiscardCard`
+     * picker, whose [discardCount]/[discardMaxCount] are then only the X range. The action carries `hasXCost` with `maxAffordableX` capped at the
+     * candidates (and at the legal targets of an "X target …" requirement); the client asks X
+     * first, then requires exactly that many picks, and skips the picker at X = 0.
+     */
+    val countIsX: Boolean = false,
+    /**
      * The spell's remaining mana cost after sacrificing each candidate in [validSacrificeTargets],
      * keyed by that candidate — emerge (CR 702.119), where the emerge cost is reduced by generic
      * mana equal to the sacrificed creature's mana value.
@@ -513,11 +540,32 @@ data class AdditionalCostData(
     val tapBatchMaxActivations: Int = 1,
     val validDiscardTargets: List<EntityId> = emptyList(),
     val discardCount: Int = 0,
+    /**
+     * Upper bound for a variable discard ("discard X cards", Channeled Force): the caster picks
+     * [discardCount]..[discardMaxCount] cards. `null` means exactly [discardCount].
+     */
+    val discardMaxCount: Int? = null,
     val validBounceTargets: List<EntityId> = emptyList(),
     val bounceCount: Int = 0,
     val validExileTargets: List<EntityId> = emptyList(),
     val exileMinCount: Int = 0,
     val exileMaxCount: Int = 0,
+    /**
+     * Generic mana each pick takes off the spell's total cost — set only on the zero-floor picker of
+     * "you may sacrifice / tap / exile any number of …; this spell costs {N} less for each"
+     * (`AdditionalCost.AnyNumberForCostReduction`), 0 everywhere else. The offer's
+     * `manaCostString` is priced at the largest effective discount (every candidate picked, a
+     * candidate that is also a counted mana source netted at N − 1); with
+     * [genericBeforeReduction] a payer prices any smaller pick exactly — the AI reads both to pick
+     * only as many as the cast needs.
+     */
+    val reductionPerPick: Int = 0,
+    /**
+     * The generic mana in the total cost before that discount — what `manaCostString`'s generic
+     * was before every candidate's [reductionPerPick] came off it, floored at zero (CR 601.2f).
+     * Null when the offer has no such discount.
+     */
+    val genericBeforeReduction: Int? = null,
     /**
      * The **floor on the combined measure** of the exiled cards, and what each offered card is
      * worth toward it — the sum gate shared by every graveyard exile cost whose constraint is a
@@ -583,6 +631,8 @@ data class AdditionalCostData(
     val validRevealTargets: List<EntityId> = emptyList(),
     val revealCount: Int = 0,
     val counterRemovalCreatures: List<CounterRemovalCreatureData> = emptyList(),
+    /** Permanents a "put N counters on a permanent you control" spell cost may place on (Lethal Sting). */
+    val validCounterPlacementTargets: List<EntityId> = emptyList(),
     val validBlightTargets: List<EntityId> = emptyList(),
     val blightAmount: Int = 0,
     /**

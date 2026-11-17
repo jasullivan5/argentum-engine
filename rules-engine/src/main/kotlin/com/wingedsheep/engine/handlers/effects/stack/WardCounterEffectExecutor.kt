@@ -15,6 +15,7 @@ import com.wingedsheep.engine.core.WardCostChoiceContinuation
 import com.wingedsheep.engine.core.DecisionPhase
 import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.core.ManaSourceOption
+import com.wingedsheep.engine.core.SelectCardsDecision
 import com.wingedsheep.engine.core.SelectManaSourcesDecision
 import com.wingedsheep.engine.core.WaterbendPermanentChoice
 import com.wingedsheep.engine.core.YesNoDecision
@@ -26,13 +27,17 @@ import com.wingedsheep.engine.handlers.effects.BattlefieldFilterUtils
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
 import com.wingedsheep.engine.handlers.effects.ZoneTransitionService
-import com.wingedsheep.engine.mechanics.SacrificeImmunity
+import com.wingedsheep.engine.mechanics.CompelledActionImmunity
+import com.wingedsheep.sdk.scripting.CompelledAction
 import com.wingedsheep.engine.mechanics.mana.CostCalculator
 import com.wingedsheep.engine.mechanics.mana.ManaSolver
 import com.wingedsheep.engine.legalactions.TapForGenericPermanentData
 import com.wingedsheep.engine.mechanics.mana.TapForGeneric
 import com.wingedsheep.engine.legalactions.utils.CostEnumerationUtils
 import com.wingedsheep.sdk.core.CounterType
+import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
+import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.engine.mechanics.stack.SpellCounterer
 import com.wingedsheep.engine.registry.CardRegistry
@@ -61,7 +66,8 @@ import kotlin.reflect.KClass
  *    - WardCost.CollectEvidence → SelectCardsDecision over the controller's graveyard with a
  *      `minTotalManaValue` floor (CR 701.59's sum gate); an empty selection declines.
  *    - WardCost.PlayerCounters → YesNoDecision ("Get five poison counters?"); on Yes, places the
- *      counters on the paying player (CR 122.1). Always payable.
+ *      counters on the paying player (CR 122.1). Countered without a prompt when the payer
+ *      can't get counters (a `LockPlayerCountersEffect` lock).
  *    - WardCost.Composite → pay each component cost in order (CR 702.21a; "Ward—{2}, Pay 2
  *      life"). Each component reuses the per-component flow above and carries the remaining
  *      components so the resumer charges the next one after a successful payment. Declining or
@@ -146,6 +152,21 @@ class WardCounterEffectExecutor(
     }
 
     companion object {
+        /** "your spell" or "your ability" — ward and Valkmira counter both (CR 702.21a). */
+        private fun countered(state: GameState, spellEntityId: EntityId): String =
+            if (state.getEntity(spellEntityId)?.has<SpellOnStackComponent>() == true) "your spell" else "your ability"
+
+        /**
+         * The label on the payment prompt. The ward keyword's own trigger reads "Ward"; the same
+         * counter-unless-pays printed as an ability ("counter that spell or ability unless its
+         * controller pays {1}" — Valkmira, Protector's Shield) is labelled by its source card, so
+         * the payer isn't told about a ward the permanent doesn't have.
+         */
+        private fun promptSourceName(state: GameState, wardSourceId: EntityId?): String {
+            if (wardSourceId == null || state.projectedState.hasKeyword(wardSourceId, Keyword.WARD)) return "Ward"
+            return state.getEntity(wardSourceId)?.get<CardComponent>()?.name ?: "Ward"
+        }
+
         /**
          * Charge a single ward [cost] against [payingPlayerId], carrying [remainingParts] (the
          * not-yet-paid components of an enclosing [WardCost.Composite]) so the continuation
@@ -190,7 +211,7 @@ class WardCounterEffectExecutor(
                     cost.amount, remainingParts, wardSourceId, controllerId
                 )
                 is WardCost.PlayerCounters -> handlePlayerCountersCost(
-                    state, spellEntityId, payingPlayerId,
+                    state, counterer, spellEntityId, payingPlayerId,
                     cost.counterType, cost.amount, remainingParts, wardSourceId, controllerId
                 )
                 is WardCost.Choice -> handleChoiceCost(
@@ -222,7 +243,7 @@ class WardCounterEffectExecutor(
          * [WardCost.Choice] uses it to offer only the options the payer can actually take, so a
          * disjunction can never advertise a leg the payer would then fail to pay.
          *
-         * [WardCost.PlayerCounters] is always payable — a player can always get counters — and a
+         * [WardCost.PlayerCounters] is payable unless the payer can't get counters, and a
          * [WardCost.Composite] is payable only if *every* part is, mirroring its AND semantics.
          * The composite check is a snapshot: paying an earlier part can in principle make a later
          * one unpayable, and the per-part handler still counters at that point.
@@ -242,16 +263,20 @@ class WardCounterEffectExecutor(
             // Resolved to a fixed Life before it ever reaches here; treat as free defensively.
             is WardCost.DynamicLife -> true
             is WardCost.Discard ->
-                eligibleDiscardCount(state, zones, payingPlayerId, cost.filter) >= cost.count
+                !CompelledActionImmunity.appliesTo(state, payingPlayerId, controllerId, CompelledAction.DISCARD, predicateEvaluator = zones.predicateEvaluator) &&
+                    eligibleDiscardCount(state, zones, payingPlayerId, cost.filter) >= cost.count
             is WardCost.Sacrifice ->
-                !SacrificeImmunity.appliesTo(state, payingPlayerId, controllerId, predicateEvaluator = zones.predicateEvaluator) &&
+                !CompelledActionImmunity.appliesTo(state, payingPlayerId, controllerId, CompelledAction.SACRIFICE, predicateEvaluator = zones.predicateEvaluator) &&
                     sacrificeCandidates(state, zones, payingPlayerId, cost.filter).size >= cost.count
             // CR 701.59b fails closed — a graveyard that can't reach the total means the payer
             // can't choose to collect evidence at all. Same resolver gate [handleCollectEvidenceCost]
             // applies, so the two can't drift.
             is WardCost.CollectEvidence ->
                 CollectEvidenceResolver.candidates(state, payingPlayerId, predicateEvaluator = zones.predicateEvaluator).canReach(cost.amount)
-            is WardCost.PlayerCounters -> true
+            // A player who can't get counters can't pay a cost that gives them some (Suncleanser's
+            // 2018-07-13 ruling: "that cost can't be paid").
+            is WardCost.PlayerCounters ->
+                state.projectedState.canReceiveCounters(payingPlayerId, cost.counterType)
             is WardCost.Composite ->
                 cost.parts.all { canPayWardCost(state, zones, it, payingPlayerId, controllerId) }
             is WardCost.Choice ->
@@ -262,13 +287,15 @@ class WardCounterEffectExecutor(
          * Ward—Get N [counterType] counters (e.g. The Serpent Society's "Ward—Get five poison
          * counters", CR 122.1 — a counter is a marker placed on an object *or player*).
          *
-         * Always payable, so this is a plain yes/no with no can-pay gate. On Yes the counters are
+         * Countered without a prompt when the payer can't get counters ([canPayWardCost]);
+         * otherwise a plain yes/no. On Yes the counters are
          * placed through the ordinary `AddCountersEffect` executor targeting the payer, so counter
          * replacement effects and `CountersAddedEvent` behave exactly as for any other source of
          * player counters (and the poison state-based action, CR 122.1f, follows from that).
          */
         private fun handlePlayerCountersCost(
             state: GameState,
+            counterer: SpellCounterer,
             spellEntityId: EntityId,
             payingPlayerId: EntityId,
             counterType: CounterType,
@@ -277,16 +304,19 @@ class WardCounterEffectExecutor(
             wardSourceId: EntityId?,
             controllerId: EntityId?
         ): EffectResult {
+            if (!state.projectedState.canReceiveCounters(payingPlayerId, counterType)) {
+                return counterSpellOrAbility(state, counterer, spellEntityId, controllerId)
+            }
             val label = WardCost.PlayerCounters(counterType, amount).clause
                 .replaceFirstChar { it.uppercase() }
 
             val decision = { decisionId: String -> YesNoDecision(
                 id = decisionId,
                 playerId = payingPlayerId,
-                prompt = "$label or your spell will be countered",
+                prompt = "$label or ${countered(state, spellEntityId)} will be countered",
                 context = DecisionContext(
                     sourceId = wardSourceId,
-                    sourceName = "Ward",
+                    sourceName = promptSourceName(state, wardSourceId),
                     phase = DecisionPhase.RESOLUTION
                 ),
                 yesText = label,
@@ -332,11 +362,14 @@ class WardCounterEffectExecutor(
         ): EffectResult {
             require(options.isNotEmpty()) { "WardCost.Choice must have at least one option" }
 
+            // Counter without a question only when every player can see that no option can be
+            // paid. When only hidden cards rule the options out, "Counter spell" is the one answer
+            // offered, a forced pick answered without a prompt (#3340).
+            if (options.all { publiclyUnpayable(state, zones, it, payingPlayerId, controllerId) }) {
+                return counterSpellOrAbility(state, counterer, spellEntityId, controllerId)
+            }
             val payable = options.filter {
                 canPayWardCost(state, zones, it, payingPlayerId, controllerId)
-            }
-            if (payable.isEmpty()) {
-                return counterSpellOrAbility(state, counterer, spellEntityId, controllerId)
             }
 
             val labels = payable.map { it.clause.replaceFirstChar { ch -> ch.uppercase() } } +
@@ -345,10 +378,11 @@ class WardCounterEffectExecutor(
             val decision = { decisionId: String -> ChooseOptionDecision(
                 id = decisionId,
                 playerId = payingPlayerId,
-                prompt = "Choose one to pay for ward, or your spell will be countered",
+                prompt = if (promptSourceName(state, wardSourceId) == "Ward") "Choose one to pay for ward, or ${countered(state, spellEntityId)} will be countered"
+                    else "Choose one to pay, or ${countered(state, spellEntityId)} will be countered",
                 context = DecisionContext(
                     sourceId = wardSourceId,
-                    sourceName = "Ward",
+                    sourceName = promptSourceName(state, wardSourceId),
                     phase = DecisionPhase.RESOLUTION
                 ),
                 options = labels
@@ -465,9 +499,9 @@ class WardCounterEffectExecutor(
 
             val fodderLabel = filter.description
             val prompt = if (count == 1) {
-                "Sacrifice a $fodderLabel or your spell will be countered"
+                "Sacrifice a $fodderLabel or ${countered(state, spellEntityId)} will be countered"
             } else {
-                "Sacrifice $count ${fodderLabel}s or your spell will be countered"
+                "Sacrifice $count ${fodderLabel}s or ${countered(state, spellEntityId)} will be countered"
             }
 
             val continuation = CounterUnlessSacrificeContinuation(
@@ -484,7 +518,7 @@ class WardCounterEffectExecutor(
                 state = state,
                 playerId = payingPlayerId,
                 sourceId = wardSourceId,
-                sourceName = "Ward",
+                sourceName = promptSourceName(state, wardSourceId),
                 prompt = prompt,
                 options = validPermanents,
                 minSelections = 0,
@@ -550,9 +584,9 @@ class WardCounterEffectExecutor(
                 state = state,
                 playerId = payingPlayerId,
                 sourceId = wardSourceId,
-                sourceName = "Ward",
+                sourceName = promptSourceName(state, wardSourceId),
                 prompt = "Collect evidence $amount (exile cards with total mana value $amount or " +
-                    "greater from your graveyard) or your spell will be countered",
+                    "greater from your graveyard) or ${countered(state, spellEntityId)} will be countered",
                 options = candidates.cards,
                 minSelections = 0,
                 maxSelections = candidates.cards.size,
@@ -582,13 +616,14 @@ class WardCounterEffectExecutor(
             wardSourceId: EntityId?,
             controllerId: EntityId?
         ): EffectResult {
-            // Not enough eligible cards in hand → counter immediately.
-            if (!canPayWardCost(
-                    state, zones, WardCost.Discard(count, random, filter), payingPlayerId, controllerId
-                )
-            ) {
+            // Too few cards in hand → counter immediately. That's public. Which cards match a
+            // filter isn't, so a hand without enough matches is still asked, and "counter" is
+            // its only answer (#3340).
+            val cost = WardCost.Discard(count, random, filter)
+            if (publiclyUnpayable(state, zones, cost, payingPlayerId, controllerId)) {
                 return counterSpellOrAbility(state, counterer, spellEntityId, controllerId)
             }
+            val payable = canPayWardCost(state, zones, cost, payingPlayerId, controllerId)
 
             val cardsLabel = if (filter != null) {
                 if (count == 1) "a ${filter.description}" else "$count ${filter.description} cards"
@@ -596,19 +631,6 @@ class WardCounterEffectExecutor(
                 if (count == 1) "a card" else "$count cards"
             }
             val randomSuffix = if (random) " at random" else ""
-
-            val decision = { decisionId: String -> YesNoDecision(
-                id = decisionId,
-                playerId = payingPlayerId,
-                prompt = "Discard $cardsLabel$randomSuffix or your spell will be countered",
-                context = DecisionContext(
-                    sourceId = wardSourceId,
-                    sourceName = "Ward",
-                    phase = DecisionPhase.RESOLUTION
-                ),
-                yesText = "Discard $cardsLabel$randomSuffix",
-                noText = "Counter spell"
-            ) }
 
             val continuation = CounterUnlessDiscardContinuation(
                 payingPlayerId = payingPlayerId,
@@ -621,7 +643,78 @@ class WardCounterEffectExecutor(
                 wardSourceId = wardSourceId
             )
 
+            // A chosen discard of filtered cards is one question: pick the cards, or pick nothing
+            // and let the spell be countered. With no match there is nothing to pick, which is
+            // forced and answered without a prompt.
+            if (filter != null && !random) {
+                val options = if (payable) eligibleDiscards(state, zones, payingPlayerId, filter) else emptyList()
+                val selection = { decisionId: String -> SelectCardsDecision(
+                    id = decisionId,
+                    playerId = payingPlayerId,
+                    prompt = "Discard $cardsLabel or ${countered(state, spellEntityId)} will be countered",
+                    context = DecisionContext(
+                        sourceId = wardSourceId,
+                        sourceName = promptSourceName(state, wardSourceId),
+                        phase = DecisionPhase.RESOLUTION
+                    ),
+                    options = options,
+                    minSelections = 0,
+                    maxSelections = count,
+                    selectedLabel = "Discard",
+                ) }
+                return EffectResult.from(state.suspendForDecision(selection, continuation))
+            }
+
+            val decision = { decisionId: String -> YesNoDecision(
+                id = decisionId,
+                playerId = payingPlayerId,
+                prompt = "Discard $cardsLabel$randomSuffix or ${countered(state, spellEntityId)} will be countered",
+                context = DecisionContext(
+                    sourceId = wardSourceId,
+                    sourceName = promptSourceName(state, wardSourceId),
+                    phase = DecisionPhase.RESOLUTION
+                ),
+                yesText = "Discard $cardsLabel$randomSuffix",
+                noText = "Counter spell",
+                yesAvailable = payable
+            ) }
+
             return EffectResult.from(state.suspendForDecision(decision, continuation))
+        }
+
+        /** The cards in [payingPlayerId]'s hand that can pay a Ward—Discard [filter] cost. */
+        private fun eligibleDiscards(
+            state: GameState,
+            zones: ZoneTransitionService,
+            payingPlayerId: EntityId,
+            filter: GameObjectFilter
+        ): List<EntityId> {
+            val predicateContext = PredicateContext(controllerId = payingPlayerId)
+            return state.getHand(payingPlayerId).filter { cardId ->
+                zones.predicateEvaluator.matches(state, state.projectedState, cardId, filter, predicateContext)
+            }
+        }
+
+        /**
+         * Whether every player can see that [payingPlayerId] can't pay [cost]. Only this may
+         * counter without a question (#3340). A discard of filtered cards can be ruled out publicly
+         * only by the hand's size, since which cards match is hidden. Everything else is read as
+         * [canPayWardCost] reads it. Its mana check still counts mana abilities usable from the
+         * hand, which is #3340's group C, fixed separately.
+         */
+        fun publiclyUnpayable(
+            state: GameState,
+            zones: ZoneTransitionService,
+            cost: WardCost,
+            payingPlayerId: EntityId,
+            controllerId: EntityId?
+        ): Boolean = when (cost) {
+            // A discard immunity is on the battlefield, so it is as public as the hand size.
+            is WardCost.Discard -> state.getHand(payingPlayerId).size < cost.count ||
+                CompelledActionImmunity.appliesTo(state, payingPlayerId, controllerId, CompelledAction.DISCARD, predicateEvaluator = zones.predicateEvaluator)
+            is WardCost.Composite -> cost.parts.any { publiclyUnpayable(state, zones, it, payingPlayerId, controllerId) }
+            is WardCost.Choice -> cost.options.all { publiclyUnpayable(state, zones, it, payingPlayerId, controllerId) }
+            else -> !canPayWardCost(state, zones, cost, payingPlayerId, controllerId)
         }
 
         private fun handleManaCost(
@@ -680,10 +773,12 @@ class WardCounterEffectExecutor(
                 WaterbendPermanentChoice(it.entityId, it.name, it.isCreature)
             }
 
+            // "for ward" only when it is ward; a printed counter-unless-pays (Valkmira) just asks.
+            val forWard = if (promptSourceName(state, wardSourceId) == "Ward") " for ward" else ""
             val payPrompt = if (waterbend) {
-                "Pay $manaCost for ward (tap artifacts/creatures to help) or your spell will be countered"
+                "Pay $manaCost$forWard (tap artifacts/creatures to help) or ${countered(state, spellEntityId)} will be countered"
             } else {
-                "Pay $manaCost for ward or your spell will be countered"
+                "Pay $manaCost$forWard or ${countered(state, spellEntityId)} will be countered"
             }
 
             val decision = { decisionId: String -> SelectManaSourcesDecision(
@@ -692,7 +787,7 @@ class WardCounterEffectExecutor(
                 prompt = payPrompt,
                 context = DecisionContext(
                     sourceId = wardSourceId,
-                    sourceName = "Ward",
+                    sourceName = promptSourceName(state, wardSourceId),
                     phase = DecisionPhase.RESOLUTION
                 ),
                 availableSources = sourceOptions,
@@ -741,10 +836,10 @@ class WardCounterEffectExecutor(
             val decision = { decisionId: String -> YesNoDecision(
                 id = decisionId,
                 playerId = payingPlayerId,
-                prompt = "Pay $lifeCost life or your spell will be countered",
+                prompt = "Pay $lifeCost life or ${countered(state, spellEntityId)} will be countered",
                 context = DecisionContext(
                     sourceId = wardSourceId,
-                    sourceName = "Ward",
+                    sourceName = promptSourceName(state, wardSourceId),
                     phase = DecisionPhase.RESOLUTION
                 ),
                 yesText = "Pay $lifeCost life",

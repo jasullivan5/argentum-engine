@@ -4,6 +4,7 @@ import com.wingedsheep.sdk.core.CardType
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.dsl.Conditions
 import com.wingedsheep.sdk.dsl.Costs
 import com.wingedsheep.sdk.dsl.DynamicAmounts
@@ -96,6 +97,49 @@ object PredefinedTokens {
 
         metadata {
             imageUri = "https://cards.scryfall.io/normal/front/4/8/4837a3f1-ca7f-41e5-a5d1-729c8495b0e8.jpg?1771590279"
+        }
+    }
+
+    /**
+     * Gold token — an artifact with "Sacrifice this token: Add one mana of any color." Unlike a
+     * Treasure it needs no tap, so a Gold token that entered this turn can still be sacrificed.
+     * Created by `Effects.CreateGold()` (Curse of Opulence).
+     */
+    val Gold = card("Gold") {
+        typeLine = "Artifact — Gold"
+        oracleText = "Sacrifice this token: Add one mana of any color."
+
+        activatedAbility {
+            cost = Costs.SacrificeSelf
+            effect = Effects.AddAnyColorMana(1)
+            manaAbility = true
+            description = "Sacrifice this token: Add one mana of any color."
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/9/b/9b180a33-65ef-43b3-b969-f603b1fc23fb.jpg?1783935826"
+        }
+    }
+
+    /**
+     * Etherium Cell — the colorless artifact token of Tezzeret the Schemer's +1:
+     * "{T}, Sacrifice this artifact: Add one mana of any color." Like a Lotus it has no subtype,
+     * only the name — it is *not* a Treasure, so "Treasure you control" never counts it.
+     */
+    val EtheriumCell = card("Etherium Cell") {
+        typeLine = "Artifact"
+        oracleText = "{T}, Sacrifice this artifact: Add one mana of any color."
+
+        activatedAbility {
+            cost = Costs.Composite(Costs.Tap, Costs.SacrificeSelf)
+            effect = Effects.AddAnyColorMana(1)
+            manaAbility = true
+            description = "{T}, Sacrifice this artifact: Add one mana of any color."
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/9/6/9616ca53-ea6a-4fc1-8e01-94e0fb47e5ed.jpg?1783936711"
+            artist = "Craig J Spearing"
         }
     }
 
@@ -307,6 +351,26 @@ object PredefinedTokens {
     }
 
     /**
+     * Neuroflux Heirloom — a colorless Equipment artifact token with:
+     * "Equipped creature gets +1/+1" and equip {2}. The Sword shape under Star Trek's name;
+     * created (and attached) by Gwyndala, the Progeny.
+     */
+    val NeurofluxHeirloom = card("Neuroflux Heirloom") {
+        typeLine = "Artifact — Equipment"
+
+        staticAbility {
+            ability = ModifyStats(+1, +1, Filters.EquippedCreature)
+        }
+
+        equipAbility("{2}")
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/d/8/d811c3c3-6b5b-4b42-be4f-0a455313ccd3.jpg?1793364366"
+            artist = "David Frasheski"
+        }
+    }
+
+    /**
      * Cragflame — a legendary colorless Equipment artifact token with:
      * "Equipped creature gets +1/+1 and has vigilance, trample, and haste" and equip {2}.
      * Created by Mabel, Heir to Cragflame.
@@ -334,6 +398,33 @@ object PredefinedTokens {
 
         metadata {
             imageUri = "https://cards.scryfall.io/normal/front/c/7/c76fa1c6-6000-47b2-9188-9c15b2c73f8f.jpg?1721431172"
+        }
+    }
+
+    /**
+     * Icingdeath, Frost Tongue — a legendary white Equipment artifact token with
+     * "Equipped creature gets +2/+0," "Whenever equipped creature attacks, tap target creature
+     * defending player controls," and equip {2}. Created by Icingdeath, Frost Tyrant.
+     * White from its color indicator (CR 204), like [Frog].
+     */
+    val IcingdeathFrostTongue = card("Icingdeath, Frost Tongue") {
+        typeLine = "Legendary Artifact — Equipment"
+        colorIdentity = "W"
+
+        staticAbility {
+            ability = ModifyStats(+2, +0, Filters.EquippedCreature)
+        }
+
+        triggeredAbility {
+            trigger = Triggers.attached.attacks()
+            val creature = target(TargetFilter.Creature.defendingPlayerControls())
+            effect = Effects.Tap(creature)
+        }
+
+        equipAbility("{2}")
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/a/9/a9c981c9-3376-4f6e-b30d-859e5fc7347e.jpg?1783926347"
         }
     }
 
@@ -675,6 +766,29 @@ object PredefinedTokens {
 
         metadata {
             imageUri = "https://cards.scryfall.io/normal/front/6/b/6b76b7a4-f398-4bb4-833e-97ec0d4e581a.jpg?1726236906"
+        }
+    }
+
+    /**
+     * New Planet — the colorless Planet land token Star Trek's terraforming cards create
+     * (Gaseous Anomaly, David and Carol Marcus, Genesis Effect, …): "Token Land — Planet" with
+     * "{T}: Add one mana of any color." Planet is a non-basic land type with no intrinsic mana
+     * ability, so the ability is written out.
+     */
+    val NewPlanet = card("New Planet") {
+        typeLine = "Token Land — Planet"
+        oracleText = "{T}: Add one mana of any color."
+
+        activatedAbility {
+            cost = Costs.Tap
+            effect = Effects.AddAnyColorMana(1)
+            manaAbility = true
+            timing = TimingRule.ManaAbility
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/2/1/21d855f7-fd5c-4eb4-b997-a905849806b9.jpg?1793364386"
+            artist = "David Frasheski"
         }
     }
 
@@ -1250,6 +1364,68 @@ object PredefinedTokens {
     }
 
     /**
+     * Icy Manalith — the colorless snow artifact token with "{T}: Add one mana of any color."
+     * Created by Svella, Ice Shaper. Being snow, the mana it makes is snow mana.
+     */
+    val IcyManalith = card("Icy Manalith") {
+        typeLine = "Snow Artifact"
+        oracleText = "{T}: Add one mana of any color."
+
+        activatedAbility {
+            cost = Costs.Tap
+            effect = Effects.AddAnyColorMana(1)
+            manaAbility = true
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/3/d/3db39e3b-fad4-4c9b-911f-69883ac7e0e1.jpg?1783928078"
+        }
+    }
+
+    /**
+     * Replicated Ring — the colorless snow artifact token with "{T}: Add one mana of any color."
+     * Created eight at a time by Replicating Ring. Being snow, the mana it makes is snow mana.
+     */
+    val ReplicatedRing = card("Replicated Ring") {
+        typeLine = "Snow Artifact"
+        oracleText = "{T}: Add one mana of any color."
+
+        activatedAbility {
+            cost = Costs.Tap
+            effect = Effects.AddAnyColorMana(1)
+            manaAbility = true
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/b/3/b3ce1236-ec2f-4cd1-9701-ba6ead74c220.jpg?1783928077"
+        }
+    }
+
+    /**
+     * Feather — a red artifact token with "{1}, Sacrifice Feather: Return target Phoenix card from
+     * your graveyard to the battlefield tapped." Created by Everquill Phoenix when it mutates.
+     * Red from its color indicator (CR 204), like [Frog].
+     */
+    val Feather = card("Feather") {
+        typeLine = "Artifact"
+        colorIdentity = "R"
+        oracleText = "{1}, Sacrifice Feather: Return target Phoenix card from your graveyard to the battlefield tapped."
+
+        activatedAbility {
+            val phoenix = target(
+                TargetFilter(GameObjectFilter.Any.withSubtype("Phoenix").ownedByYou(), zone = Zone.GRAVEYARD)
+            )
+            cost = Costs.Composite(Costs.Mana("{1}"), Costs.SacrificeSelf)
+            effect = Effects.PutOntoBattlefield(phoenix, tapped = true)
+        }
+
+        metadata {
+            imageUri = "https://cards.scryfall.io/normal/front/a/9/a9cc7c63-5d13-4fd6-af9d-4a26c2bab8e6.jpg?1783930943"
+            artist = "Lie Setiawan"
+        }
+    }
+
+    /**
      * Tamiyo's Notebook — a legendary colorless Book artifact token with
      * "Spells you cast cost {2} less to cast" and "{T}: Draw a card."
      * Created by Tamiyo, Compleated Sage's −7.
@@ -1307,7 +1483,9 @@ object PredefinedTokens {
         JustOneGlass,
         Map,
         Sword,
+        NeurofluxHeirloom,
         Cragflame,
+        IcingdeathFrostTongue,
         Mutavault,
         SorcererRole,
         MonsterRole,
@@ -1319,6 +1497,7 @@ object PredefinedTokens {
         Incubator,
         Drone,
         Everywhere,
+        NewPlanet,
         Munitions,
         Mutagen,
         Frog,
@@ -1343,6 +1522,11 @@ object PredefinedTokens {
         ForestTentacle,
         ForestDryad,
         Powerstone,
-        TamiyosNotebook
+        IcyManalith,
+        ReplicatedRing,
+        TamiyosNotebook,
+        Feather,
+        Gold,
+        EtheriumCell
     )
 }

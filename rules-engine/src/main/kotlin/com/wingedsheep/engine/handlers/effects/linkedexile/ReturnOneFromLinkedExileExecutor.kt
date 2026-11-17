@@ -22,7 +22,9 @@ import kotlin.reflect.KClass
  * If exactly one, auto-returns it. If none for this player, does nothing.
  * If no cards remain in the linked exile at all, removes the global triggered ability.
  */
-class ReturnOneFromLinkedExileExecutor : EffectExecutor<ReturnOneFromLinkedExileEffect> {
+class ReturnOneFromLinkedExileExecutor(
+    private val zones: com.wingedsheep.engine.handlers.effects.ZoneTransitionService,
+) : EffectExecutor<ReturnOneFromLinkedExileEffect> {
 
     override val effectType: KClass<ReturnOneFromLinkedExileEffect> = ReturnOneFromLinkedExileEffect::class
 
@@ -68,7 +70,7 @@ class ReturnOneFromLinkedExileExecutor : EffectExecutor<ReturnOneFromLinkedExile
         }
 
         if (playerCards.size == 1) {
-            return returnCardToBattlefield(state, playerCards.first(), sourceId)
+            return returnCardToBattlefield(state, playerCards.first(), sourceId, zones.cardRegistry, zones.predicateEvaluator)
         }
 
         // Multiple eligible cards — create a decision
@@ -115,7 +117,9 @@ class ReturnOneFromLinkedExileExecutor : EffectExecutor<ReturnOneFromLinkedExile
         fun returnCardToBattlefield(
             state: GameState,
             cardId: EntityId,
-            sourceId: EntityId
+            sourceId: EntityId,
+            registry: com.wingedsheep.engine.registry.CardRegistry,
+            evaluator: com.wingedsheep.engine.handlers.PredicateEvaluator,
         ): EffectResult {
             val container = state.getEntity(cardId)
                 ?: return EffectResult.success(state)
@@ -129,12 +133,49 @@ class ReturnOneFromLinkedExileExecutor : EffectExecutor<ReturnOneFromLinkedExile
             val currentZone = state.zones.entries.find { (_, cards) -> cardId in cards }?.key
                 ?: return EffectResult.success(state)
 
+            // A replacement that sends the card elsewhere instead of onto the battlefield
+            // (Containment Priest's exile). Exiled from exile it doesn't change zones but becomes a
+            // new object (CR 406.7), so it stays put and leaves the pile; any other zone it goes to.
+            val redirect = com.wingedsheep.engine.handlers.effects.ZoneMovementUtils.checkZoneChangeRedirect(
+                state, cardId, currentZone.zoneType, Zone.BATTLEFIELD, predicateEvaluator = evaluator,
+                entersAsCreature = {
+                    com.wingedsheep.engine.handlers.effects.EntryCharacteristics.wouldBeCreature(
+                        state, cardId, ownerId, entryCopy = null, faceDown = false, registry, evaluator
+                    )
+                }
+            ).destinationZone
+            if (redirect == currentZone.zoneType) {
+                val unlinked = com.wingedsheep.engine.handlers.effects.ZoneMovementUtils
+                    .unlinkFromAllLinkedExiles(state, cardId)
+                return EffectResult.success(dropAbilityIfPileEmpty(unlinked, sourceId))
+            }
+            if (redirect != Zone.BATTLEFIELD) {
+                val moved = state.removeFromZone(currentZone, cardId)
+                    .updateEntity(cardId) {
+                        it.without<com.wingedsheep.engine.state.components.identity.ExiledFromZoneComponent>()
+                    }
+                    .addToZone(com.wingedsheep.engine.state.ZoneKey(ownerId, redirect), cardId)
+                return EffectResult.success(moved, listOf(
+                    ZoneChangeEvent(
+                        entityId = cardId,
+                        entityName = cardComponent.name,
+                        fromZone = currentZone.zoneType,
+                        toZone = redirect,
+                        ownerId = ownerId,
+                        oldObject = state.objectRef(cardId),
+                        newObject = moved.objectRef(cardId)
+                    )
+                ))
+            }
+
             var newState = state.removeFromZone(currentZone, cardId)
             // The origin-zone stamp is only meaningful while the object sits in exile, and this
             // path reuses the entity id — drop it so the resulting permanent doesn't carry one.
             newState = newState.updateEntity(cardId) {
                 it.without<com.wingedsheep.engine.state.components.identity.ExiledFromZoneComponent>()
             }
+            newState = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy
+                .applyBeforeEntry(newState, cardId, registry, evaluator)
             newState = com.wingedsheep.engine.handlers.effects.BattlefieldEntry
                 .place(newState, ownerId, cardId)
 
@@ -150,19 +191,16 @@ class ReturnOneFromLinkedExileExecutor : EffectExecutor<ReturnOneFromLinkedExile
                 )
             )
 
-            // Check if any linked cards remain in exile; if not, remove the global ability
-            val sourceContainer = newState.getEntity(sourceId)
-            val linkedExile = sourceContainer?.get<LinkedExileComponent>()
-            if (linkedExile != null) {
-                val remaining = linkedExile.exiledIds.filter { entityId ->
-                    newState.zones.any { (zone, cards) -> zone.zoneType == Zone.EXILE && entityId in cards }
-                }
-                if (remaining.isEmpty()) {
-                    newState = removeGlobalAbilityForSource(newState, sourceId)
-                }
-            }
+            return EffectResult.success(dropAbilityIfPileEmpty(newState, sourceId), events)
+        }
 
-            return EffectResult.success(newState, events)
+        /** Once no linked card remains in exile, the source's returning ability goes too. */
+        private fun dropAbilityIfPileEmpty(state: GameState, sourceId: EntityId): GameState {
+            val linkedExile = state.getEntity(sourceId)?.get<LinkedExileComponent>() ?: return state
+            val remaining = linkedExile.exiledIds.filter { entityId ->
+                state.zones.any { (zone, cards) -> zone.zoneType == Zone.EXILE && entityId in cards }
+            }
+            return if (remaining.isEmpty()) removeGlobalAbilityForSource(state, sourceId) else state
         }
 
         fun removeGlobalAbilityForSource(state: GameState, sourceId: EntityId): GameState {

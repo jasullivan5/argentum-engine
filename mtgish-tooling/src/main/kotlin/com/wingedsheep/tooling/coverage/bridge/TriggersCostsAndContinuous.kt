@@ -115,7 +115,7 @@ internal fun BridgeBuilder.triggersCostsAndContinuous() {
     supported("WhenAPermanentIsTurnedFaceUp", "trigger: this or another permanent you control is turned face up (Triggers.<player>.permanentTurnedFaceUp(filter) — Cryptid Inspector)")
     // OTJ Plot (CR 718) — "When this card becomes plotted, …" (Triggers.self.becomesPlotted(), Aloe Alchemist).
     supported("WhenACardBecomesPlotted", "trigger: this card becomes plotted (Triggers.self.becomesPlotted())")
-    supported("WhenAPermanentBecomesTheTargetOfASpellOrAbility", "trigger: becomes target (Triggers.self.becomesTarget(byOpponent = true) / BecomesTarget / CreatureYouControlBecomesTargetByOpponent / BecomesTargetOfAbility — the last narrows to abilities and, with includePlayerTargets, also covers a targeted player)")
+    supported("WhenAPermanentBecomesTheTargetOfASpellOrAbility", "trigger: becomes target (Triggers.self.becomesTarget(byOpponent = true) / BecomesTarget / CreatureYouControlBecomesTargetByOpponent / BecomesTargetOfAbility — the last narrows to abilities and, with players = Player.Any, also covers a targeted player)")
     // OTJ Saddle (CR 702.171b) — "Whenever this creature becomes saddled for the first time each turn, …"
     // (Triggers.self.becomesSaddled(true), Stubborn Burrowfiend).
     supported("WhenAPermanentBecomesSaddledForTheFirstTimeInATurn", "trigger: this permanent becomes saddled for the first time each turn (Triggers.self.becomesSaddled(true))")
@@ -466,9 +466,9 @@ internal fun BridgeBuilder.triggersCostsAndContinuous() {
     // shape above; the spell-zone selectors are shared.
     effect("DecreaseSpellCost", "ModifySpellCost")
     // "Plotting cards from your hand costs {N} less" (Doc Aurlock) — a controller-scoped player
-    // static over the Plot special action (CR 718). Renders to `ModifyPlotCost(target =
-    // PlotCostTarget.YouPlotFromHand, modification = ReduceGeneric(N))`.
-    effect("DecreasePlotFromHandCost", "ModifyPlotCost")
+    // static over the Plot special action (CR 702.170). Renders to `ModifySpecialActionCost(action =
+    // SpecialActionKind.PLOT, modification = ReduceGeneric(N))`.
+    effect("DecreasePlotFromHandCost", "ModifySpecialActionCost")
 
     // Fblthp, Lost on the Range (CR 718) — top-of-library plot + look. Nested _PlayerEffect /
     // _Rule capabilities of the controller-scoped statics.
@@ -483,8 +483,8 @@ internal fun BridgeBuilder.triggersCostsAndContinuous() {
 
     // Torpor Orb / Hushwing Gryff / Tocatli Honor Guard — "Creatures entering don't cause abilities to
     // trigger." A continuous static that suppresses CR 603.6 enters-the-battlefield triggers caused by a
-    // matching permanent entering. Renders to the SuppressEntersTriggers static ability.
-    supported("PermanentsEnteringTheBattlefieldDontCauseAbilitiesToTrigger", "rule: matching permanents entering don't cause abilities to trigger (SuppressEntersTriggers)")
+    // matching permanent entering. Renders to the SuppressZoneChangeTriggers static ability.
+    supported("PermanentsEnteringTheBattlefieldDontCauseAbilitiesToTrigger", "rule: matching permanents entering don't cause abilities to trigger (SuppressZoneChangeTriggers)")
 
     // Characteristic-defining power/toughness (CR 604.3, applied in layer 7a) — "~'s power is equal to
     // the number of [X]". The card DSL models each stat independently: `dynamicPower(amount, offset)` /

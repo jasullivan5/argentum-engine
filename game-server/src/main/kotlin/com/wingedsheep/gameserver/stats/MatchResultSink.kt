@@ -4,6 +4,7 @@ import com.wingedsheep.gameserver.persistence.MatchCardRow
 import com.wingedsheep.gameserver.persistence.MatchParticipantRow
 import com.wingedsheep.gameserver.persistence.MatchResultRepository
 import com.wingedsheep.gameserver.persistence.MatchResultRow
+import com.wingedsheep.sdk.model.PrintingRef
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
@@ -45,7 +46,42 @@ data class RecordedParticipant(
     val clientIp: String? = null,
     /** This seat's deck as card-name -> copies, for card-level stats. */
     val deckCards: Map<String, Int> = emptyMap(),
+    /**
+     * The printing each card was played as, card-name -> `"SET-CN"` ([PrintingRef.identifier]), for
+     * the cards the deck pinned to one (a Limited pool card, a chosen art). Absent = default printing.
+     */
+    val deckPrintings: Map<String, String> = emptyMap(),
+    /** The seat made a play of its own past the mulligan — see [StatsEligibility]. Null = unknown. */
+    val tookAction: Boolean? = null,
 )
+
+/** A starting deck split into the per-name copy counts and printings [RecordedParticipant] stores. */
+data class RecordedDeck(val cards: Map<String, Int>, val printings: Map<String, String>) {
+    companion object {
+        /**
+         * Split a session deck list — card names, each optionally pinned as `"Name#SET-CN"` — into
+         * copies per canonical name and the printing each name was played as. A name whose copies
+         * are pinned to different printings records the one most of them use (ties: first seen);
+         * a bare `"Name#CN"` pin without a set code can't address a printing and is ignored.
+         */
+        fun of(deckList: List<String>): RecordedDeck {
+            val cards = LinkedHashMap<String, Int>()
+            val pins = LinkedHashMap<String, LinkedHashMap<String, Int>>()
+            for (entry in deckList) {
+                val hash = entry.lastIndexOf('#')
+                val name = if (hash < 0) entry else entry.substring(0, hash)
+                cards.merge(name, 1, Int::plus)
+                if (hash < 0) continue
+                val coordinates = entry.substring(hash + 1)
+                val dash = coordinates.indexOf('-')
+                if (dash <= 0 || dash == coordinates.lastIndex) continue
+                pins.getOrPut(name) { LinkedHashMap() }.merge(coordinates, 1, Int::plus)
+            }
+            val printings = pins.mapValues { (_, counts) -> counts.maxByOrNull { it.value }!!.key }
+            return RecordedDeck(cards, printings)
+        }
+    }
+}
 
 /**
  * Records finished games for durable stats. The game-over path calls this unconditionally; which
@@ -76,6 +112,7 @@ class JdbcMatchResultSink(private val matchResults: MatchResultRepository) : Mat
 
     override fun record(match: RecordedMatch) {
         if (match.participants.none { !it.isAi }) return
+        val counts = StatsEligibility.countsInStats(match.participants.withIndex().associate { it.index to it.value.tookAction })
         matchResults.save(
             MatchResultRow(
                 gameId = match.gameId,
@@ -88,7 +125,7 @@ class JdbcMatchResultSink(private val matchResults: MatchResultRepository) : Mat
                 turnCount = match.turnCount,
                 startedAt = match.startedAt,
                 endedAt = match.endedAt,
-                participants = match.participants.map {
+                participants = match.participants.mapIndexed { index, it ->
                     MatchParticipantRow(
                         userId = it.userId,
                         playerName = it.playerName,
@@ -97,8 +134,10 @@ class JdbcMatchResultSink(private val matchResults: MatchResultRepository) : Mat
                         setCodes = it.setCodes,
                         isAi = it.isAi,
                         clientIp = it.clientIp,
+                        tookAction = it.tookAction,
+                        countsInStats = counts.getValue(index),
                         cards = it.deckCards.map { (name, copies) ->
-                            MatchCardRow(cardName = name, copies = copies)
+                            MatchCardRow(cardName = name, copies = copies, printing = it.deckPrintings[name])
                         }.toSet(),
                     )
                 }.toSet(),

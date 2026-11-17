@@ -84,58 +84,156 @@ sealed interface ManaRestriction {
     }
 
     /**
-     * "Spend this mana only to cast colorless spells." A spell is colorless when its colors are
-     * empty (CR 105.2c) — a devoid spell, an artifact with no colored symbols, and a face-down
-     * spell (CR 708.2) all qualify. Ability activations never do; compose with
-     * [AbilityActivationOnly] for Sage of the Unknowable's "to cast a colorless spell or to
-     * activate an ability".
+     * "Spend this mana only to cast colorless spells [or activate abilities of colorless sources]."
+     * The colorless counterpart of [CardTypeSpellsOrAbilitiesOnly], with the same three axes:
+     *   - [allowSpells] — a spell cast whose colors are empty (CR 105.2c): a devoid spell, an
+     *     artifact with no colored symbols, and a face-down spell (CR 708.2) all qualify;
+     *   - [allowAbilities] — an activated ability whose source is colorless, read off the source's
+     *     projected colors at payment time (so a permanent made colorless by Mycosynth Lattice counts);
+     *   - [permanentSourcesOnly] — narrows the abilities half to sources on the battlefield
+     *     ("an ability of a colorless permanent", Cultivator Drone), where the default also admits a
+     *     colorless card's ability from another zone ("abilities of colorless Eldrazi", Eldrazi Temple).
+     *
+     * `ColorlessSpellsOrAbilitiesOnly()` is the plain "cast colorless spells" (Sage of the
+     * Unknowable composes it with [AbilityActivationOnly] for "or to activate an ability"). It is
+     * not [CardTypeSpellsOrAbilitiesOnly] because colorless is a color fact, not a card type, and
+     * not [AbilityActivationOnly], which admits every source.
      */
-    @SerialName("ColorlessSpellsOnly")
+    @SerialName("ColorlessSpellsOrAbilitiesOnly")
     @Serializable
-    data object ColorlessSpellsOnly : ManaRestriction {
-        override val description: String = "Spend this mana only to cast colorless spells"
+    data class ColorlessSpellsOrAbilitiesOnly(
+        val allowSpells: Boolean = true,
+        val allowAbilities: Boolean = false,
+        val permanentSourcesOnly: Boolean = false,
+    ) : ManaRestriction {
+        init {
+            require(allowSpells || allowAbilities) {
+                "ColorlessSpellsOrAbilitiesOnly must allow at least one of spells or abilities"
+            }
+        }
+
+        override val description: String = buildString {
+            append("Spend this mana only to ")
+            val clauses = buildList {
+                if (allowSpells) add("cast colorless spells")
+                if (allowAbilities) add(if (permanentSourcesOnly) "activate abilities of colorless permanents" else "activate abilities of colorless sources")
+            }
+            append(clauses.joinToString(" or "))
+        }
     }
 
     /**
-     * "Spend this mana only on costs that contain {X}." Satisfied by casting a spell whose mana
-     * cost contains {X}, and by activating an ability whose mana cost contains {X} — both are
-     * costs, so unlike [SpellsWithManaValueAtLeast]'s `orXInCost` this one is not spell-only.
-     * Only the {X} mana symbol counts: a loyalty "−X" or "remove X counters" cost has no {X} in it.
-     * The engine reads the spell's printed mana cost (or a cleave cost), not an alternative or
-     * additional cost the ruling also counts (a flashback or kicker cost with {X}), and special
-     * actions never qualify. Rosheen, Roaring Prophet.
+     * "Spend this mana only to cast a spell that's one or more colors" — the complement of
+     * [ColorlessSpellsOrAbilitiesOnly]: a spell with at least one color (CR 105.2), read off the spell being
+     * cast, so a hybrid or devoid spell is judged by its actual colors. [withoutXInCost] adds the
+     * "without {X} in its mana cost" clause Titans' Nest prints. Ability activations never
+     * satisfy it, and a context that doesn't set `colorCount` refuses it.
      */
-    @SerialName("CostsContainingXOnly")
+    @SerialName("ColoredSpellsOnly")
     @Serializable
-    data object CostsContainingXOnly : ManaRestriction {
-        override val description: String = "Spend this mana only on costs that contain {X}"
+    data class ColoredSpellsOnly(val withoutXInCost: Boolean = false) : ManaRestriction {
+        override val description: String =
+            "Spend this mana only to cast a spell that's one or more colors" +
+                if (withoutXInCost) " without {X} in its mana cost" else ""
+    }
+
+    /**
+     * "Spend this mana only on costs that contain [symbol]" — {X} (Rosheen, Roaring Prophet) or
+     * {C} (Cultivator Drone's "pay a cost that contains {C}"). Satisfied by any cost being paid
+     * whose mana symbols include [symbol]: a spell's mana cost, an activated ability's mana cost,
+     * and a cost an effect asks for as it resolves ("you may pay {1}{C}" — Bearer of Silence's
+     * ruling). The mana may pay any part of that cost, not just the [symbol] itself. Read off
+     * `SpellPaymentContext.costSymbols`, which the engine fills from the spell's printed mana cost
+     * (or a cleave cost), the ability's mana cost, or the resolving effect's cost; an
+     * alternative or additional cost the spell is cast with is not read, and special actions
+     * never qualify. Only the mana symbol counts: a loyalty "−X" or "remove X counters" cost has
+     * no {X} in it.
+     *
+     * The symbol is a parameter rather than one object per symbol, so a future "costs that contain
+     * {S}" reads the same way. Not [SpellsWithManaValueAtLeast]'s `orXInCost`, which is spell-only.
+     */
+    @SerialName("CostsContainingSymbolOnly")
+    @Serializable
+    data class CostsContainingSymbolOnly(val symbol: com.wingedsheep.sdk.core.ManaSymbol) : ManaRestriction {
+        override val description: String = "Spend this mana only to pay costs that contain $symbol"
     }
 
     /**
      * "Spend this mana only to cast spells with exactly [count] colors." Matches a spell whose
      * colors (CR 105.2) number exactly [count], read off the spell being cast — a hybrid pip
      * counts both its colors. Meeting of the Five (`count = 3`). A colorless spell has zero
-     * colors, but "spend this mana only to cast colorless spells" is [ColorlessSpellsOnly].
+     * colors, but "spend this mana only to cast colorless spells" is [ColorlessSpellsOrAbilitiesOnly].
+     *
+     * [includingColor] adds the axis "… and one of them is that color": `SpellsWithExactColorCount(1,
+     * Color.RED)` is "monocolored red spells" (a spell that is red and nothing else), and a
+     * multicolored spell that merely includes red does not satisfy it. `null` (the default) is the
+     * unconstrained shape Meeting of the Five prints. A color that isn't known when the card is
+     * written — Throne of Eldraine's "monocolored spells of the chosen color" — is
+     * [SpellsOfChosenColor], which the engine binds to this form as the mana is made.
      */
     @SerialName("SpellsWithExactColorCount")
     @Serializable
-    data class SpellsWithExactColorCount(val count: Int) : ManaRestriction {
+    data class SpellsWithExactColorCount(
+        val count: Int,
+        val includingColor: com.wingedsheep.sdk.core.Color? = null,
+    ) : ManaRestriction {
         init {
-            require(count in 1..5) { "a spell has 1 to 5 colors; use ColorlessSpellsOnly for none" }
+            require(count in 1..5) { "a spell has 1 to 5 colors; use ColorlessSpellsOrAbilitiesOnly for none" }
+        }
+        override val description: String = run {
+            val colors = if (count == 1) "color" else "colors"
+            val number = listOf("one", "two", "three", "four", "five")[count - 1]
+            if (includingColor == null) {
+                "Spend this mana only to cast spells with exactly $number $colors"
+            } else if (count == 1) {
+                "Spend this mana only to cast monocolored ${includingColor.displayName.lowercase()} spells"
+            } else {
+                "Spend this mana only to cast ${includingColor.displayName.lowercase()} spells with exactly $number $colors"
+            }
+        }
+    }
+
+    /**
+     * "Spend this mana only to cast spells of the chosen color with exactly [exactColorCount]
+     * colors" — Throne of Eldraine's "Spend this mana only to cast monocolored spells of that
+     * color" is `SpellsOfChosenColor(1)`. The *unbound* form of [SpellsWithExactColorCount]'s
+     * `includingColor` axis, for a card that chose a color as it entered (CR 614.12 "as enters"
+     * choice): the engine binds it the moment the mana is made, replacing it — also inside an
+     * [AnyOf] / [AllOf] — with `SpellsWithExactColorCount(exactColorCount, <the producing source's
+     * chosen color>)`, so the pool only ever holds the self-contained bound form. Left unbound (the
+     * source never chose a color) it is satisfied by nothing.
+     *
+     * Closest types: [SpellsWithExactColorCount] (a color fixed when the card is written, so it
+     * can't name a choice made later) and [OfChosenType] (the same "bind to the source's choice"
+     * shape, but over creature types, not colors). A separate type rather than a sentinel color on
+     * [SpellsWithExactColorCount] for the reason [OfChosenType] gives: a sentinel would let a
+     * printed color and "the chosen one" collide.
+     */
+    @SerialName("SpellsOfChosenColor")
+    @Serializable
+    data class SpellsOfChosenColor(val exactColorCount: Int) : ManaRestriction {
+        init {
+            require(exactColorCount in 1..5) { "a spell has 1 to 5 colors" }
         }
         override val description: String =
-            "Spend this mana only to cast spells with exactly ${listOf("one", "two", "three", "four", "five")[count - 1]} " +
-                if (count == 1) "color" else "colors"
+            if (exactColorCount == 1) "Spend this mana only to cast monocolored spells of the chosen color"
+            else "Spend this mana only to cast spells of the chosen color with exactly " +
+                "${listOf("one", "two", "three", "four", "five")[exactColorCount - 1]} colors"
     }
 
     /**
      * "Spend this mana only to cast legendary spells." Matches spells with the Legendary supertype
-     * (Great Hall of the Citadel, Delighted Halfling).
+     * (Great Hall of the Citadel, Delighted Halfling). [creatureOnly] narrows it to legendary
+     * *creature* spells (The Ringhart Crest's "or a legendary creature spell"), the same axis
+     * [SpellsWithManaValueAtLeast] and [SubtypeSpellsOrAbilitiesOnly] carry.
      */
     @SerialName("LegendarySpellsOnly")
     @Serializable
-    data object LegendarySpellsOnly : ManaRestriction {
-        override val description: String = "Spend this mana only to cast legendary spells"
+    data class LegendarySpellsOnly(
+        val creatureOnly: Boolean = false,
+    ) : ManaRestriction {
+        override val description: String =
+            "Spend this mana only to cast legendary ${if (creatureOnly) "creature spells" else "spells"}"
     }
 
     /**
@@ -160,6 +258,31 @@ sealed interface ManaRestriction {
     data class SubtypeSpellsOrAbilitiesOnly(
         val subtype: String,
         val creatureOnly: Boolean = false
+    ) : ManaRestriction {
+        override val description: String = if (creatureOnly) {
+            "Spend this mana only to cast a creature spell of the chosen type"
+        } else {
+            "Spend this mana only to cast a spell of the chosen type or activate an ability of a source of the chosen type"
+        }
+    }
+
+    /**
+     * "Spend this mana only to cast a [creature] spell of the chosen type" — the *unbound* form of
+     * [SubtypeSpellsOrAbilitiesOnly], for a card that chose a creature type as it entered (CR 614.12
+     * "as enters" choice) and makes mana restricted to it: Cavern of Souls, Secluded Courtyard, The
+     * Ringhart Crest. The engine binds it the moment the mana is made, replacing it — also inside an
+     * [AnyOf] / [AllOf] — with `SubtypeSpellsOrAbilitiesOnly(<the producing source's chosen type>,
+     * creatureOnly)`, so the pool only ever holds the self-contained bound form. Left unbound (the
+     * source never chose a type) it is satisfied by nothing.
+     *
+     * A separate type rather than a placeholder subtype string on [SubtypeSpellsOrAbilitiesOnly]:
+     * a sentinel value would let a printed subtype and "the chosen one" collide, and
+     * [SubtypeSpellsOnly] (a fixed set of subtypes) has the same problem.
+     */
+    @SerialName("OfChosenType")
+    @Serializable
+    data class OfChosenType(
+        val creatureOnly: Boolean = false,
     ) : ManaRestriction {
         override val description: String = if (creatureOnly) {
             "Spend this mana only to cast a creature spell of the chosen type"
@@ -201,13 +324,29 @@ sealed interface ManaRestriction {
     /**
      * "Spend this mana only to turn permanents face up."
      *
-     * Satisfied by the turn-face-up special action (disguise/morph face-up, CR 707.9 / 702.37e),
-     * not by spell casts or ability activations. Used by Overgrown Zealot and Creeping Peeper.
+     * Satisfied by the turn-face-up special action (CR 116.2b), not by spell casts or ability
+     * activations. [procedures] narrows it to the turn-up procedures being paid for — the
+     * mechanic whose rule the chosen procedure follows ([FaceDownMode.MORPH], CR 702.37e;
+     * [FaceDownMode.DISGUISE], 702.168d; [FaceDownMode.MANIFEST], 701.40b; [FaceDownMode.CLOAK],
+     * 701.58b). `null` admits every turn-up (Overgrown Zealot, Creeping Peeper).
+     *
+     * The procedure, not how the permanent went face down, is what a narrowed clause names: a
+     * manifested card that prints morph may be turned up for its morph cost (CR 701.40c), and that
+     * is "paying a morph cost". Qarsi Deceiver's "pay a mana cost to turn a manifested creature
+     * face up, or pay a morph cost" is `procedures = setOf(MANIFEST, MORPH)` — "a mana cost" is the
+     * card's mana cost (701.40b), so a manifested disguise card turned up for its disguise cost
+     * doesn't qualify. Megamorph is morph.
      */
     @SerialName("TurnPermanentsFaceUpOnly")
     @Serializable
-    data object TurnPermanentsFaceUpOnly : ManaRestriction {
-        override val description: String = "Spend this mana only to turn permanents face up"
+    data class TurnPermanentsFaceUpOnly(
+        val procedures: Set<FaceDownMode>? = null,
+    ) : ManaRestriction {
+        override val description: String = when (procedures) {
+            null -> "Spend this mana only to turn permanents face up"
+            else -> "Spend this mana only to turn permanents face up by " +
+                procedures.joinToString(" or ") { it.name.lowercase() }
+        }
     }
 
     /**
@@ -237,6 +376,36 @@ sealed interface ManaRestriction {
     @Serializable
     data object UnlockDoorOnly : ManaRestriction {
         override val description: String = "Spend this mana only to unlock a door"
+    }
+
+    /**
+     * "Spend this mana only to foretell a card from your hand."
+     *
+     * Satisfied by the foretell special action's fixed {2} payment (CR 702.143a), not by casting
+     * the foretold card later for its foretell cost — that is a spell cast, which
+     * [SpellsWithKeywordOnly] (`Keyword.FORETELL`) covers. Karfell Harbinger:
+     * `AnyOf(ForetellOnly, InstantOrSorceryOnly)`; Niko Defies Destiny:
+     * `AnyOf(ForetellOnly, SpellsWithKeywordOnly(Keyword.FORETELL))`.
+     */
+    @SerialName("ForetellOnly")
+    @Serializable
+    data object ForetellOnly : ManaRestriction {
+        override val description: String = "Spend this mana only to foretell a card from your hand"
+    }
+
+    /**
+     * "Spend this mana only to cast spells that have [keyword]" — a spell whose card has the
+     * keyword in its definition (printed, or derived from a parameterized keyword ability such as
+     * foretell or flashback). A keyword granted to the spell by another effect isn't read yet. Niko Defies Destiny's "cast spells that have foretell" is
+     * `SpellsWithKeywordOnly(Keyword.FORETELL)`. Rejects ability activations and non-cast spends.
+     */
+    @SerialName("SpellsWithKeywordOnly")
+    @Serializable
+    data class SpellsWithKeywordOnly(
+        val keyword: com.wingedsheep.sdk.core.Keyword
+    ) : ManaRestriction {
+        override val description: String =
+            "Spend this mana only to cast spells that have ${keyword.displayName.lowercase()}"
     }
 
     /**
@@ -397,6 +566,19 @@ sealed interface ManaRestriction {
     }
 
     /**
+     * "This mana can't be spent to pay generic mana costs" (Jegantha, the Wellspring). Unlike every
+     * other restriction this one is about *which symbol* the mana pays, not which payment: it is
+     * spendable on any spell, ability or special action, but only on a colored, colorless ({C}) or
+     * snow ({S}) symbol — never on generic mana ({1}, {X}, or the generic half of a monocolored
+     * hybrid {2/W}; CR 107.4b, 107.4e). Compose with [AllOf] to add a payment restriction.
+     */
+    @SerialName("CannotPayGenericCosts")
+    @Serializable
+    data object CannotPayGenericCosts : ManaRestriction {
+        override val description: String = "This mana can't be spent to pay generic mana costs"
+    }
+
+    /**
      * "Spend this mana only to cast a spell from anywhere other than your hand."
      *
      * Used by Mm'menon, the Right Hand's granted artifact ability. Generalizes
@@ -491,3 +673,4 @@ sealed interface ManaRestriction {
         }
     }
 }
+

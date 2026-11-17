@@ -173,6 +173,98 @@
     "colorIdentityOverride": []
 }
 
+// Curse of Opulence
+{
+    "name": "Curse of Opulence",
+    "manaCost": "{R}",
+    "typeLine": "Enchantment — Aura Curse",
+    "oracleText": "Enchant player\nWhenever enchanted player is attacked, create a Gold token. Each opponent attacking that player does the same. (A Gold token is an artifact with \"Sacrifice this token: Add one mana of any color.\")",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Curse of Opulence:1",
+                "trigger": {
+                    "type": "CreaturesAttackYouEvent",
+                    "attackedPlayer": "EnchantedPlayer"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "CreatePredefinedToken",
+                            "tokenType": "Gold"
+                        },
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Players",
+                                "players": "EachOpponent"
+                            },
+                            "body": {
+                                "type": "Gated",
+                                "gate": {
+                                    "type": "Gate.WhenCondition",
+                                    "condition": {
+                                        "type": "Exists",
+                                        "player": "You",
+                                        "zone": "Battlefield",
+                                        "filter": {
+                                            "cardPredicates": [
+                                                "IsCreature"
+                                            ],
+                                            "statePredicates": [
+                                                "IsAttackingEnchantedPlayer"
+                                            ]
+                                        }
+                                    }
+                                },
+                                "then": {
+                                    "type": "CreatePredefinedToken",
+                                    "tokenType": "Gold"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever enchanted player is attacked, create a Gold token. Each opponent attacking that player does the same."
+            }
+        ],
+        "auraTarget": "TargetPlayer"
+    },
+    "metadata": {
+        "collectorNumber": "24",
+        "rarity": "UNCOMMON",
+        "artist": "Kieran Yanner",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/2/e23db9d3-d11f-4b2c-8349-687bc0e9d4c2.jpg?1783935943",
+        "rulings": [
+            {
+                "date": "2017-08-25",
+                "text": "Curse of Opulence's triggered ability resolves after attackers have been declared. Any costs to attack must have already been paid before the attacking player creates the Gold."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "Each Curse's ability triggers only once, no matter how many creatures are attacking the enchanted player."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "A player is attacking another player if they control a creature that's attacking that player. If no creatures are attacking the enchanted player as a Curse's ability resolves (most likely because they've left the battlefield), only the Curse's controller performs its actions."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "The triggered ability of these Curses won't trigger if only a planeswalker controlled by the enchanted player is attacked."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "If you enchant yourself with one of these Curses, you'll get its effects whenever another player attacks you."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Edgar Markov
 {
     "name": "Edgar Markov",
@@ -528,6 +620,558 @@
     "colorIdentityOverride": []
 }
 
+// Hungry Lynx
+{
+    "name": "Hungry Lynx",
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature — Cat",
+    "oracleText": "Cats you control have protection from Rats. (They can't be blocked, targeted, or dealt damage by Rats.)\nAt the beginning of your end step, target opponent creates a 1/1 black Rat creature token with deathtouch.\nWhenever a Rat dies, put a +1/+1 counter on each Cat you control.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Hungry Lynx:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "BLACK"
+                    ],
+                    "creatureTypes": [
+                        "Rat"
+                    ],
+                    "keywords": [
+                        "DEATHTOUCH"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/c/1/c1788d4c-31b8-4f73-8275-5470316e7ad4.jpg?1783935828",
+                    "controller": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetOpponent",
+                    "id": "t0"
+                },
+                "descriptionOverride": "At the beginning of your end step, target opponent creates a 1/1 black Rat creature token with deathtouch."
+            },
+            {
+                "id": "Hungry Lynx:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature Rat",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "permanent Cat ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "AddCounters",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
+                        "count": 1,
+                        "target": "IterationEntity"
+                    }
+                },
+                "descriptionOverride": "Whenever a Rat dies, put a +1/+1 counter on each Cat you control."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "GrantKeyword",
+                "keyword": "PROTECTION_FROM_SUBTYPE_RAT",
+                "filter": {
+                    "baseFilter": "permanent Cat ctrl:you"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "31",
+        "rarity": "RARE",
+        "artist": "Shreya Shetty",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/0/c0ad6f84-8ede-4411-9979-cefee255fa70.jpg?1783935941",
+        "rulings": [
+            {
+                "date": "2017-08-25",
+                "text": "The opponent who creates the Rat token is the owner of that token."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "Tokens that are sacrificed or destroyed are put into their owner's graveyard before ceasing to exist. If the token was a Rat, Hungry Lynx's last ability will trigger."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "Hungry Lynx's last ability puts a +1/+1 counter on each Cat you control, including itself."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "If Hungry Lynx dies at the same time as a Rat, its ability triggers, but Hungry Lynx won't be on the battlefield as that ability resolves. It can't be saved by the +1/+1 counter that would have been put on it. The same is true of any other Cats you control that die at the same time. Your remaining Cats will each get a +1/+1 counter."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Kindred Discovery
+{
+    "name": "Kindred Discovery",
+    "manaCost": "{3}{U}{U}",
+    "typeLine": "Enchantment",
+    "oracleText": "As this enchantment enters, choose a creature type.\nWhenever a creature you control of the chosen type enters or attacks, draw a card.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Kindred Discovery:1",
+                "trigger": {
+                    "type": "AnyOfEvents",
+                    "events": [
+                        {
+                            "type": "ZoneChangeEvent",
+                            "filter": {
+                                "cardPredicates": [
+                                    "IsCreature",
+                                    "HasChosenSubtype"
+                                ],
+                                "controllerPredicate": "ControlledByYou"
+                            },
+                            "to": "Battlefield"
+                        },
+                        {
+                            "type": "AttackEvent",
+                            "filter": {
+                                "cardPredicates": [
+                                    "IsCreature",
+                                    "HasChosenSubtype"
+                                ],
+                                "controllerPredicate": "ControlledByYou"
+                            }
+                        }
+                    ]
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "Whenever a creature you control of the chosen type enters or attacks, draw a card."
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithChoice",
+                "choiceType": "CREATURE_TYPE"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "11",
+        "rarity": "RARE",
+        "artist": "Lake Hurwitz",
+        "flavorText": "Few things are truly \"lost\" at sea.",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/d/ed07b7be-bd3d-4dbc-bc92-b5478d3604c6.jpg?1783935949",
+        "rulings": [
+            {
+                "date": "2022-06-10",
+                "text": "The choice of creature type is made as Kindred Discovery enters the battlefield. Players can't take any actions between the time the choice is made and the time it enters the battlefield. Notably, this means that if it is entering the battlefield at the same time as any creatures of the chosen type, its last ability will trigger."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "If you somehow control a Kindred Discovery with no chosen creature type, its last ability can't trigger, even if a creature with no creature types enters the battlefield or attacks."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Kindred Dominance
+{
+    "name": "Kindred Dominance",
+    "manaCost": "{5}{B}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Choose a creature type. Destroy all creatures that aren't of the chosen type.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ChooseOption",
+                    "optionType": "CREATURE_TYPE",
+                    "storeAs": "chosen0"
+                },
+                {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "BattlefieldMatching",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "IsCreature",
+                                        {
+                                            "type": "Not",
+                                            "predicate": {
+                                                "type": "HasSubtypeFromVariable",
+                                                "variableName": "chosen0"
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "storeAs": "destroyAll_gathered"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "destroyAll_gathered",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard"
+                            },
+                            "moveType": "Destroy"
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "18",
+        "rarity": "RARE",
+        "artist": "Bram Sels",
+        "flavorText": "In the end, the lights fade, the land withers, and only the dead and vile remain.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/7/9794115a-5509-4d9a-b119-d2b61942e87b.jpg?1783935945",
+        "rulings": [
+            {
+                "date": "2017-08-25",
+                "text": "Once Kindred Dominance begins to resolve, no players may take other actions until it's done. Notably, players can't try to save their creatures after you've chosen a creature type."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "You can't choose multiple creature types, such as \"Cat Warrior.\" A Cat Warrior is both a Cat and a Warrior. It's affected by anything that affects either type and unaffected by things that affect non-Cat or non-Warrior creatures."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Mirri, Weatherlight Duelist
+{
+    "name": "Mirri, Weatherlight Duelist",
+    "manaCost": "{1}{G}{W}",
+    "typeLine": "Legendary Creature — Cat Warrior",
+    "oracleText": "First strike\nWhenever Mirri attacks, each opponent can't block with more than one creature this combat.\nAs long as Mirri is tapped, no more than one creature can attack you each combat.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 2
+    },
+    "keywords": [
+        "FIRST_STRIKE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Mirri, Weatherlight Duelist:1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "BlockerCountLimitThisCombat",
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "EachOpponent"
+                    },
+                    "maxBlockers": 1
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "AttackerCountLimit",
+                    "maxAttackers": 1,
+                    "defendingPlayers": "You"
+                },
+                "condition": {
+                    "type": "EntityMatches",
+                    "entity": "Self",
+                    "filter": "tapped"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "43",
+        "rarity": "MYTHIC",
+        "artist": "Magali Villeneuve",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/f/7f7b6d78-4c18-4f96-9f0c-53a5c81aa6f9.jpg?1783935935",
+        "rulings": [
+            {
+                "date": "2023-07-28",
+                "text": "While Mirri is tapped, there's no restriction on how many creatures can attack planeswalkers you control or battles you protect."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "Tapping Mirri after creatures have attacked will not remove creatures from combat."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
+    ]
+}
+
+// New Blood
+{
+    "name": "New Blood",
+    "manaCost": "{2}{B}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "As an additional cost to cast this spell, tap an untapped Vampire you control.\nGain control of target creature. Change the text of that creature by replacing all instances of one creature type with Vampire.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GainControl",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "ChangeCreatureTypeText",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "replacementType": "Vampire"
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ],
+        "additionalCosts": [
+            {
+                "type": "AdditionalAtom",
+                "atom": {
+                    "type": "AtomTapPermanents",
+                    "filter": "creature Vampire"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "19",
+        "rarity": "RARE",
+        "artist": "Howard Lyon",
+        "flavorText": "\"Now isn't that better?\"\n—Olivia Voldaren",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/6/f6b44503-7978-4c9e-a8a1-fd38c76d3545.jpg?1783935944"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Patron of the Vein
+{
+    "name": "Patron of the Vein",
+    "manaCost": "{4}{B}{B}",
+    "typeLine": "Creature — Vampire Shaman",
+    "oracleText": "Flying\nWhen this creature enters, destroy target creature an opponent controls.\nWhenever a creature an opponent controls dies, exile it and put a +1/+1 counter on each Vampire you control.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Patron of the Vein:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature ctrl:opponent"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "When this creature enters, destroy target creature an opponent controls."
+            },
+            {
+                "id": "Patron of the Vein:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:opponent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "MoveToZone",
+                            "target": "TriggeringEntity",
+                            "destination": "Exile",
+                            "fromZone": "Graveyard"
+                        },
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Group",
+                                "filter": {
+                                    "baseFilter": "permanent Vampire ctrl:you"
+                                }
+                            },
+                            "body": {
+                                "type": "AddCounters",
+                                "counterType": "PLUS_ONE_PLUS_ONE",
+                                "count": 1,
+                                "target": "IterationEntity"
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever a creature an opponent controls dies, exile it and put a +1/+1 counter on each Vampire you control."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "20",
+        "rarity": "RARE",
+        "artist": "Tommy Arnold",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/2/e27db39c-c4b8-46b9-afe6-1737841bdad6.jpg?1783935944",
+        "rulings": [
+            {
+                "date": "2017-08-25",
+                "text": "Destroying a creature with Patron of the Vein's first ability causes its last ability to trigger if Patron of the Vein is still on the battlefield."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "Patron of the Vein's last ability puts a +1/+1 counter on each Vampire you control, including itself, even if the creature that died can't be exiled (most likely because it was a token)."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "If Patron of the Vein and a creature an opponent controls die simultaneously (perhaps because they fought or were in combat together), Patron of the Vein's last ability triggers, but Patron of the Vein won't be on the battlefield as that ability resolves. It can't be saved by the +1/+1 counter that would have been put on it. The same is true of any other Vampires you control that die at the same time. Your remaining Vampires will each get a +1/+1 counter."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Qasali Slingers
+{
+    "name": "Qasali Slingers",
+    "manaCost": "{4}{G}",
+    "typeLine": "Creature — Cat Warrior",
+    "oracleText": "Reach\nWhenever this creature or another Cat you control enters, you may destroy target artifact or enchantment.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 5
+    },
+    "keywords": [
+        "REACH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Qasali Slingers:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "permanent Cat ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "destination": "Graveyard",
+                        "byDestruction": true
+                    },
+                    "descriptionOverride": "Whenever this creature or another Cat you control enters, you may destroy target artifact or enchantment."
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "artifact|enchantment"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "Whenever this creature or another Cat you control enters, you may destroy target artifact or enchantment."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "33",
+        "rarity": "RARE",
+        "artist": "Izzy",
+        "flavorText": "All things will crumble, whether by time or by force.",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/0/40e21394-146e-4648-b81e-63659c0c4764.jpg?1783935939",
+        "rulings": [
+            {
+                "date": "2017-08-25",
+                "text": "If Qasali Slingers enters the battlefield at the same time as other Cats you control, its ability will trigger for each of those Cats."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Ramos, Dragon Engine
 {
     "name": "Ramos, Dragon Engine",
@@ -724,5 +1368,292 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// The Ur-Dragon
+{
+    "name": "The Ur-Dragon",
+    "manaCost": "{4}{W}{U}{B}{R}{G}",
+    "typeLine": "Legendary Creature — Dragon Avatar",
+    "oracleText": "Eminence — As long as The Ur-Dragon is in the command zone or on the battlefield, other Dragon spells you cast cost {1} less to cast.\nFlying\nWhenever one or more Dragons you control attack, draw that many cards, then you may put a permanent card from your hand onto the battlefield.",
+    "creatureStats": {
+        "power": 10,
+        "toughness": 10
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "The Ur-Dragon:1",
+                "trigger": {
+                    "type": "YouAttackEvent",
+                    "attackerFilter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "HasSubtype",
+                                "subtype": "Dragon"
+                            }
+                        ]
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "DistinctEntitiesInCollections",
+                                "collections": [
+                                    "trigger.captured"
+                                ]
+                            }
+                        },
+                        {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "GatherCards",
+                                    "source": {
+                                        "type": "FromZone",
+                                        "zone": "Hand",
+                                        "filter": "permanent"
+                                    },
+                                    "storeAs": "put_candidates"
+                                },
+                                {
+                                    "type": "SelectFromCollection",
+                                    "from": "put_candidates",
+                                    "selection": {
+                                        "type": "ChooseUpTo",
+                                        "count": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        }
+                                    },
+                                    "storeSelected": "putting"
+                                },
+                                {
+                                    "type": "MoveCollection",
+                                    "from": "putting",
+                                    "destination": {
+                                        "type": "ToZone",
+                                        "zone": "Battlefield"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever one or more Dragons you control attack, draw that many cards, then you may put a permanent card from your hand onto the battlefield."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifySpellCost",
+                "target": {
+                    "type": "YouCast",
+                    "filter": "Dragon"
+                },
+                "modification": {
+                    "type": "ReduceGeneric",
+                    "amount": 1
+                }
+            },
+            {
+                "type": "ZoneScopedStaticAbility",
+                "ability": {
+                    "type": "ModifySpellCost",
+                    "target": {
+                        "type": "YouCast",
+                        "filter": "Dragon"
+                    },
+                    "modification": {
+                        "type": "ReduceGeneric",
+                        "amount": 1
+                    }
+                },
+                "activeZones": [
+                    "Command"
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "48",
+        "rarity": "MYTHIC",
+        "artist": "Jaime Jones",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/e/7e78b70b-0c67-4f14-8ad7-c9f8e3f59743.jpg?1783935933",
+        "rulings": [
+            {
+                "date": "2017-08-25",
+                "text": "You draw one card for each Dragon you controlled that attacked, even if some of them left the battlefield before The Ur-Dragon's triggered ability resolves."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "You may only put one permanent card from your hand onto the battlefield, no matter how many Dragons you attacked with or how many players they attacked."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "If a Dragon you control enters the battlefield attacking, it won't cause The Ur-Dragon's last ability to trigger."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "The Ur-Dragon's triggered ability resolves after all attackers have been chosen. You can't attack with some Dragons, put a creature card with haste onto the battlefield, and then attack with that creature. Similarly, any \"whenever a creature attacks\" abilities of the permanent card you put onto the battlefield won't trigger."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLUE",
+        "BLACK",
+        "RED",
+        "GREEN"
+    ]
+}
+
+// Vindictive Lich
+{
+    "name": "Vindictive Lich",
+    "manaCost": "{3}{B}",
+    "typeLine": "Creature — Zombie Wizard",
+    "oracleText": "When this creature dies, choose one or more. Each mode must target a different player.\n• Target opponent sacrifices a creature of their choice.\n• Target opponent discards two cards.\n• Target opponent loses 5 life.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Vindictive Lich:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "Modal",
+                    "modes": [
+                        {
+                            "effect": {
+                                "type": "ForceSacrifice",
+                                "filter": "creature",
+                                "target": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                }
+                            },
+                            "targetRequirements": [
+                                {
+                                    "type": "TargetOpponent",
+                                    "id": "t0"
+                                }
+                            ],
+                            "description": "Target opponent sacrifices a creature of their choice"
+                        },
+                        {
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "FromZone",
+                                            "zone": "Hand",
+                                            "player": {
+                                                "type": "BoundVariable",
+                                                "name": "t1"
+                                            }
+                                        },
+                                        "storeAs": "hand"
+                                    },
+                                    {
+                                        "type": "SelectFromCollection",
+                                        "from": "hand",
+                                        "selection": {
+                                            "type": "ChooseExactly",
+                                            "count": {
+                                                "type": "Fixed",
+                                                "amount": 2
+                                            }
+                                        },
+                                        "chooser": "TargetPlayer",
+                                        "storeSelected": "discarded",
+                                        "prompt": "Choose 2 cards to discard"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "discarded",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Graveyard",
+                                            "player": {
+                                                "type": "BoundVariable",
+                                                "name": "t1"
+                                            }
+                                        },
+                                        "moveType": "Discard"
+                                    }
+                                ]
+                            },
+                            "targetRequirements": [
+                                {
+                                    "type": "TargetOpponent",
+                                    "id": "t1"
+                                }
+                            ],
+                            "description": "Target opponent discards two cards"
+                        },
+                        {
+                            "effect": {
+                                "type": "LoseLife",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 5
+                                },
+                                "target": {
+                                    "type": "BoundVariable",
+                                    "name": "t2"
+                                }
+                            },
+                            "targetRequirements": [
+                                {
+                                    "type": "TargetOpponent",
+                                    "id": "t2"
+                                }
+                            ],
+                            "description": "Target opponent loses 5 life"
+                        }
+                    ],
+                    "chooseCount": 3,
+                    "minChooseCount": 1,
+                    "eachModeTargetsDifferent": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "21",
+        "rarity": "RARE",
+        "artist": "Toma Feizo Gas",
+        "flavorText": "Heart, mind, soul—weapons all.",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/2/3227d983-e0c5-4dbd-aaff-fb9265199a82.jpg?1783935945",
+        "rulings": [
+            {
+                "date": "2017-08-25",
+                "text": "You can't choose more modes for Vindictive Lich's triggered ability than you have opponents, but you need to choose at least one target if you can."
+            },
+            {
+                "date": "2017-08-25",
+                "text": "You don't have to choose a mode for each opponent. For example, you could make one opponent lose 5 life and spare each other opponent. They might not repay your kindness."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }

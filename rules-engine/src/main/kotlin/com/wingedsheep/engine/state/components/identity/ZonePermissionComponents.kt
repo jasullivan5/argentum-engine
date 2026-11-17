@@ -192,6 +192,29 @@ data class PlayWithCostIncreaseComponent(
 }
 
 /**
+ * Marks a card as costing **less** to cast for the specified player, for one resolution-time cast —
+ * "you may cast it. It costs {4} less to cast this way" (Uvilda, Dean of Perfection). A cost
+ * reduction (CR 601.2f): applied after the base and every increase, and it takes only generic mana
+ * off, never a colored requirement. Stamped by the cast-from-collection executor when its effect
+ * carries a `costReduction`, stripped once the cast is made or abandoned.
+ *
+ * @param controllerId The player whose cast is discounted.
+ * @param genericReduction The generic mana taken off the total cost.
+ * @param grantedPermissionId The one-shot permission the discount was stamped with; honoured only
+ *   while it exists, like [PlayWithFixedAlternativeManaCostComponent.grantedPermissionId].
+ */
+@Serializable
+data class PlayWithCostReductionComponent(
+    val controllerId: EntityId,
+    val genericReduction: Int,
+    val grantedPermissionId: EntityId,
+) : Component {
+    /** True when this discount prices [playerId]'s cast in [state]. */
+    fun appliesTo(state: com.wingedsheep.engine.state.GameState, playerId: EntityId): Boolean =
+        controllerId == playerId && state.mayPlayPermissions.any { it.id == grantedPermissionId }
+}
+
+/**
  * Marks a card in exile as castable for a *fixed alternative* mana cost — paid **instead of**
  * its printed mana cost — by the specified player, for as long as it remains exiled. Unlike
  * [PlayWithCostIncreaseComponent] (which adds generic mana on top of the printed cost), this
@@ -214,6 +237,10 @@ data class PlayWithCostIncreaseComponent(
  *   {1}"): the stamp is honoured only while that [com.wingedsheep.engine.state.permissions.MayPlayPermission]
  *   exists, so a cast cancelled mid-announcement can't leave the card discounted for a later cast.
  *   Null for stamps that live as long as the card's zone (airbend, foretell, madness).
+ * @param faceCosts The fixed cost of casting one of the card's alternative faces, by face name,
+ *   where it differs from [fixedCost] — a foretell cost granted as "its mana cost reduced by {2}"
+ *   (Dream Devourer) is each face's own cost reduced (a modal DFC's back, an Adventure). A face
+ *   absent from the map is cast for [fixedCost]. Read through [costFor].
  */
 @Serializable
 data class PlayWithFixedAlternativeManaCostComponent(
@@ -222,7 +249,13 @@ data class PlayWithFixedAlternativeManaCostComponent(
     val waterbend: Boolean = false,
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val grantedPermissionId: EntityId? = null,
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val faceCosts: Map<String, com.wingedsheep.sdk.core.ManaCost> = emptyMap(),
 ) : Component {
+    /** The fixed cost of casting the face named [castFaceName] (null: the primary face). */
+    fun costFor(castFaceName: String?): com.wingedsheep.sdk.core.ManaCost =
+        castFaceName?.let { faceCosts[it] } ?: fixedCost
+
     /** True when this stamp prices [playerId]'s cast in [state] — see [grantedPermissionId]. */
     fun appliesTo(state: com.wingedsheep.engine.state.GameState, playerId: EntityId): Boolean =
         controllerId == playerId &&
@@ -243,7 +276,8 @@ data class PlayWithFixedAlternativeManaCostComponent(
  *
  * @param destination Where the card goes instead of its owner's graveyard. Defaults to
  *   [AfterResolveDestination.EXILE] — every rider that predates the enum is an "exile it
- *   instead" one, and the extras below are all exile-only riders.
+ *   instead" one, and the extras below are all exile-only riders. `BOTTOM_OF_LIBRARY` is Kylox's
+ *   Voltstrider's cast-this-way rider, `HAND` Soulfire Grand Master's next-spell rider.
  * @param withCounters Counter types to add to the card after it is exiled (one of each).
  *   Used by Goliath Daydreamer's "exile that card with a dream counter on it" wording.
  * @param linkedSourceId When set, the spell is added to this permanent's
@@ -251,11 +285,11 @@ data class PlayWithFixedAlternativeManaCostComponent(
  *   it actually lands in exile, so the UI can show the exiled cards tethered under
  *   the source permanent (e.g. Goliath Daydreamer's "exile that card with a dream
  *   counter on it" pile). Only applied when the spell actually resolves into exile.
- * @param makePlotted When true, the card becomes *plotted* (CR 718) for its owner once it lands
- *   in exile — the same effect as [com.wingedsheep.sdk.scripting.effects.MakePlottedEffect], but
- *   applied to a self-cast spell as it resolves rather than to a targeted spell. Used by Lilah,
- *   Undefeated Slickshot: "exile that spell instead of putting it into your graveyard as it
- *   resolves. If you do, it becomes plotted." Only applied when the card actually lands in exile.
+ * @param exiledRider What happens to the card once it lands in exile as the spell resolves
+ *   ([com.wingedsheep.sdk.scripting.effects.MarkSpellExileOnResolveEffect]): it becomes *plotted*
+ *   (CR 702.170) for its owner (Lilah, Undefeated Slickshot), or a delayed trigger returns it to its
+ *   owner's hand at the beginning of the next end step (Feather, the Redeemed). Only applied when the
+ *   card actually lands in exile.
  * @param everyStackExit When true, the rider covers *every* way the spell leaves the stack, not just
  *   the graveyard-bound ones — a bounce to hand or a put-into-library is sent to [destination] too.
  *   That is the "instead of putting it anywhere else any time it would leave the stack" clause of
@@ -274,13 +308,14 @@ data class AfterResolveDestinationComponent(
      */
     val onlyIfResolved: Boolean = false,
     val linkedSourceId: EntityId? = null,
-    val makePlotted: Boolean = false,
+    val exiledRider: com.wingedsheep.sdk.scripting.effects.ExiledSpellRider? = null,
     val everyStackExit: Boolean = false
 ) : Component {
-    /** The zone [destination] names — the two members differ in placement, not only in zone. */
+    /** The zone [destination] names — the members differ in placement, not only in zone. */
     val zone: com.wingedsheep.sdk.core.Zone
         get() = when (destination) {
             AfterResolveDestination.EXILE -> com.wingedsheep.sdk.core.Zone.EXILE
             AfterResolveDestination.BOTTOM_OF_LIBRARY -> com.wingedsheep.sdk.core.Zone.LIBRARY
+            AfterResolveDestination.HAND -> com.wingedsheep.sdk.core.Zone.HAND
         }
 }

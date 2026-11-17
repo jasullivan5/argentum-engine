@@ -5,7 +5,7 @@ import { ZoneType, type EntityId } from '@/types'
 import { getCardImageUrl } from '@/utils/cardImages.ts'
 import { FlipTableStage, type CardMark } from './FlipTableStage'
 import { FlipOrb } from './FlipOrb'
-import { makeFlipView, previewTouches, type Point } from './flipGeometry'
+import { makeFlipView, type Point } from './flipGeometry'
 import styles from './Flip.module.css'
 
 const FLIGHT_MS = 1500
@@ -176,30 +176,25 @@ function FlipShowView({ show }: { show: FlipShow }) {
       const name = c?.name ?? 'a face-down permanent'
       return c?.controllerId === viewerId ? `${name} (yours)` : name
     })
-    const drift = result.landing.drift ?? 0
-    const pull = result.landing.pull ?? 0
-    const cm = Math.round(Math.abs(drift) / 10)
-    const sideCm = Math.round(Math.abs(pull) / 10)
-    // Left and right are the thrower's; anyone else just sees it go wide.
-    const side = sideCm < 3 ? null : show.isYours ? `pulled ${sideCm} cm ${pull < 0 ? 'left' : 'right'}` : `pulled ${sideCm} cm wide`
-    const depth = cm < 3 ? null : drift < 0 ? `Let go early — it fell ${cm} cm short` : `Let go late — it sailed ${cm} cm long`
-    const carry = depth && side ? `${depth} and ${side}. ` : depth ? `${depth}. ` : side ? `The hand swayed — it ${side}. ` : ''
+    // How the flick went, from the thrower's hand: its speed and spin, and what the spin did.
+    const { speed, spin, skid } = result.landing
+    const flick = speed != null && spin != null
+      ? `Flicked at ${(speed / 1000).toFixed(1)} m/s with ${spin.toFixed(1)} turns/s of spin`
+      : null
+    const spinNote = skid != null && skid >= 10
+      ? ` — spun too hard, it wobbled and skidded ${Math.round(skid / 10)} cm on`
+      : ''
+    const carry = flick ? `${flick}${spinNote}. ` : ''
     if (!result.turnedOver) {
       return {
         title: `${whose} ${show.sourceName} didn't turn over`,
-        body: `${carry}${result.landing.halfTurns === 0 ? 'It never turned in the air' : 'It only made a half turn in the air'}, so it has no effect on what it touched.`,
+        body: `${carry}${result.landing.halfTurns === 0 ? 'It never turned in the air' : 'It only made a half turn in the air'} — it needs more spin — so it has no effect on what it touched.`,
       }
     }
     if (names.length > 0) {
-      // What the thrower meant to hit: the permanents a card resting square on the aim would cover.
-      const { aimX, aimY } = result.landing
-      const intended = aimX != null && aimY != null
-        ? show.table.cards.filter((c) => c.eligible && previewTouches({ x: aimX, y: aimY }, c)).map((c) => c.entityId)
-        : []
-      const strayed = intended.length > 0 && !intended.some((id) => result.affected.includes(id))
       const friendlyFire = result.affected.some((id) => cardsById.get(id)?.controllerId === show.flipperId)
-      const title = strayed
-        ? friendlyFire ? 'Friendly fire!' : 'Off target!'
+      const title = friendlyFire
+        ? 'Friendly fire!'
         : names.length > 1 ? `Direct hit — ${names.length} permanents` : 'Direct hit!'
       return {
         title,

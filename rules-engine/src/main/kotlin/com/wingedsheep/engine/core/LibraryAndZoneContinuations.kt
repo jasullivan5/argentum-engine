@@ -51,6 +51,14 @@ data class SelectFromCollectionContinuation(
      */
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val shownCards: List<EntityId>? = null,
+    /**
+     * The players whose hidden cards decided which cards were eligible (#3340). The resumer marks
+     * the selected and remainder collections with them under
+     * [com.wingedsheep.engine.handlers.PipelineState.hiddenPoolKey], so later steps over those
+     * collections keep asking. Empty when the eligible set was public.
+     */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val hiddenPoolDeciders: List<EntityId> = emptyList(),
 ) : AnswerContinuation
 
 /**
@@ -68,6 +76,8 @@ data class SelectFromCollectionContinuation(
  * @property destinationPlayerId The player whose zone the cards go to
  * @property revealed Whether the move was public (MoveCollectionEffect.revealed), which decides
  *   who keeps knowing the cards once they are in the library
+ * @property storeMovedAs The move's `MoveCollectionEffect.storeMovedAs`: the ordered cards are
+ *   handed to the frame beneath under this name once placed, as the unpaused move would store them
  */
 @Serializable
 data class MoveCollectionOrderContinuation(
@@ -80,6 +90,7 @@ data class MoveCollectionOrderContinuation(
     val placement: com.wingedsheep.sdk.scripting.effects.ZonePlacement = com.wingedsheep.sdk.scripting.effects.ZonePlacement.Top,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
     val revealed: Boolean = false,
+    val storeMovedAs: String? = null,
 ) : AnswerContinuation
 
 /**
@@ -117,6 +128,8 @@ data class SelectTargetPipelineContinuation(
  * @property sourceName Name of the source for display
  * @property storeAs Key under which to store the chosen value
  * @property options The option strings (indexed by OptionChosenResponse.optionIndex)
+ * @property recordSlot When set ([com.wingedsheep.sdk.scripting.effects.ChooseOptionEffect.recordOnSource]),
+ *   the chosen value is also written durably to the source permanent's cast-choices bag under this slot.
  */
 @Serializable
 data class ChooseOptionPipelineContinuation(
@@ -125,6 +138,7 @@ data class ChooseOptionPipelineContinuation(
     val sourceName: String?,
     val storeAs: String,
     val options: List<String>,
+    val recordSlot: com.wingedsheep.sdk.scripting.ChoiceSlot? = null,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
 ) : AnswerContinuation
 
@@ -215,6 +229,8 @@ data class MoveCollectionAuraTargetContinuation(
      * there — Warp World's ruling), so these are never offered as hosts.
      */
     val excludedHosts: List<EntityId> = emptyList(),
+    /** The move puts its cards onto the battlefield tapped ("return them to the battlefield tapped"). */
+    val tapped: Boolean = false,
 ) : AnswerContinuation
 
 /**
@@ -232,7 +248,9 @@ data class MoveCollectionAuraTargetContinuation(
 @Serializable
 data class PutOntoBattlefieldAttachedToChosenContinuation(
     val cardId: EntityId,
-    val controllerId: EntityId
+    val controllerId: EntityId,
+    /** The card's EntersOnlyIfPaid cost was paid before the host was chosen. */
+    val paidToEnter: Boolean = false,
 ) : AnswerContinuation
 
 /**
@@ -303,6 +321,9 @@ data class PutOnTopOrBottomContinuation(
  * @property countererId The controller of the countering spell or ability — the one choosing
  * @property sourceId The countering spell or ability
  * @property positions The offered positions, one per option index
+ * @property storeCounteredAs The counter's "countered this way" collection
+ *   ([com.wingedsheep.sdk.scripting.effects.CounterEffect.storeCounteredAs]), published to the frame
+ *   beneath once the spell is countered
  */
 @Serializable
 data class CounterToLibraryPositionContinuation(
@@ -310,6 +331,7 @@ data class CounterToLibraryPositionContinuation(
     val countererId: EntityId,
     val sourceId: EntityId?,
     val positions: List<com.wingedsheep.sdk.scripting.effects.LibraryChoicePosition>,
+    val storeCounteredAs: String? = null,
 ) : AnswerContinuation
 
 /**
@@ -359,6 +381,38 @@ data class CascadeMayCastContinuation(
     val sourceId: EntityId?,
     val exiledCards: List<EntityId>,
     val cascadeCardId: EntityId,
+    val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+) : AnswerContinuation
+
+/**
+ * One standing "as you cascade, you may put a … card from among the exiled cards onto the
+ * battlefield" rider ([com.wingedsheep.sdk.scripting.CascadeMayPutOntoBattlefield]) and the
+ * permanent it sits on, which names the prompt.
+ */
+@Serializable
+data class CascadeRider(
+    val ability: com.wingedsheep.sdk.scripting.CascadeMayPutOntoBattlefield,
+    val sourceId: EntityId,
+)
+
+/**
+ * Resume cascade resolution after the controller picks (or declines) a card for a
+ * [CascadeRider] — Averna, the Chaos Bloom's "you may put a land card from among the exiled
+ * cards onto the battlefield tapped". The pick enters, leaves [exiledCards], and the walk
+ * continues with the next rider in [remainingRiders], then the cast offer for
+ * [cascadeCardId] (null when the walk found no card to cast — everything left is bottomed).
+ *
+ * @property rider The rider this answer is for
+ * @property remainingRiders Riders still to ask after this one, in order
+ */
+@Serializable
+data class CascadePutOntoBattlefieldContinuation(
+    val playerId: EntityId,
+    val sourceId: EntityId?,
+    val exiledCards: List<EntityId>,
+    val cascadeCardId: EntityId?,
+    val rider: CascadeRider,
+    val remainingRiders: List<CascadeRider>,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
 ) : AnswerContinuation
 
@@ -443,6 +497,21 @@ data class CastFromCollectionTargetsContinuation(
     /** The grant stamped a fixed alternative mana cost (Jadzi's {1}) to strip if the cast fails. */
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val stampedAlternativeManaCost: Boolean = false,
+    /** The X announced before these targets (CR 601.2b) — a madness or miracle `{X}` — or null. */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val xValue: Int? = null,
+) : AnswerContinuation
+
+/**
+ * X announced (CR 601.2b) for a synthesized cast whose cost has an `{X}` no client announced — a
+ * madness or miracle cast — *before* its targets are chosen (601.2c), because the target count
+ * may read X (Avacyn's Judgment: up to X targets when cast for madness). Resumed by building the
+ * target question with that X and suspending on [pending] with it bound.
+ */
+@Serializable
+data class CastFromCollectionAnnounceXContinuation(
+    val pending: CastFromCollectionTargetsContinuation,
+    val castTransformed: Boolean = false,
 ) : AnswerContinuation
 
 /**
@@ -505,5 +574,11 @@ data class CastAnyNumberFromCollectionContinuation(
     val playLands: Boolean = false,
     /** Where each spell cast by the loop goes instead of its owner's graveyard ("exile them instead"). */
     val insteadOfGraveyard: com.wingedsheep.sdk.scripting.effects.AfterResolveDestination? = null,
+    /**
+     * Collection the loop records every cast card under, or `null`. The record so far sits in
+     * [effectContext]'s pipeline under the executor's private `castSoFarKey`; a decline publishes
+     * it under this name to the next frame.
+     */
+    val storeCastTo: String? = null,
 ) : AnswerContinuation
 

@@ -159,17 +159,27 @@ class RolloutCandidateEvaluator(
         // `Double.MAX_VALUE / 2` sentinel becomes ±55 instead of poisoning the average, and the
         // arbitrary offset that `ThreatAssessment` bakes into every absolute score cancels once for
         // both. See [RolloutSettings.staticWeight] for why the mixture exists at all.
+        //
+        // With [RolloutSettings.staticPriorPlayouts], each candidate's playout mean is first
+        // shrunk toward its own static leaf, which counts as that many extra playouts: see there.
         val w = settings.staticWeight
+        val prior = settings.staticPriorPlayouts
         return afterActions.indices.map { index ->
-            val rolloutDelta = WinProbability.logit(samples[index].mean(), winProbabilityScale)
+            val staticProbability by lazy(LazyThreadSafetyMode.NONE) {
+                val staticLeaf = rootedStatic.evaluate(
+                    afterActions[index], afterActions[index].projectedState, playerId
+                )
+                WinProbability.squash(staticLeaf - baseline, winProbabilityScale)
+            }
+            val sample = samples[index]
+            val mean = if (prior > 0.0) {
+                (sample.total + staticProbability * prior) / (sample.count + prior)
+            } else {
+                sample.mean()
+            }
+            val rolloutDelta = WinProbability.logit(mean, winProbabilityScale)
             if (w <= 0.0) return@map baseline + rolloutDelta
-            val staticLeaf = rootedStatic.evaluate(
-                afterActions[index], afterActions[index].projectedState, playerId
-            )
-            val staticDelta = WinProbability.logit(
-                WinProbability.squash(staticLeaf - baseline, winProbabilityScale),
-                winProbabilityScale,
-            )
+            val staticDelta = WinProbability.logit(staticProbability, winProbabilityScale)
             baseline + w * staticDelta + (1.0 - w) * rolloutDelta
         }
     }
@@ -202,8 +212,10 @@ class RolloutCandidateEvaluator(
 
     /** Streaming mean — the estimate has to be readable between rounds to rank survivors. */
     private class RunningMean {
-        private var total = 0.0
-        private var count = 0
+        var total = 0.0
+            private set
+        var count = 0
+            private set
 
         fun add(value: Double) {
             total += value

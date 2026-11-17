@@ -7,7 +7,9 @@ import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.handlers.effects.BattlefieldFilterUtils
 import com.wingedsheep.engine.handlers.effects.ZoneTransitionService
-import com.wingedsheep.engine.mechanics.SacrificeImmunity
+import com.wingedsheep.engine.mechanics.CompelledActionImmunity
+import com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality
+import com.wingedsheep.sdk.scripting.CompelledAction
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.stack.EntitySnapshot
@@ -49,10 +51,11 @@ class ForceSacrificeExecutor(
         }
 
         // A dynamic count ("sacrifices half the creatures they control, rounded up") is evaluated
-        // once at resolution; otherwise fall back to the fixed edict count. The amount is resolved
+        // once at resolution, unless `countPerPlayer`, which is read per player below; otherwise fall back to the fixed edict count. The amount is resolved
         // against the same context so a per-target reference (e.g. Player.ContextPlayer / TargetOpponent)
         // counts the chosen player's permanents.
         val count = effect.dynamicCount
+            ?.takeUnless { effect.countPerPlayer }
             ?.let { dynamicAmountEvaluator.evaluate(state, it, context) }
             ?: effect.count
 
@@ -61,10 +64,27 @@ class ForceSacrificeExecutor(
         // anyone is prompted — they are never offered the choice (CR 101.2).
         val effectControllerId = context.effectControllerId ?: context.controllerId
         val eligiblePlayers = playerIds.filterNot {
-            SacrificeImmunity.appliesTo(state, it, effectControllerId, predicateEvaluator = zones.predicateEvaluator)
+            CompelledActionImmunity.appliesTo(state, it, effectControllerId, CompelledAction.SACRIFICE, predicateEvaluator = zones.predicateEvaluator)
         }
 
-        return processPlayers(state, inApnapOrder(state, eligiblePlayers), effect.filter, count, context.sourceId)
+        // "Each opponent sacrifices half the creatures they control": read every player's own count
+        // now, with Player.You bound to that player, before anyone has sacrificed (CR 101.4).
+        val perPlayerAmount = effect.dynamicCount?.takeIf { effect.countPerPlayer }
+        val perPlayerCounts = if (perPlayerAmount != null) {
+            eligiblePlayers.associateWith { playerId ->
+                dynamicAmountEvaluator.evaluate(
+                    state, perPlayerAmount,
+                    context.copy(controllerId = playerId, effectControllerId = effectControllerId)
+                )
+            }
+        } else {
+            emptyMap()
+        }
+
+        return processPlayers(
+            state, inApnapOrder(state, eligiblePlayers), effect.filter, count, context.sourceId,
+            perPlayerCounts = perPlayerCounts
+        )
     }
 
     /**
@@ -84,7 +104,8 @@ class ForceSacrificeExecutor(
         filter: GameObjectFilter,
         count: Int,
         sourceId: EntityId?,
-        chosen: List<SacrificeChoice> = emptyList()
+        chosen: List<SacrificeChoice> = emptyList(),
+        perPlayerCounts: Map<EntityId, Int> = emptyMap()
     ): EffectResult {
         val sourceName = if (sourceId != null) {
             state.getEntity(sourceId)?.get<CardComponent>()?.name ?: "Unknown"
@@ -96,8 +117,10 @@ class ForceSacrificeExecutor(
 
         for ((index, playerId) in playerIds.withIndex()) {
             val validPermanents = findValidPermanents(state, playerId, filter, sourceId)
+            val count = perPlayerCounts[playerId] ?: count
 
-            if (validPermanents.isEmpty()) {
+            // "Sacrifice X lands" with X = 0 (Nahiri's Lithoforming) sacrifices nothing — no prompt.
+            if (validPermanents.isEmpty() || count <= 0) {
                 continue
             }
 
@@ -111,7 +134,7 @@ class ForceSacrificeExecutor(
                 state, playerId, sourceId, sourceName,
                 validPermanents, minSelections = count, maxSelections = count,
                 remainingPlayers = playerIds.drop(index + 1), filter = filter, count = count,
-                chosen = choices
+                chosen = choices, perPlayerCounts = perPlayerCounts
             )
         }
 
@@ -136,7 +159,7 @@ class ForceSacrificeExecutor(
         return BattlefieldFilterUtils.findMatchingOnBattlefield(
             state, filter.youControl(), PredicateContext(controllerId = playerId, sourceId = sourceId),
             predicateEvaluator = zones.predicateEvaluator
-        )
+        ).filter { SacrificeCostLegality.canBeSacrificed(state, it) }
     }
 
     private fun presentSacrificeDecision(
@@ -150,7 +173,8 @@ class ForceSacrificeExecutor(
         remainingPlayers: List<EntityId>,
         filter: GameObjectFilter,
         count: Int,
-        chosen: List<SacrificeChoice>
+        chosen: List<SacrificeChoice>,
+        perPlayerCounts: Map<EntityId, Int>
     ): EffectResult {
         // Describe the actual filter ("a land", "a creature", "an artifact"...) rather than
         // hardcoding "creature" — Serendib Djinn / Goblin Firebug sacrifice lands, edicts
@@ -174,7 +198,8 @@ class ForceSacrificeExecutor(
             remainingPlayers = remainingPlayers,
             filter = filter,
             count = count,
-            chosen = chosen
+            chosen = chosen,
+            perPlayerCounts = perPlayerCounts
         )
 
         val decisionResult = decisionHandler.createCardSelectionDecision(

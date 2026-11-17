@@ -31,7 +31,7 @@ val UntaidakeTheCloudKeeper = card("Untaidake, the Cloud Keeper") {
 
     activatedAbility {
         cost = Costs.Composite(Costs.Tap, Costs.PayLife(2))
-        effect = Effects.AddColorlessMana(2, restriction = ManaRestriction.LegendarySpellsOnly)
+        effect = Effects.AddColorlessMana(2, restriction = ManaRestriction.LegendarySpellsOnly())
         manaAbility = true
         timing = TimingRule.ManaAbility
     }

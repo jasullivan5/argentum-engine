@@ -3,6 +3,7 @@
  * decision selection, and mana source selection flows.
  */
 import { compatibleSelectionPool } from '@/utils/selectionGroups'
+import { wouldExceedTotalCaps } from '@/utils/targeting'
 import { decisionInteractionEpoch } from '@/network/liveAction'
 import { targetEntityId } from './pipelinePhases'
 import type {
@@ -108,6 +109,8 @@ export interface SelectionSliceActions {
   startDecisionSelection: (state: DecisionSelectionState) => void
   toggleDecisionSelection: (cardId: EntityId) => void
   decrementDecisionSelection: (cardId: EntityId) => void
+  /** Replace the whole pick at once (quick-select "All" / "Recommended" / "Clear"). Ids outside the pool are dropped. */
+  setDecisionSelection: (cardIds: readonly EntityId[]) => void
   cancelDecisionSelection: (decisionId: string) => void
   confirmDecisionSelection: (decisionId: string) => void
   startManaSelection: (actionInfo: LegalActionInfo) => void
@@ -544,6 +547,23 @@ export const createSelectionSlice: SliceCreator<SelectionSlice> = (set, get) => 
       validOptions: compatibleSelectionPool(state.validOptions, state.selectionGroups, state.selectedOptions, state.exclusiveGroups, state.distinctCategories) } })
   },
 
+  setDecisionSelection: (cardIds) => {
+    set((state) => {
+      const current = state.decisionSelectionState
+      if (!current || current.selectionLimits != null) return state
+      const pool = current.selectionPool ?? current.validOptions
+      const selectedOptions = [...new Set(cardIds)].filter((id) => pool.includes(id)).slice(0, current.maxSelections)
+      return {
+        decisionSelectionState: {
+          ...current,
+          selectedOptions,
+          validOptions: compatibleSelectionPool(pool, current.selectionGroups, selectedOptions, current.exclusiveGroups, current.distinctCategories),
+          warning: null,
+        },
+      }
+    })
+  },
+
   toggleDecisionSelection: (cardId) => {
     set((state) => {
       if (!state.decisionSelectionState) return state
@@ -569,18 +589,13 @@ export const createSelectionSlice: SliceCreator<SelectionSlice> = (set, get) => 
         }
       }
       if (!state.decisionSelectionState.validOptions.includes(cardId)) return state
-      const manaCap = state.decisionSelectionState.manaValueCap
-      if (manaCap != null) {
-        const valueOf = (id: EntityId) => manaCap.values[id] ?? 0
-        const kept = maxSelections === 1 ? [] : selectedOptions
-        const total = kept.reduce((sum, id) => sum + valueOf(id), 0) + valueOf(cardId)
-        if (total > manaCap.cap) {
-          return {
-            decisionSelectionState: {
-              ...state.decisionSelectionState,
-              warning: `The targets' total mana value can't exceed ${manaCap.cap} — deselect one first to pick this one.`,
-            },
-          }
+      const overCap = wouldExceedTotalCaps(state.decisionSelectionState.totalCaps ?? [], maxSelections === 1 ? [] : selectedOptions, cardId)
+      if (overCap) {
+        return {
+          decisionSelectionState: {
+            ...state.decisionSelectionState,
+            warning: `The targets' total ${overCap.label} can't exceed ${overCap.cap} — deselect one first to pick this one.`,
+          },
         }
       }
       if (selectedOptions.length < maxSelections) {

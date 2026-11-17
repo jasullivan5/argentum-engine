@@ -70,10 +70,13 @@ class CreateTokenCopyOfEquippedCreatureExecutor(
         val equippedCard = equippedContainer.copiableCardComponent()
             ?: return EffectResult.success(state)
 
-        val controllerId = context.controllerId
-
-        val (tokenId, stateWithId) = state.newEntity()
-        var newState = stateWithId
+        // "Created under your control instead" (Crafty Cutpurse) before any other token replacement.
+        val controllerId = when (val redirect = TokenCreationReplacementHelper.redirectController(
+            state, context.controllerId, context, effect, predicateEvaluator
+        )) {
+            is TokenControllerRedirect.Resolved -> redirect.controllerId
+            is TokenControllerRedirect.Ask -> return redirect.result
+        }
 
         // Copy the equipped creature's CardComponent. `isDoubleFaced` is cleared, not inherited:
         // a token is not a card (CR 111.1) — see CreateTokenCopyOfTargetExecutor.
@@ -82,6 +85,28 @@ class CreateTokenCopyOfEquippedCreatureExecutor(
         )
         val tokenCard = CopyExceptionApplier.apply(equippedCard, exceptions)
             .copy(ownerId = controllerId, isDoubleFaced = false)
+
+        // "If one or more tokens would be created under your control, that many … are created
+        // instead" (Holo-Engineer) replaces the copy too. "That token gains haste" still reaches
+        // the substitutes — they are the tokens the instruction created.
+        TokenCreationReplacementHelper.substituteIfReplaced(
+            state, tokenCard, controllerId, 1, context, effect,
+            predicateEvaluator, staticAbilityHandler, cardRegistry,
+        )?.let { substituted ->
+            if (!effect.grantHaste || substituted.outcome !is com.wingedsheep.engine.core.Outcome.Done) return substituted
+            var hasted = substituted.state
+            val hasteEvents = substituted.updatedCollections[com.wingedsheep.sdk.scripting.effects.CREATED_TOKENS].orEmpty()
+                .flatMap { tokenId ->
+                    val grant = GrantKeywordExecutor().execute(hasted,
+                        GrantKeywordEffect(Keyword.HASTE.name, EffectTarget.SpecificEntity(tokenId), Duration.Permanent), context)
+                    hasted = grant.state
+                    grant.events
+                }
+            return substituted.copy(state = hasted, events = substituted.events + hasteEvents)
+        }
+
+        val (tokenId, stateWithId) = state.newEntity()
+        var newState = stateWithId
 
         val components = mutableListOf<Component>(
             tokenCard,
@@ -109,6 +134,10 @@ class CreateTokenCopyOfEquippedCreatureExecutor(
         newState = newState.withEntity(tokenId, container)
 
         // Add to battlefield
+        newState = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy.applyBeforeEntry(newState, tokenId, cardRegistry, predicateEvaluator)
+        // A battlefield-entry replacement sends it elsewhere instead (Hallowed Moonlight).
+        TokenEntryRedirect.divert(newState, tokenId, state, predicateEvaluator, cardRegistry)
+            ?.let { return EffectResult.success(it.state, listOf(it.event)) }
         newState = com.wingedsheep.engine.handlers.effects.BattlefieldEntry
             .place(newState, controllerId, tokenId)
 

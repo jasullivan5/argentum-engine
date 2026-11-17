@@ -20,6 +20,7 @@ import { SessionReplacedOverlay } from './components/ui/SessionReplacedOverlay'
 import { MatchIntroAnimation } from './components/animations/MatchIntroAnimation'
 import { SubgameTransition } from './components/animations/SubgameTransition'
 import { StandaloneConcedeButton } from './components/game/overlay'
+import { NextGameActions } from './components/tournament/NextGameActions'
 import overlay from './components/game/overlay/GameOverlays.module.css'
 import { AnteResultPanel } from './components/ante/AnteResultPanel'
 import { trackPageView } from './utils/analytics'
@@ -32,9 +33,9 @@ import { PostGamePanel } from '@/components/tableTalk/PostGamePanel'
 import { useTableTalkStore } from '@/store/tableTalkStore'
 import { LearnCoach } from '@/components/learn/LearnCoach'
 import { useViewingPlayer, useBattlefieldCards, selectTeamMap } from './store/selectors'
-import type { ClientAttacker, EntityId } from './types'
+import type { EntityId, BetweenGamesMessage } from './types'
+import type { LastMatchScore } from './store/slices/types'
 import { GameOverReason } from './types'
-import { defendingPlayerOf } from './utils/combatTargets'
 
 // Limited-format and spectator screens are a minority of sessions but about a third of this
 // chunk, so they load on demand. Each keeps its own <Suspense> — the one in main.tsx would blank
@@ -68,37 +69,39 @@ function preloadSecondaryScreens() {
  * The in-game interaction overlays. None takes props beyond the epoch key — each reads its own
  * store slice — so memoizing the group keeps App's own re-render on every server message (it
  * watches gameState and legalActions to drive combat mode) from re-rendering all of them.
+ * Each key is `<overlay>:<epoch>`: the epoch remounts the overlay when the interaction changes, and
+ * the prefix keeps the siblings' keys distinct, which React requires within one fragment.
  */
 const InGameOverlays = memo(function InGameOverlays({ interactionEpoch }: { interactionEpoch: string | null }) {
   return (
     <>
       {/* X cost selection overlay (when casting spells with X in cost) */}
-      <XCostSelector key={interactionEpoch} />
+      <XCostSelector key={`XCostSelector:${interactionEpoch}`} />
 
       {/* Blight X variable additional cost overlay (e.g., Soul Immolation) */}
-      <BlightVariableSelector key={interactionEpoch} />
-      <PayXLifeSelector key={interactionEpoch} />
+      <BlightVariableSelector key={`BlightVariableSelector:${interactionEpoch}`} />
+      <PayXLifeSelector key={`PayXLifeSelector:${interactionEpoch}`} />
 
       {/* Choose-N modal (Spree / "choose one or more") mode-selection panel */}
-      <ModalModeSelector key={interactionEpoch} />
+      <ModalModeSelector key={`ModalModeSelector:${interactionEpoch}`} />
 
       {/* Convoke selection overlay (when casting spells with Convoke) */}
-      <ConvokeSelector key={interactionEpoch} />
+      <ConvokeSelector key={`ConvokeSelector:${interactionEpoch}`} />
 
       {/* Tap-for-generic selection overlay (improvise CR 702.126 / waterbend costs) */}
-      <TapForGenericSelector key={interactionEpoch} />
+      <TapForGenericSelector key={`TapForGenericSelector:${interactionEpoch}`} />
 
       {/* Harmonize creature-tap overlay (when casting from graveyard via Harmonize) */}
-      <HarmonizeSelector key={interactionEpoch} />
+      <HarmonizeSelector key={`HarmonizeSelector:${interactionEpoch}`} />
 
       {/* Tap-for-power selection overlay (crewing Vehicles / saddling Mounts) */}
-      <TapForPowerSelector key={interactionEpoch} />
+      <TapForPowerSelector key={`TapForPowerSelector:${interactionEpoch}`} />
 
       {/* Delve selection overlay (when casting spells with Delve) */}
-      <DelveSelector key={interactionEpoch} />
+      <DelveSelector key={`DelveSelector:${interactionEpoch}`} />
 
       {/* Damage distribution overlay (for DividedDamageEffect spells like Forked Lightning) */}
-      <DamageDistributionModal key={interactionEpoch} />
+      <DamageDistributionModal key={`DamageDistributionModal:${interactionEpoch}`} />
 
       {/* Decision overlay (for pending decisions like discard to hand size) */}
       <DecisionUI />
@@ -233,18 +236,28 @@ export default function App() {
           (a) => a.actionType === 'DeclareBlockers' || a.action.type === 'DeclareBlockers'
         )
         const updatedValidCreatures = blockersAction?.validBlockers ?? []
-        if (JSON.stringify(updatedValidCreatures) !== JSON.stringify([...combatState.validCreatures])) {
+        const updatedAttackers = blockersAction?.blockableAttackers ?? []
+        if (JSON.stringify(updatedValidCreatures) !== JSON.stringify([...combatState.validCreatures]) ||
+            JSON.stringify(updatedAttackers) !== JSON.stringify([...combatState.attackingCreatures]) ||
+            JSON.stringify(blockersAction?.proposedBlockerAssignments ?? {}) !== JSON.stringify(combatState.proposedBlockerAssignments ?? {})) {
           // Clean stale blocker assignments for creatures no longer in valid list
           const validSet = new Set(updatedValidCreatures)
+          const attackerSet = new Set(updatedAttackers)
           const cleanedAssignments: Record<EntityId, EntityId[]> = {}
           for (const [blockerId, attackerIds] of Object.entries(combatState.blockerAssignments)) {
             if (validSet.has(blockerId as EntityId)) {
-              cleanedAssignments[blockerId as EntityId] = attackerIds
+              const remaining = attackerIds.filter((id) => attackerSet.has(id))
+              if (remaining.length > 0) cleanedAssignments[blockerId as EntityId] = remaining
             }
           }
           startCombat({
             ...combatState,
             validCreatures: [...updatedValidCreatures],
+            attackingCreatures: [...updatedAttackers],
+            proposedBlockerAssignments: blockersAction?.proposedBlockerAssignments ?? {},
+            mustBeBlockedAttackers: (gameState?.combat?.attackers ?? [])
+              .filter((attacker) => attackerSet.has(attacker.creatureId) && attacker.mustBeBlockedByAll)
+              .map((attacker) => attacker.creatureId),
             blockerAssignments: cleanedAssignments,
           })
         }
@@ -305,6 +318,7 @@ export default function App() {
         blockerAssignments: {},
         validCreatures,
         mandatoryAttackers,
+        loneAttackers: attackersAction?.loneAttackers ?? [],
         attackingCreatures: [],
         mustBeBlockedAttackers: [],
         blockerMaxBlockCounts: {},
@@ -323,22 +337,12 @@ export default function App() {
         ? [...blockersAction.validBlockers]
         : []
 
-      // Attacking creatures come from the server's authoritative combat state rather than
-      // "the viewing player's opponent" — in single-client hotseat the seat we control (the
-      // defender) can be the top row, so the attackers are the viewer's own creatures.
-      // In multiplayer a defender may only block attackers attacking *them* or their
-      // planeswalkers (CR 509.1b) — scope to the acting defender's slice of the combat.
-      // In a 2-player game every attacker attacks the sole defender, so this keeps all.
-      const defendingSeat = blockersAction?.action.type === 'DeclareBlockers'
-        ? blockersAction.action.playerId
-        : null
-      const attacksSeat = (a: ClientAttacker): boolean => {
-        if (!defendingSeat) return true
-        if (a.attackingTarget.type === 'Player') return a.attackingTarget.playerId === defendingSeat
-        return defendingPlayerOf(a.attackingTarget.permanentId, gameState?.cards) === defendingSeat
-      }
-      const relevantAttackers = (gameState?.combat?.attackers ?? []).filter(attacksSeat)
-      const attackingCreatures: EntityId[] = relevantAttackers.map((a) => a.creatureId)
+      // The engine scopes this list to the defender or shared-turn team, including attacks
+      // on teammates' permanents. The client only selects the matching combat presentation.
+      const attackingCreatures = [...(blockersAction?.blockableAttackers ?? [])]
+      const blockableSet = new Set(attackingCreatures)
+      const relevantAttackers = (gameState?.combat?.attackers ?? [])
+        .filter((attacker) => blockableSet.has(attacker.creatureId))
 
       // Find attackers that must be blocked by all (from combat state in game state)
       const mustBeBlockedAttackers: EntityId[] = relevantAttackers
@@ -369,6 +373,7 @@ export default function App() {
         validAttackTargets: [],
         attackTargetsByAttacker: {},
         blockerAssignments,
+        proposedBlockerAssignments: blockersAction?.proposedBlockerAssignments ?? {},
         validCreatures,
         mandatoryAttackers: [],
         attackingCreatures,
@@ -532,6 +537,18 @@ function GameOverlay() {
   const postGame = useTableTalkStore((state) =>
     state.postGame && state.postGame.gameId === gameOverState?.gameId ? state.postGame : null,
   )
+  // A tournament best-of-three: where the match stands after this game.
+  const betweenGames = useGameStore((state) => state.tournamentState?.betweenGames ?? null)
+  const lastMatchScore = useGameStore((state) => state.tournamentState?.lastMatchScore ?? null)
+  const matchStanding = describeMatchStanding(betweenGames, lastMatchScore)
+  const submitMatchDeck = useGameStore((state) => state.submitMatchDeck)
+  // Ready for the next game with the deck that just played. Leaving the board first lands on the
+  // sideboarding screen in its waiting state, where Keep editing still takes the Ready back.
+  const readyWithSameDeck = (playFirst?: boolean) => {
+    const snapshot = betweenGames
+    returnToMenu()
+    if (snapshot && !snapshot.youAreReady) submitMatchDeck(snapshot.deck, snapshot.youChoosePlayDraw ? playFirst : undefined)
+  }
 
   // Auto-dismiss is handled centrally in the store (setError schedules clearError), so it
   // works on every route — not just where this overlay happens to be mounted. The × button
@@ -550,11 +567,12 @@ function GameOverlay() {
     // One amber action: play again when there is a rematch to offer, otherwise back to the menu.
     // Everything else sits in the quieter row beneath it.
     return (
-      <div className={overlay.scrim} role="dialog" aria-modal="true" aria-labelledby="game-over-title">
+      <div className={`${overlay.scrim} ${overlay.scrimResult}`} role="dialog" aria-modal="true" aria-labelledby="game-over-title">
         <div className={overlay.card} data-result={gameOverState.result}>
           <p className={overlay.eyebrow}>Game over</p>
           <h1 id="game-over-title" className={overlay.title}>{title}</h1>
           <p className={overlay.reason}>{reasonText}</p>
+          {matchStanding && <p className={overlay.matchLine} data-testid="game-over-match">{matchStanding}</p>}
           {/* Played for ante (CR 407): what changed hands, before the next-step actions. */}
           {gameOverState.ante && <AnteResultPanel ante={gameOverState.ante} viewerId={viewerId} />}
           {postGame && <PostGamePanel postGame={postGame} />}
@@ -569,7 +587,11 @@ function GameOverlay() {
                 A rematch and a saved setup are the same object with different seats: a rematch is
                 a recipe replayed with the seats intact, a setup is one replayed with them open. */}
             {/* Against a person, the panel above carries the one primary action (Rematch). */}
-            {postGame ? null : rematch ? (
+            {betweenGames ? (
+              // The match goes on. Ready up with the same deck from here; "Sideboard first" below
+              // opens the sideboarding screen instead.
+              <NextGameActions snapshot={betweenGames} onReady={readyWithSameDeck} />
+            ) : postGame ? null : rematch ? (
               <button type="button" onClick={rematch.play} className={overlay.primary} data-testid="game-over-play-again">
                 Play Again
               </button>
@@ -579,6 +601,11 @@ function GameOverlay() {
               </button>
             )}
             <div className={overlay.secondaryRow}>
+              {betweenGames?.canSideboard && !betweenGames.youAreReady && (
+                <button type="button" onClick={returnToMenu} className={overlay.secondary} data-testid="game-over-sideboard">
+                  Sideboard first
+                </button>
+              )}
               {/* Eliminated from a multiplayer game that plays on: offer to stay and
                   spectate the rest of it (board overview, action UI hidden). */}
               {gameOverState.eliminated && (
@@ -615,6 +642,21 @@ function GameOverlay() {
   }
 
   return null
+}
+
+/**
+ * Where a tournament best-of-three stands once a game of it has ended, for the game-over card:
+ * between games ("Match 1–0 · Game 2 next") or decided ("You won the match 2–1"). Null for a
+ * single-game match, or before the server has reported where the match stands.
+ */
+function describeMatchStanding(
+  between: BetweenGamesMessage | null,
+  last: LastMatchScore | null,
+): string | null {
+  if (between) return `Match ${between.yourGameWins}–${between.opponentGameWins} · Game ${between.nextGameNumber} next`
+  if (!last) return null
+  const verdict = last.result === 'DRAW' ? 'Match drawn' : last.result === 'WIN' ? 'You won the match' : 'You lost the match'
+  return `${verdict} ${last.yourGameWins}–${last.opponentGameWins}`
 }
 
 function WaitingForMulliganOverlay() {

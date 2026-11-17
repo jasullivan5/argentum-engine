@@ -101,12 +101,39 @@ data class RolloutSettings(
      * same world, so anything above 1 buys nothing and the constructor rejects it.
      */
     val determinizations: Int = 1,
+
+    /**
+     * How many playouts a candidate's own static leaf counts as, when its playout mean is read.
+     *
+     * The mean a candidate reports is `(sum of its playouts + p_static × this) / (its playouts +
+     * this)`, where `p_static` is its static leaf squashed into probability space: a Laplace-style
+     * prior centred on what the one-ply evaluator already says about the line. 0 is off — the raw
+     * playout mean, which is what [DEFAULT] and every frozen arena control keep.
+     *
+     * **Why a candidate needs one.** Sequential halving leaves most candidates with a single
+     * playout (16 playouts across five candidates is one each in round one), and the rollout term
+     * is `logit(mean)`. In a position where the playouts are near-certain losses either way, one
+     * playout reads anywhere from 0.0 — `logit` clamps it to −55 — to 0.4, so a quarter-weight
+     * term swings a candidate by ±10 raw points on one coin flip, where the static leaf tells two
+     * reasonable plays apart by 2–5. 2026-10-31 review of games against people, game `fccf5763`
+     * turn 12: at 11 life on an empty board facing 6 power, with four castable creatures, the
+     * static leaf preferred Traxos, Academy Guardian to passing by 5 points, the casts drew one or two
+     * losing playouts each and the pass five mixed ones, and the AI passed both main phases. The
+     * same position at 24 RNG seeds passed at 3 of them; with one prior playout, at none
+     * (`StaticPriorPlayoutsTest`); `just arena live-without-static-prior live 300` prices it.
+     *
+     * One pseudo-playout is enough to take a lone 0.0 off the clamp — it averages with the static
+     * leaf instead — and is outweighed as soon as a candidate has played out a few times, so the
+     * survivors sequential halving concentrates the budget on are still judged by their playouts.
+     */
+    val staticPriorPlayouts: Double = 0.0,
 ) {
     init {
         require(horizonPlayerTurns >= 1) { "A playout must cover at least one player turn." }
         require(maxActionsPerPlayout >= 1) { "maxActionsPerPlayout must be positive." }
         require(temperature > 0.0) { "Softmax temperature must be positive." }
         require(staticWeight in 0.0..1.0) { "staticWeight is a mixing fraction, was $staticWeight." }
+        require(staticPriorPlayouts >= 0.0) { "staticPriorPlayouts is a pseudo-count, was $staticPriorPlayouts." }
         require(determinizations == 1) {
             "K > 1 needs Phase 8's Determinizer; until then every world is the same world."
         }

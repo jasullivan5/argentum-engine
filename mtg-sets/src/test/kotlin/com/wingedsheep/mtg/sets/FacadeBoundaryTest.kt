@@ -3,6 +3,7 @@ package com.wingedsheep.mtg.sets
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.io.path.readText
 
 /**
@@ -71,6 +72,8 @@ class FacadeBoundaryTest : FunSpec({
     val pipelineAllowlist: Map<String, String> = mapOf(
         "rav/cards/Flickerform.kt" to
             "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
+        "grn/cards/MnemonicBetrayal.kt" to
+            "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
         "lgn/cards/PlanarGuide.kt" to
             "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
         "mh3/cards/GlimpseTheImpossible.kt" to
@@ -78,6 +81,8 @@ class FacadeBoundaryTest : FunSpec({
         "mh3/cards/PheliaExuberantShepherd.kt" to
             "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
         "lea/cards/AnimateDead.kt" to
+            "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
+        "m20/cards/ThunderkinAwakener.kt" to
             "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
         "dmu/cards/GoldenArgosy.kt" to
             "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
@@ -91,12 +96,24 @@ class FacadeBoundaryTest : FunSpec({
             "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
         "leg/cards/InfiniteAuthority.kt" to
             "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
+        "ice/cards/Necropotence.kt" to
+            "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
+        "iko/cards/YorionSkyNomad.kt" to
+            "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
+        "war/cards/UginTheIneffable.kt" to
+            "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
+        "thb/cards/StormHerald.kt" to
+            "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
+        "frf/cards/RallyTheAncestors.kt" to
+            "CreateDelayedTriggerEffect.carryCollections names the collections the delayed trigger remembers",
         "mh3/cards/WheelOfPotential.kt" to
             "the per-player May runs its own pipeline, so its tracked move names the slot the enclosing " +
                 "forEachPlayerCollecting aggregates — a handle minted inside the May lambda can't be returned out of it",
         "dsk/cards/MonstrousEmergence.kt" to
             "the cost's ChooseEntity storeAs is read by the spell effect — a cost is not inside any pipeline",
         "eoe/cards/CloseEncounter.kt" to
+            "the cost's ChooseEntity storeAs is read by the spell effect — a cost is not inside any pipeline",
+        "afr/cards/DragonsFire.kt" to
             "the cost's ChooseEntity storeAs is read by the spell effect — a cost is not inside any pipeline",
     )
 
@@ -105,7 +122,7 @@ class FacadeBoundaryTest : FunSpec({
 
         SetSourceRoots.definitionFiles().forEach { path ->
             val rel = SetSourceRoots.relativize(path)
-            if (pipelineAllowlist.keys.any { rel.toString().endsWith(it) }) return@forEach
+            if (pipelineAllowlist.keys.any { rel.invariantSeparatorsPathString.endsWith(it) }) return@forEach
             stripCommentsAndImports(path.readText()).forEachIndexed { idx, line ->
                 for ((regex, hint) in pipelineSteps) {
                     if (regex.containsMatchIn(line)) {

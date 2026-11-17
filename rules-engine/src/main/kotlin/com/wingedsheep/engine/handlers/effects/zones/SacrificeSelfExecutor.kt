@@ -31,7 +31,9 @@ class SacrificeSelfExecutor(private val zones: ZoneTransitionService) : EffectEx
         val battlefieldZone = state.logicalZone(sourceId)
             ?.takeIf { it.zoneType == Zone.BATTLEFIELD && sourceId in state.getZone(it) }
             ?: return EffectResult.success(state)
-        if (state.projectedState.getController(sourceId) != controllerId) {
+        if (state.projectedState.getController(sourceId) != controllerId ||
+            !com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality.canBeSacrificed(state, sourceId)
+        ) {
             return EffectResult.success(state)
         }
 

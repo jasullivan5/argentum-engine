@@ -8086,7 +8086,14 @@
         "triggeredAbilities": [
             {
                 "id": "Manabarbs:1",
-                "trigger": "LandTappedForMana",
+                "trigger": {
+                    "type": "PermanentTappedForMana",
+                    "permanentFilter": {
+                        "cardPredicates": [
+                            "IsLand"
+                        ]
+                    }
+                },
                 "binding": "ANY",
                 "effect": {
                     "type": "DealDamage",
@@ -8663,7 +8670,10 @@
                                     }
                                 ],
                                 "statePredicates": [
-                                    "ControlledSinceTurnBegan"
+                                    {
+                                        "type": "ControlledContinuouslySince",
+                                        "since": "TURN_BEGAN"
+                                    }
                                 ],
                                 "controllerPredicate": "ControlledByActivePlayer"
                             }
@@ -11264,7 +11274,10 @@
                                                 "type": "StateNot",
                                                 "predicate": "AttackedThisTurn"
                                             },
-                                            "ControlledSinceTurnBegan"
+                                            {
+                                                "type": "ControlledContinuouslySince",
+                                                "since": "TURN_BEGAN"
+                                            }
                                         ],
                                         "controllerPredicate": "ControlledByActivePlayer"
                                     }

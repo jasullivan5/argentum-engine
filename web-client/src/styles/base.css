@@ -97,3 +97,9 @@ html[data-motion='reduce'] *::after {
   transition-duration: 0.01ms !important;
   scroll-behavior: auto !important;
 }
+
+/* Recharts 3 focuses a chart layer on click (keyboard accessibility). Keep the ring for keyboard
+   focus, drop it for mouse clicks, where it boxes the plot area for no reason. */
+.recharts-wrapper :focus:not(:focus-visible) {
+  outline: none;
+}

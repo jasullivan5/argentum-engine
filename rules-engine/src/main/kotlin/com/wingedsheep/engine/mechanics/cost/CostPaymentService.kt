@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.mechanics.cost
 
+import com.wingedsheep.engine.mechanics.mana.withReservedSnowBonus
 import com.wingedsheep.engine.handlers.costs.CostAtomAmounts
 import com.wingedsheep.engine.state.LifePaymentPurpose
 
@@ -374,7 +375,12 @@ class CostPaymentService(private val services: EngineServices) {
         payerId: EntityId,
         cost: PayCost,
         sourceId: EntityId,
-        selected: Map<EntityId, Int>
+        selected: Map<EntityId, Int>,
+        /**
+         * For a [CostAtom.Mill]: the count the payer chose when the order of their mill
+         * replacements changes it ([millOrderOutcomes]); ignored otherwise.
+         */
+        millCount: Int? = null
     ): CostPaymentExecution = when (cost) {
         is PayCost.OwnManaCost -> CostPaymentExecution(state, emptyList(), success = false)
         is PayCost.Choice -> CostPaymentExecution(state, emptyList(), success = false)
@@ -405,7 +411,7 @@ class CostPaymentService(private val services: EngineServices) {
                     is com.wingedsheep.engine.handlers.costs.CollectEvidenceResolver.Result.Failure ->
                         CostPaymentExecution(state, emptyList(), success = false)
                 }
-            is CostAtom.Mill -> millTop(state, payerId, atom.count)
+            is CostAtom.Mill -> millTop(state, payerId, atom.count, millCount)
             is CostAtom.ExileTopOfLibrary -> exileTop(state, payerId, atom.count)
             is CostAtom.RevealFromHand -> revealSelected(state, payerId, selected.keys.toList())
             is CostAtom.PutFromHandOnTopOfLibrary -> putSelectedOnLibrary(state, selected.keys.toList())
@@ -585,6 +591,7 @@ class CostPaymentService(private val services: EngineServices) {
             for (source in solution.sources) {
                 for ((color, amount) in source.fixedBonusMana) combined = combined.add(color, amount)
             }
+            combined = combined.withReservedSnowBonus(solution)
         }
 
         val newPool = combined.pay(manaCost) ?: return CostPaymentExecution(state, emptyList(), false)
@@ -648,13 +655,28 @@ class CostPaymentService(private val services: EngineServices) {
     }
 
     /**
+     * The distinct counts a [cost] that mills could come to for [payerId] when the order of their
+     * mill replacements matters (CR 616.1), or null when it isn't a mill or no order matters.
+     */
+    fun millOrderOutcomes(state: GameState, payerId: EntityId, cost: PayCost): List<KeywordActionAmountModifier.AmountOutcome>? {
+        val atom = (cost as? PayCost.Atom)?.atom as? CostAtom.Mill ?: return null
+        return KeywordActionAmountModifier.millOutcomes(state, payerId, atom.count, predicateEvaluator)
+            .takeIf { it.size > 1 }
+    }
+
+    /**
      * Mill the top [count] cards as a cost payment (CR 701.17a). Mirrors `CostHandler.payAtom`'s
      * mill branch: the announced count runs through the [KeywordActionAmountModifier] replacement chokepoint
-     * (CR 616) and the library→graveyard moves go through [ZoneTransitionService] so mill triggers
+     * (CR 616.1) and the library→graveyard moves go through [ZoneTransitionService] so mill triggers
      * and animations see the canonical zone changes.
      */
-    private fun millTop(state: GameState, payerId: EntityId, count: Int): CostPaymentExecution {
-        val effectiveCount = KeywordActionAmountModifier.mill(state, payerId, count, predicateEvaluator = predicateEvaluator)
+    private fun millTop(state: GameState, payerId: EntityId, count: Int, chosenCount: Int?): CostPaymentExecution {
+        // When the replacements' order matters the payer chose a count first (the resumer's
+        // second step); without one — or with one no order produces — the payment fails closed.
+        val outcomes = KeywordActionAmountModifier.millOutcomes(state, payerId, count, predicateEvaluator)
+        val effectiveCount = outcomes.singleOrNull()?.count
+            ?: chosenCount?.takeIf { chosen -> outcomes.any { it.count == chosen } }
+            ?: return CostPaymentExecution(state, emptyList(), success = false)
         val milled = state.getZone(ZoneKey(payerId, Zone.LIBRARY)).take(effectiveCount)
         val result = services.zones.moveToZoneBatch(state, milled, Zone.GRAVEYARD)
         val (newState, milledEvent) = ZoneTransitionService.trackMill(result.state, result.events, milled)
@@ -816,26 +838,34 @@ class CostPaymentService(private val services: EngineServices) {
             sourceId: EntityId,
             manaSolver: ManaSolver,
             predicateEvaluator: PredicateEvaluator,
-            /** Why the life would be paid — a cost-scoped prohibition (Karn's Sylex) reads it. */
-            lifePurpose: LifePaymentPurpose = LifePaymentPurpose.OTHER
+            /**
+             * Why the cost is paid. Any purpose but [LifePaymentPurpose.OTHER] means it is paid to cast
+             * a spell or activate an ability, which gates two things: a cost-scoped life prohibition
+             * (Karn's Sylex) and the sacrifice pool, which then drops permanents no cost may sacrifice
+             * ([SacrificeCostLegality], Angel of Jubilation). OTHER (a resolving spell's "unless you pay",
+             * a morph cost) is reached by neither.
+             */
+            purpose: LifePaymentPurpose = LifePaymentPurpose.OTHER
         ): Boolean {
             return when (val c = resolve(state, cost, sourceId)) {
                 // Only unresolvable own-mana-costs reach here (missing source/card component) — unpayable.
                 is PayCost.OwnManaCost -> false
                 // Unknowable without the resolving effect's context; see pay().
                 is PayCost.DynamicLife -> false
-                is PayCost.Choice -> c.options.any { canAfford(state, payerId, it, sourceId, manaSolver, predicateEvaluator = predicateEvaluator, lifePurpose = lifePurpose) }
+                is PayCost.Choice -> c.options.any { canAfford(state, payerId, it, sourceId, manaSolver, predicateEvaluator = predicateEvaluator, purpose = purpose) }
                 is PayCost.Atom -> when (val atom = c.atom) {
                     is CostAtom.Mana -> manaSolver.canPay(state, payerId, atom.cost)
                     // CR 119.4 — a player may pay life only if their life total is at least the amount; paying
                     // life that would reduce them to 0 or less is legal (they then lose as a state-based action).
                     is CostAtom.PayLife -> CostAtomAmounts.canPayLife( // CR 119.8 too
-                        state, payerId, CostAtomAmounts.life(state, atom, payerId, predicateEvaluator, sourceId), lifePurpose
+                        state, payerId, CostAtomAmounts.life(state, atom, payerId, predicateEvaluator, sourceId), purpose
                     )
                     is CostAtom.Discard -> domain(state, payerId, c, sourceId, predicateEvaluator = predicateEvaluator).size >= atom.count
                     // CR 118.3 — an empty hand discards nothing, and a cost of nothing is payable.
                     is CostAtom.DiscardHand -> true
-                    is CostAtom.ExileFrom -> {
+                    // A processor-style move (destination = GRAVEYARD) is wired for activation and
+                    // spell additional costs only; this "unless you pay" rail reports it unpayable.
+                    is CostAtom.ExileFrom -> atom.exiles && run {
                         val candidates = domain(state, payerId, c, sourceId, predicateEvaluator = predicateEvaluator)
                         if (atom.distinctNames) distinctNameCount(state, candidates) >= atom.count
                         else candidates.size >= atom.count
@@ -861,7 +891,10 @@ class CostPaymentService(private val services: EngineServices) {
                     is CostAtom.RevealFromHand -> domain(state, payerId, c, sourceId, predicateEvaluator = predicateEvaluator).size >= atom.count
                     is CostAtom.PutFromHandOnTopOfLibrary -> domain(state, payerId, c, sourceId, predicateEvaluator = predicateEvaluator).size >= atom.count
                     is CostAtom.Sacrifice -> {
+                        // Paid as part of casting or activating (not while something resolves), the
+                        // pool drops what no cost may sacrifice (Angel of Jubilation).
                         val candidates = domain(state, payerId, c, sourceId, predicateEvaluator = predicateEvaluator)
+                            .let { if (purpose == LifePaymentPurpose.OTHER) it else SacrificeCostLegality.sacrificeableForCost(state, it) }
                         if (atom.distinctNames) distinctNameCount(state, candidates) >= atom.count
                         else candidates.size >= atom.count
                     }

@@ -89,7 +89,7 @@ class EmergeFromQualityTest : FunSpec({
             info.validSacrificeTargets shouldContainExactly listOf(trinket)
         }
         info.description shouldBe "an artifact to sacrifice (its mana value reduces the emerge cost)"
-        info.costAfterSacrifice!![trinket] shouldBe "{1}{B}"
+        info.costAfterSacrifice[trinket] shouldBe "{1}{B}"
 
         castEmerge(driver, player, emerger, trinket).outcome shouldBe Outcome.Done
         driver.getGraveyard(player) shouldContain trinket

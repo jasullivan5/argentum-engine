@@ -87,6 +87,130 @@
     ]
 }
 
+// Grenzo, Havoc Raiser
+{
+    "name": "Grenzo, Havoc Raiser",
+    "manaCost": "{R}{R}",
+    "typeLine": "Legendary Creature — Goblin Rogue",
+    "oracleText": "Whenever a creature you control deals combat damage to a player, choose one —\n• Goad target creature that player controls.\n• Exile the top card of that player's library. Until end of turn, you may cast that card and you may spend mana as though it were mana of any color to cast that spell.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Grenzo, Havoc Raiser:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    },
+                    "sourceFilter": "creature ctrl:you"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Modal",
+                    "modes": [
+                        {
+                            "effect": {
+                                "type": "Goad",
+                                "target": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                }
+                            },
+                            "targetRequirements": [
+                                {
+                                    "type": "TargetObject",
+                                    "filter": {
+                                        "baseFilter": {
+                                            "cardPredicates": [
+                                                "IsCreature"
+                                            ],
+                                            "controllerPredicate": {
+                                                "type": "ControlledByReferencedPlayer",
+                                                "target": {
+                                                    "type": "PlayerRef",
+                                                    "player": "TriggeringPlayer"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "id": "t0"
+                                }
+                            ],
+                            "description": "Goad target creature that player controls"
+                        },
+                        {
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "TopOfLibrary",
+                                            "count": {
+                                                "type": "Fixed",
+                                                "amount": 1
+                                            },
+                                            "player": "TriggeringPlayer"
+                                        },
+                                        "storeAs": "gathered0"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "gathered0",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Exile",
+                                            "player": "TriggeringPlayer"
+                                        }
+                                    },
+                                    {
+                                        "type": "GrantMayPlayFromExile",
+                                        "from": "gathered0",
+                                        "withAnyManaColor": true,
+                                        "nonLandOnly": true
+                                    }
+                                ]
+                            },
+                            "description": "Exile the top card of that player's library. Until end of turn, you may cast it, spending mana as though it were mana of any color"
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever a creature you control deals combat damage to a player, choose one — goad target creature that player controls; or exile the top card of that player's library, and until end of turn you may cast it, spending mana as though it were mana of any color."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "54",
+        "rarity": "RARE",
+        "artist": "Svetlin Velinov",
+        "flavorText": "\"You burn. I'll pillage.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/7/075cd558-2557-409a-8244-2de65664be53.jpg?1783937349",
+        "rulings": [
+            {
+                "date": "2016-08-23",
+                "text": "If you exile a land card this way, you can't play it."
+            },
+            {
+                "date": "2016-08-23",
+                "text": "Casting the exiled card follows the normal rules for casting that card. You must pay its costs, and you must follow all applicable timing rules. For example, if you exile a creature card this way, you must wait until your main phase to cast it."
+            },
+            {
+                "date": "2016-08-23",
+                "text": "If you don't cast the card, it will remain in exile."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Queen Marchesa
 {
     "name": "Queen Marchesa",
@@ -259,6 +383,247 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Selvala's Stampede
+{
+    "name": "Selvala's Stampede",
+    "manaCost": "{4}{G}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Council's dilemma — Starting with you, each player votes for wild or free. Reveal cards from the top of your library until you reveal a creature card for each wild vote. Put those creature cards onto the battlefield, then shuffle the rest into your library. You may put a permanent card from your hand onto the battlefield for each free vote.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "Vote",
+                    "choices": [
+                        "wild",
+                        "free"
+                    ],
+                    "voteCounts": {
+                        "votes0": "wild",
+                        "votes1": "free"
+                    }
+                },
+                {
+                    "type": "GatherUntilMatch",
+                    "filter": "creature",
+                    "storeMatch": "matched2",
+                    "storeRevealed": "revealed2",
+                    "count": {
+                        "type": "VariableReference",
+                        "variableName": "votes0"
+                    }
+                },
+                {
+                    "type": "RevealCollection",
+                    "from": "revealed2"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "matched2",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Battlefield"
+                    }
+                },
+                "ShuffleLibrary",
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "FromZone",
+                        "zone": "Hand",
+                        "filter": "permanent"
+                    },
+                    "storeAs": "gathered6"
+                },
+                {
+                    "type": "SelectFromCollection",
+                    "from": "gathered6",
+                    "selection": {
+                        "type": "ChooseUpTo",
+                        "count": {
+                            "type": "VariableReference",
+                            "variableName": "votes1"
+                        }
+                    },
+                    "storeSelected": "selected7",
+                    "prompt": "Put a permanent card from your hand onto the battlefield for each free vote"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "selected7",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Battlefield"
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "71",
+        "rarity": "RARE",
+        "artist": "Svetlin Velinov",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/5/85d6e48e-3d26-4915-9739-25edbd80bdf1.jpg?1783937340",
+        "rulings": [
+            {
+                "date": "2016-08-23",
+                "text": "You must vote for one of the available options. You can't abstain."
+            },
+            {
+                "date": "2016-08-23",
+                "text": "The creature cards revealed for the wild votes all enter the battlefield at the same time, followed by the permanent cards put onto the battlefield from your hand for the free votes."
+            },
+            {
+                "date": "2016-08-23",
+                "text": "Because the votes are made in turn order, each player will know the votes of players who voted beforehand."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Selvala, Heart of the Wilds
+{
+    "name": "Selvala, Heart of the Wilds",
+    "manaCost": "{1}{G}{G}",
+    "typeLine": "Legendary Creature — Elf Scout",
+    "oracleText": "Whenever another creature enters, its controller may draw a card if its power is greater than each other creature's power.\n{G}, {T}: Add X mana in any combination of colors, where X is the greatest power among creatures you control.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Selvala, Heart of the Wilds:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature",
+                    "to": "Battlefield"
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "Compare",
+                            "left": {
+                                "type": "AggregateBattlefield",
+                                "player": "Each",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "IsCreature",
+                                        {
+                                            "type": "CompareNumericProperty",
+                                            "property": "POWER",
+                                            "operator": "GTE",
+                                            "amount": {
+                                                "type": "EntityProperty",
+                                                "entity": "TriggeringEntity",
+                                                "numericProperty": "Power"
+                                            }
+                                        }
+                                    ],
+                                    "statePredicates": [
+                                        {
+                                            "type": "StateNot",
+                                            "predicate": "IsTriggeringEntity"
+                                        }
+                                    ]
+                                }
+                            },
+                            "operator": "EQ",
+                            "right": {
+                                "type": "Fixed",
+                                "amount": 0
+                            }
+                        }
+                    },
+                    "then": {
+                        "type": "Gated",
+                        "gate": "Gate.MayDecide",
+                        "then": {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 1
+                            },
+                            "target": "ControllerOfTriggeringEntity"
+                        },
+                        "decisionMaker": "ControllerOfTriggeringEntity"
+                    }
+                },
+                "descriptionOverride": "Whenever another creature enters, its controller may draw a card if its power is greater than each other creature's power."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Selvala, Heart of the Wilds:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{G}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "AddDynamicMana",
+                    "amountSource": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "creature",
+                        "aggregation": "MAX",
+                        "property": "POWER"
+                    },
+                    "allowedColors": [
+                        "WHITE",
+                        "BLUE",
+                        "BLACK",
+                        "RED",
+                        "GREEN"
+                    ]
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true,
+                "descriptionOverride": "Add X mana in any combination of colors, where X is the greatest power among creatures you control."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "70",
+        "rarity": "MYTHIC",
+        "artist": "Tyler Jacobson",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/9/99a3e619-fbdb-406c-9f21-eb582cb878c0.jpg?1783937342",
+        "rulings": [
+            {
+                "date": "2016-08-23",
+                "text": "Selvala's last ability is a mana ability. It doesn't use the stack and can't be responded to. If the greatest power among creatures you control is 0 or less at that time, no mana is added."
+            },
+            {
+                "date": "2016-08-23",
+                "text": "The new creature's power is compared to the power of each other creature on the battlefield as the first ability resolves. If another creature has the same or higher power than the new creature's power, no one may draw a card."
+            },
+            {
+                "date": "2016-08-23",
+                "text": "If the new creature isn't on the battlefield as the first ability resolves, use its power when it left the battlefield to determine whether its controller may draw a card. Note that effects that reduced its power before it left the battlefield will apply."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 

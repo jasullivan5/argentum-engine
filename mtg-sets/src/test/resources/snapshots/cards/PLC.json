@@ -1044,6 +1044,72 @@
     ]
 }
 
+// Imp's Mischief
+{
+    "name": "Imp's Mischief",
+    "manaCost": "{1}{B}",
+    "typeLine": "Instant",
+    "oracleText": "Change the target of target spell with a single target. You lose life equal to that spell's mana value.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                "ChangeTarget",
+                {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "EntityProperty",
+                        "entity": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "numericProperty": "ManaValue"
+                    },
+                    "target": "Controller"
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": {
+                        "statePredicates": [
+                            "HasSingleTarget"
+                        ]
+                    },
+                    "zone": "Stack"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "72",
+        "rarity": "RARE",
+        "artist": "Thomas M. Baxa",
+        "flavorText": "\"Do the innocent pay for the crimes of the guilty? Of course they do. That's the fate of the weak.\"\n—Nicol Bolas",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/2/22ec70a6-40b7-41da-a6c0-c140cadf5509.jpg?1783943155",
+        "rulings": [
+            {
+                "date": "2024-04-12",
+                "text": "You don't choose the new target for the spell until Imp's Mischief resolves. You must change the target if possible. However, you can't change the target to an illegal target. If there are no legal targets to choose from, the target isn't changed. It doesn't matter if the original target has somehow become illegal itself."
+            },
+            {
+                "date": "2024-04-12",
+                "text": "If a spell targets multiple things, you can't target it with Imp's Mischief, even if all but one of those targets have become illegal."
+            },
+            {
+                "date": "2004-10-04",
+                "text": "You can't make a spell which is on the stack target itself."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Keldon Marauders
 {
     "name": "Keldon Marauders",
@@ -3244,5 +3310,87 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// Whitemane Lion
+{
+    "name": "Whitemane Lion",
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature — Cat",
+    "oracleText": "Flash\nWhen this creature enters, return a creature you control to its owner's hand.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Whitemane Lion:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "BattlefieldMatching",
+                                "filter": "creature",
+                                "player": "You"
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "gathered0",
+                            "selection": {
+                                "type": "ChooseExactly",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "selected1",
+                            "prompt": "Return a creature you control to its owner's hand",
+                            "useTargetingUI": true
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "selected1",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Hand"
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "When this creature enters, return a creature you control to its owner's hand."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "22",
+        "artist": "Zoltan Boros & Gabor Szikszai",
+        "flavorText": "Saltfield nomads call a sudden storm a \"whitemane.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/b/cb1214ff-e959-43ca-8415-79a98d398490.jpg?1783943166",
+        "rulings": [
+            {
+                "date": "2022-12-08",
+                "text": "You may return Whitemane Lion itself to its owner's hand as its triggered ability resolves. If you don't control any other creature, you must return it."
+            },
+            {
+                "date": "2022-12-08",
+                "text": "Whitemane Lion's ability doesn't target any creature, therefore no player may take actions between the time you choose the creature to return and the time you return it."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }

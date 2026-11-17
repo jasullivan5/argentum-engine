@@ -10,6 +10,7 @@ import com.wingedsheep.engine.handlers.TargetFinder
 import com.wingedsheep.engine.handlers.effects.BattlefieldFilterUtils
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
+import com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.ZoneKey
@@ -24,9 +25,11 @@ import com.wingedsheep.sdk.scripting.effects.Effect
 import com.wingedsheep.sdk.scripting.effects.GatherCardsEffect
 import com.wingedsheep.sdk.scripting.effects.ReflexiveTriggerEffect
 import com.wingedsheep.sdk.scripting.effects.SacrificeEffect
+import com.wingedsheep.sdk.scripting.effects.SacrificeTargetEffect
 import com.wingedsheep.sdk.scripting.effects.SelectFromCollectionEffect
 import com.wingedsheep.sdk.scripting.effects.SelectTargetEffect
 import com.wingedsheep.sdk.scripting.effects.SelectionMode
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 import kotlin.reflect.KClass
 
@@ -73,25 +76,90 @@ class ReflexiveTriggerEffectExecutor(
         effect: ReflexiveTriggerEffect,
         context: EffectContext
     ): EffectResult {
+        val (restricted, restrictedContext) = restrictSacrificeChoices(state, effect, context)
+        return executeRestricted(state, restricted, restrictedContext)
+    }
+
+    private fun executeRestricted(
+        state: GameState,
+        effect: ReflexiveTriggerEffect,
+        context: EffectContext
+    ): EffectResult {
         // An action that can't be performed never happens, so CR 603.12's "when you do" never
         // triggers. Gating here rather than inside the optional branch covers both templates:
         // the "you may [action]" prompt is meaningless (saying yes would no-op the action while
         // still firing the payoff), and a mandatory [action] would otherwise resolve vacuously —
         // a discard pipeline on an empty hand auto-selects nothing and reports success, which
         // `executeActionThenEmit`'s `Outcome.Done` check can't distinguish from a real discard.
-        if (!isActionFeasible(state, effect.action, context)) {
+        //
+        // Only what every player can tell may skip the question (#3340). "You may discard a
+        // creature card" with a hand but no creature in it is asked, with "no" as its only answer.
+        if (!isActionFeasible(state, effect.action, context, publicOnly = true)) {
             return EffectResult.success(state)
         }
+        val feasible = isActionFeasible(state, effect.action, context)
         if (effect.optional) {
-            return presentOptionalChoice(state, effect, context)
+            return presentOptionalChoice(state, effect, context, yesAvailable = feasible)
+        }
+        if (!feasible) {
+            return EffectResult.success(state)
         }
         return executeActionThenEmit(state, effect, context)
+    }
+
+    /**
+     * "You may sacrifice another nonland permanent. When you do, …" is authored as a pipeline that
+     * *chooses* the permanent ([SelectTargetEffect]) and then sacrifices that choice
+     * ([SacrificeTargetEffect] over its `PipelineTarget`). The choice step is generic and can't tell
+     * it is picking sacrifice fodder, so on its own it would offer a permanent that can't be
+     * sacrificed (Quark, Humble Proprietor's Treasures) — the sacrifice then silently no-ops while
+     * the action still completes, arming the "when you do" for nothing.
+     *
+     * Every such choice is therefore narrowed to what [SacrificeCostLegality.canBeSacrificed]
+     * allows: the permanents that can't be sacrificed are published under
+     * [UNSACRIFICEABLE_COLLECTION] and added to the choice's [SelectTargetEffect.excluding]. The
+     * feasibility check and the real selection both honour `excluding`, so they agree — with only
+     * unsacrificeable candidates the may-question is never asked. Re-entering after the yes/no
+     * recomputes the collection, so it always reflects the board as the choice is made.
+     */
+    private fun restrictSacrificeChoices(
+        state: GameState,
+        effect: ReflexiveTriggerEffect,
+        context: EffectContext
+    ): Pair<ReflexiveTriggerEffect, EffectContext> {
+        val action = effect.action as? CompositeEffect ?: return effect to context
+        // Only a sacrifice the resolving player performs is a choice of fodder; "its controller
+        // sacrifices it" sacrifices a permanent named some other way.
+        val sacrificed = action.effects
+            .filterIsInstance<SacrificeTargetEffect>()
+            .filterNot { it.sacrificedByItsController }
+            .mapNotNullTo(HashSet()) { (it.target as? EffectTarget.PipelineTarget)?.collectionName }
+        if (sacrificed.isEmpty()) return effect to context
+
+        val restricted = action.effects.map { step ->
+            if (step is SelectTargetEffect && step.storeAs in sacrificed &&
+                UNSACRIFICEABLE_COLLECTION !in step.excluding
+            ) {
+                step.copy(excluding = step.excluding + UNSACRIFICEABLE_COLLECTION)
+            } else {
+                step
+            }
+        }
+        val unsacrificeable = state.getBattlefield()
+            .filterNot { SacrificeCostLegality.canBeSacrificed(state, it) }
+        return effect.copy(action = action.copy(effects = restricted)) to context.copy(
+            pipeline = context.pipeline.copy(
+                storedCollections = context.pipeline.storedCollections +
+                    (UNSACRIFICEABLE_COLLECTION to unsacrificeable)
+            )
+        )
     }
 
     private fun presentOptionalChoice(
         state: GameState,
         effect: ReflexiveTriggerEffect,
-        context: EffectContext
+        context: EffectContext,
+        yesAvailable: Boolean
     ): EffectResult {
         val playerId = context.controllerId
         val sourceName = context.sourceId?.let { sourceId ->
@@ -109,7 +177,8 @@ class ReflexiveTriggerEffectExecutor(
             ),
             yesText = "Yes",
             noText = "No",
-            hint = effect.hint
+            hint = effect.hint,
+            yesAvailable = yesAvailable
         ) }
 
         val continuation = MayAbilityContinuation(
@@ -148,12 +217,16 @@ class ReflexiveTriggerEffectExecutor(
      * steps of the enclosing composite. A collection that isn't in the map is unknown, and any
      * selection from it fails open; `null` means the bookkeeping has stopped altogether, so every
      * selection fails open (see [isCompositeFeasible]).
+     * @param publicOnly Answer whether the action *might* be feasible as far as every player can
+     * tell (#3340): a hidden zone's cards are counted without their filter, because which of them
+     * match is hidden. Every `false` here is also `false` without it.
      */
     private fun isActionFeasible(
         state: GameState,
         action: Effect,
         context: EffectContext,
-        gathered: Map<String, Int>? = emptyMap()
+        gathered: Map<String, Int>? = emptyMap(),
+        publicOnly: Boolean = false
     ): Boolean = when (action) {
         is SelectTargetEffect -> targetFinder.findLegalTargets(
             state = state,
@@ -167,11 +240,12 @@ class ReflexiveTriggerEffectExecutor(
             targetingSourceType = TargetingSourceType.TRIGGERED_ABILITY,
             // Carry granterId so the "may" feasibility check honors a granter-relative exclusion —
             // e.g. Dire Blunderbuss must NOT offer the sacrifice when the only artifact is the
-            // granting Equipment itself. Minimal context (granterId only) matches the actual
+            // granting Equipment itself. The same context (granterId + earlier picks) as the actual
             // selection path in SelectTargetPipelineExecutor, so feasibility and execution agree.
             pipelineContext = com.wingedsheep.engine.handlers.PredicateContext(
                 controllerId = context.controllerId,
-                granterId = context.granterId
+                granterId = context.granterId,
+                storedCollections = context.pipeline.storedCollections
             )
         ).any { candidate ->
             // Mirror the executor's earlier-pick exclusion, so feasibility and execution agree.
@@ -184,10 +258,10 @@ class ReflexiveTriggerEffectExecutor(
             BattlefieldFilterUtils.findMatchingOnBattlefield(
                 state, action.filter.youControl(), context, excludeSelfId = excludeId,
                 predicateEvaluator = predicateEvaluator
-            ).size >= action.count
+            ).count { com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality.canBeSacrificed(state, it) } >= action.count
         }
         is ChooseActionEffect -> action.choices.any { choice ->
-            checkFeasibility(state, context.controllerId, choice.feasibilityCheck, predicateEvaluator = predicateEvaluator, manaSolver = manaSolver)
+            checkFeasibility(state, context.controllerId, choice.feasibilityCheck, predicateEvaluator, manaSolver, publicOnly, context)
         }
         is SelectFromCollectionEffect -> {
             val available = gathered?.get(action.from)
@@ -198,12 +272,15 @@ class ReflexiveTriggerEffectExecutor(
             // minimum-carrying selection impossible.
             available == null || minimum == null || minimum == 0 || available > 0
         }
-        is CompositeEffect -> isCompositeFeasible(state, action, context, gathered)
+        is CompositeEffect -> isCompositeFeasible(state, action, context, gathered, publicOnly)
         // "You may pay {2} and sacrifice an Aura …" (Three Dog, Galaxy News DJ) — a mana payment
         // that can't be made can't be performed, so the may-question must be absent. Mirrors
         // GatedEffectExecutor.canAfford for the same shape in a Gate.MayPay cost slot.
         is com.wingedsheep.sdk.scripting.effects.PayManaCostEffect ->
-            action.waterbend || manaSolver.canPay(state, context.controllerId, action.cost)
+            action.waterbend || manaSolver.canPay(
+                state, context.controllerId, action.cost,
+                spellContext = com.wingedsheep.engine.mechanics.mana.SpellPaymentContext.forResolutionCost(action.cost),
+            )
         // "You may pay {E}{E}{E}" (Guide of Souls) — an all-or-nothing player-counter payment
         // is only feasible if the payer already has at least that many. Mirrors the SacrificeEffect
         // case: without this, the "may pay" prompt would be offered even at 0 energy, and
@@ -315,14 +392,15 @@ class ReflexiveTriggerEffectExecutor(
         state: GameState,
         action: CompositeEffect,
         context: EffectContext,
-        gathered: Map<String, Int>?
+        gathered: Map<String, Int>?,
+        publicOnly: Boolean
     ): Boolean {
         var known = gathered
         for (step in action.effects) {
-            if (!isActionFeasible(state, step, context, known)) return false
+            if (!isActionFeasible(state, step, context, known, publicOnly)) return false
             known = when (step) {
                 is GatherCardsEffect -> known?.let { sizes ->
-                    gatherableCount(state, step, context)?.let { sizes + (step.storeAs to it) }
+                    gatherableCount(state, step, context, publicOnly)?.let { sizes + (step.storeAs to it) }
                 }
                 is SelectFromCollectionEffect -> known
                 else -> null
@@ -369,12 +447,14 @@ class ReflexiveTriggerEffectExecutor(
     private fun gatherableCount(
         state: GameState,
         gather: GatherCardsEffect,
-        context: EffectContext
+        context: EffectContext,
+        publicOnly: Boolean = false
     ): Int? {
         val source = gather.source as? CardSource.FromZone ?: return null
         val playerIds = gatherPlayers(source.player, context, state) ?: return null
         val cards = playerIds.flatMap { state.getZone(ZoneKey(it, source.zone)) }
         if (source.filter == GameObjectFilter.Any) return cards.size
+        if (publicOnly && source.zone.isHidden) return cards.size
         val predicateContext = PredicateContext.fromEffectContext(context)
         return cards.count { cardId ->
             predicateEvaluator.matches(state, state.projectedState, cardId, source.filter, predicateContext)
@@ -388,12 +468,17 @@ class ReflexiveTriggerEffectExecutor(
         state: GameState
     ): List<EntityId>? = when (player) {
         is com.wingedsheep.sdk.scripting.references.Player.EachDefendingPlayer -> com.wingedsheep.engine.mechanics.combat.CombatDefenders.allDefendingPlayersInApnapOrder(state)
+        is com.wingedsheep.sdk.scripting.references.Player.EachAttackedPlayer -> com.wingedsheep.engine.mechanics.combat.CombatDefenders.attackedPlayersInApnapOrder(state)
         is com.wingedsheep.sdk.scripting.references.Player.Each,
         is com.wingedsheep.sdk.scripting.references.Player.ActivePlayerFirst -> state.turnOrder
         is com.wingedsheep.sdk.scripting.references.Player.EachStartingWithYou ->
             state.turnOrderStartingWith(context.controllerId)
+        is com.wingedsheep.sdk.scripting.references.Player.EachStartingWithNextOpponent ->
+            state.turnOrderStartingWithNextOpponent(context.controllerId)
         is com.wingedsheep.sdk.scripting.references.Player.EachOpponent ->
             state.turnOrder.filter { it != context.controllerId }
+        is com.wingedsheep.sdk.scripting.references.Player.EachOtherPlayer ->
+            state.getOtherPlayers(context.controllerId)
         else -> TargetResolutionUtils.resolvePlayerRef(player, context, state)?.let { listOf(it) }
     }
 
@@ -467,6 +552,9 @@ class ReflexiveTriggerEffectExecutor(
     }
 
     companion object {
+        /** Engine-internal pipeline collection: the permanents on the battlefield that can't be sacrificed. */
+        private const val UNSACRIFICEABLE_COLLECTION = "\$unsacrificeable"
+
         /**
          * Build the [ReflexiveAbilityTriggeredEvent] for a completed action, carrying the reflexive
          * effect, its target requirements, and whatever pipeline state the action produced. Shared

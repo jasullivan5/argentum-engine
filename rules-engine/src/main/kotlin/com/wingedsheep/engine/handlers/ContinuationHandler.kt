@@ -41,6 +41,7 @@ class ContinuationHandler(
         registerModule(chainResumer)
         registerAutoResumerModule(chainResumer)
         registerModule(CreatureTypeChoiceContinuationResumer(services))
+        registerModule(VoteContinuationResumer())
         registerModule(TextReplacementContinuationResumer(services))
         registerModule(DrawReplacementContinuationResumer(services))
         registerModule(CardSpecificContinuationResumer(services))
@@ -122,7 +123,18 @@ class ContinuationHandler(
             if (error != null) return ExecutionResult.error(state, error)
         }
         val (_, stateAfterPop) = state.popContinuation()
-        val result = registry.resume(stateAfterPop, suspension.answer, suspension.question, response, continueWithin)
+        val answer = suspension.answer
+        if (answer is GrantedEntryCopyOrderContinuation && answer.replay is AnswerReplay) {
+            // An entry-copy order asked for a resumer's entrant: answer the resumed question again.
+            val chosen = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy.chosenOption(answer.options, response)
+                ?: return ExecutionResult.error(state, "Expected one of the granted copies to be chosen")
+            val replayed = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy
+                .withAnswer(stateAfterPop, answer.entityId, chosen).restoreSuspension(answer.replay.suspension)
+            return resumeWithin(replayed, answer.replay.response, continuationFloor)
+        }
+        val resumed = registry.resume(stateAfterPop, answer, suspension.question, response, continueWithin)
+        val result = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy.askIfUnasked(
+            stateAfterPop, resumed.state) { AnswerReplay(suspension, response) } ?: resumed
         // Casting resumers can finish a local picker without draining enclosing work.
         // A mandatory play must then retry the card or resume the original resolution.
         val completed = if (result.outcome is Outcome.Done &&

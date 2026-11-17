@@ -970,6 +970,98 @@
     "colorIdentityOverride": []
 }
 
+// Contagion Engine
+{
+    "name": "Contagion Engine",
+    "manaCost": "{6}",
+    "typeLine": "Artifact",
+    "oracleText": "When this artifact enters, put a -1/-1 counter on each creature target player controls.\n{4}, {T}: Proliferate twice. (Choose any number of permanents and/or players, then give each another counter of each kind already there. Then do it again.)",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Contagion Engine:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": {
+                                "cardPredicates": [
+                                    "IsCreature"
+                                ],
+                                "controllerPredicate": {
+                                    "type": "ControlledByReferencedPlayer",
+                                    "target": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "body": {
+                        "type": "AddCounters",
+                        "counterType": "MINUS_ONE_MINUS_ONE",
+                        "count": 1,
+                        "target": "IterationEntity"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0"
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Contagion Engine:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{4}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        "Proliferate",
+                        "Proliferate"
+                    ]
+                },
+                "descriptionOverride": "{4}, {T}: Proliferate twice."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "145",
+        "rarity": "RARE",
+        "artist": "Daarken",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/c/dce72636-08e4-484e-ad81-4d1597a31ffb.jpg?1783941712",
+        "rulings": [
+            {
+                "date": "2011-01-01",
+                "text": "Players can't respond between the first and the second proliferate actions."
+            },
+            {
+                "date": "2011-01-01",
+                "text": "As Contagion Engine's activated ability resolves, you'll complete an entire proliferate action, then you'll complete a second proliferate action. You may choose different players and/or permanents, or different counters on those permanents, when you proliferate the second time."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
 // Copperline Gorge
 {
     "name": "Copperline Gorge",
@@ -1602,6 +1694,112 @@
     ]
 }
 
+// Ezuri, Renegade Leader
+{
+    "name": "Ezuri, Renegade Leader",
+    "manaCost": "{1}{G}{G}",
+    "typeLine": "Legendary Creature — Elf Warrior",
+    "oracleText": "{G}: Regenerate another target Elf.\n{2}{G}{G}{G}: Elf creatures you control get +3/+3 and gain trample until end of turn.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Ezuri, Renegade Leader:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{G}"
+                    }
+                },
+                "effect": {
+                    "type": "Regenerate",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "permanent Elf",
+                            "excludeSelf": true
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{G}: Regenerate another target Elf."
+            },
+            {
+                "id": "Ezuri, Renegade Leader:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}{G}{G}{G}"
+                    }
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature Elf ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "ModifyStats",
+                                "powerModifier": {
+                                    "type": "Fixed",
+                                    "amount": 3
+                                },
+                                "toughnessModifier": {
+                                    "type": "Fixed",
+                                    "amount": 3
+                                },
+                                "target": "IterationEntity"
+                            },
+                            {
+                                "type": "GrantKeyword",
+                                "keyword": "TRAMPLE",
+                                "target": "IterationEntity"
+                            }
+                        ]
+                    }
+                },
+                "descriptionOverride": "{2}{G}{G}{G}: Elf creatures you control get +3/+3 and gain trample until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "119",
+        "rarity": "RARE",
+        "artist": "Karl Kopinski",
+        "flavorText": "The infamous Ezuri commands the highest bounty the vedalken have ever placed upon an outlaw.",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/9/e9544132-bbb5-4ec4-af82-dad56e5091af.jpg?1783941719",
+        "rulings": [
+            {
+                "date": "2011-01-01",
+                "text": "Ezuri's first ability can't affect itself, but its second ability does."
+            },
+            {
+                "date": "2011-01-01",
+                "text": "Only Elf creatures you control when the last ability resolves will get +3/+3 and gain trample until end of turn. Non-Elf creatures that become Elves or Elf creatures that enter under your control later in the turn won't get the bonuses."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Ferrovore
 {
     "name": "Ferrovore",
@@ -2060,6 +2258,57 @@
     ]
 }
 
+// Ichor Rats
+{
+    "name": "Ichor Rats",
+    "manaCost": "{1}{B}{B}",
+    "typeLine": "Creature — Phyrexian Rat",
+    "oracleText": "Infect (This creature deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.)\nWhen this creature enters, each player gets a poison counter.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 1
+    },
+    "keywords": [
+        "INFECT"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Ichor Rats:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": "Each"
+                    },
+                    "body": {
+                        "type": "AddCounters",
+                        "counterType": "POISON",
+                        "count": 1,
+                        "target": {
+                            "type": "PlayerRef",
+                            "player": "You"
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "67",
+        "rarity": "UNCOMMON",
+        "artist": "Matt Stewart",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/0/2013aed6-7415-4bf0-a3bb-46d6beecbaff.jpg?1783941730"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Inexorable Tide
 {
     "name": "Inexorable Tide",
@@ -2341,6 +2590,59 @@
     ]
 }
 
+// Liquimetal Coating
+{
+    "name": "Liquimetal Coating",
+    "manaCost": "{2}",
+    "typeLine": "Artifact",
+    "oracleText": "{T}: Target permanent becomes an artifact in addition to its other types until end of turn.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Liquimetal Coating:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddCardType",
+                    "cardType": "ARTIFACT",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "duration": "EndOfTurn"
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "permanent"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{T}: Target permanent becomes an artifact in addition to its other types until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "171",
+        "rarity": "UNCOMMON",
+        "artist": "Johann Bodin",
+        "flavorText": "\"They'll soon become accustomed to wearing skin that is not their own.\"\n—Elesh Norn, Grand Cenobite",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/3/43ec9201-06e7-4a70-8dcf-7462a019965d.jpg?1783941706",
+        "rulings": [
+            {
+                "date": "2011-01-01",
+                "text": "You may target any permanent with the ability, including an artifact."
+            },
+            {
+                "date": "2011-01-01",
+                "text": "Becoming an artifact doesn't change what color(s) a permanent is."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
 // Loxodon Wayfarer
 {
     "name": "Loxodon Wayfarer",
@@ -2515,6 +2817,111 @@
     "colorIdentityOverride": []
 }
 
+// Molten Psyche
+{
+    "name": "Molten Psyche",
+    "manaCost": "{1}{R}{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Each player shuffles the cards from their hand into their library, then draws that many cards.\nMetalcraft — If you control three or more artifacts, Molten Psyche deals damage to each opponent equal to the number of cards that player has drawn this turn.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": "Each"
+                    },
+                    "body": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "FromZone",
+                                    "zone": "Hand"
+                                },
+                                "storeAs": "wheelHand"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "wheelHand",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Library",
+                                    "placement": "Shuffled"
+                                }
+                            },
+                            {
+                                "type": "DrawCards",
+                                "count": {
+                                    "type": "VariableReference",
+                                    "variableName": "wheelHand_count"
+                                }
+                            }
+                        ]
+                    }
+                },
+                {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "Compare",
+                            "left": {
+                                "type": "AggregateBattlefield",
+                                "player": "You",
+                                "filter": "artifact"
+                            },
+                            "operator": "GTE",
+                            "right": {
+                                "type": "Fixed",
+                                "amount": 3
+                            }
+                        }
+                    },
+                    "then": {
+                        "type": "ForEach",
+                        "space": {
+                            "type": "IterationSpace.Players",
+                            "players": "EachOpponent"
+                        },
+                        "body": {
+                            "type": "DealDamage",
+                            "amount": {
+                                "type": "TurnTracking",
+                                "player": "You",
+                                "tracker": "CARDS_DRAWN"
+                            },
+                            "target": "Controller"
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "98",
+        "rarity": "RARE",
+        "artist": "Ryan Yee",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/7/57e2382d-1f27-40d1-b809-c188c19ebc72.jpg?1783941723",
+        "rulings": [
+            {
+                "date": "2011-01-01",
+                "text": "If a player doesn't have any cards in their hand, the player will still shuffle their library."
+            },
+            {
+                "date": "2011-01-01",
+                "text": "The metalcraft effect counts all cards each opponent drew for any reason during that turn, not just the cards those opponents drew due to Molten Psyche's first effect."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Moriok Reaver
 {
     "name": "Moriok Reaver",
@@ -2576,6 +2983,118 @@
         "artist": "Volkan Baǵa",
         "flavorText": "The suns of Mirrodin have shone upon perfection only once.",
         "imageUri": "https://cards.scryfall.io/normal/front/6/b/6be9b1d5-9ab8-4adb-ba54-2c0117e842fa.jpg?1783941702"
+    },
+    "colorIdentityOverride": []
+}
+
+// Myr Battlesphere
+{
+    "name": "Myr Battlesphere",
+    "manaCost": "{7}",
+    "typeLine": "Artifact Creature — Myr Construct",
+    "oracleText": "When this creature enters, create four 1/1 colorless Myr artifact creature tokens.\nWhenever this creature attacks, you may tap X untapped Myr you control. If you do, this creature gets +X/+0 until end of turn and deals X damage to the player or planeswalker it's attacking.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 7
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Myr Battlesphere:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 4
+                    },
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [],
+                    "creatureTypes": [
+                        "Myr"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/1/8/182308b3-86e0-46d8-9104-95576a3d3921.jpg?1783941681",
+                    "artifactToken": true
+                }
+            },
+            {
+                "id": "Myr Battlesphere:2",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "ControlledPermanents",
+                                "filter": "permanent Myr untapped ctrl:you"
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "gathered0",
+                            "selection": "ChooseAnyNumber",
+                            "storeSelected": "selected1",
+                            "prompt": "Tap any number of untapped Myr you control",
+                            "useTargetingUI": true
+                        },
+                        {
+                            "type": "TapUntapCollection",
+                            "collectionName": "selected1"
+                        },
+                        {
+                            "type": "ModifyStats",
+                            "powerModifier": {
+                                "type": "VariableReference",
+                                "variableName": "selected1_count"
+                            },
+                            "toughnessModifier": {
+                                "type": "Fixed",
+                                "amount": 0
+                            },
+                            "target": "Self"
+                        },
+                        {
+                            "type": "DealDamage",
+                            "amount": {
+                                "type": "VariableReference",
+                                "variableName": "selected1_count"
+                            },
+                            "target": {
+                                "type": "AttackedBy",
+                                "attacker": "Self"
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever this creature attacks, you may tap X untapped Myr you control. If you do, this creature gets +X/+0 until end of turn and deals X damage to the player or planeswalker it's attacking."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "180",
+        "rarity": "RARE",
+        "artist": "Franz Vohwinkel",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/0/b0ae94ed-7314-470b-baba-f2f58bbc894a.jpg?1783941703",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "You choose the value for X as the last ability resolves. You can't choose a value for X that's greater than the number of untapped Myr you control."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "You can tap any untapped Myr you control as the last ability resolves, not just the Myr tokens you created with the first ability. This includes Myr that haven't been under your control since your most recent turn began."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "As the last ability resolves, you can tap untapped Myr you control even if Myr Battlesphere is no longer on the battlefield by then. If that has happened, Myr Battlesphere won't be able to get the +X/+0 bonus, but it will still deal X damage to the appropriate player or planeswalker."
+            }
+        ]
     },
     "colorIdentityOverride": []
 }
@@ -2681,6 +3200,47 @@
         "artist": "Raymond Swanland",
         "flavorText": "Contrary to popular belief, it's kept aloft by necrogen gas, not the screaming agony of a thousand murdered souls.",
         "imageUri": "https://cards.scryfall.io/normal/front/7/d/7d69c045-d705-478b-9e8f-272a24737225.jpg?1783941729"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Necrotic Ooze
+{
+    "name": "Necrotic Ooze",
+    "manaCost": "{2}{B}{B}",
+    "typeLine": "Creature — Ooze",
+    "oracleText": "As long as this creature is on the battlefield, it has all activated abilities of all creature cards in all graveyards.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 3
+    },
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "HasAllActivatedAbilitiesOfCards",
+                "donors": "AllGraveyards",
+                "cardFilter": "creature"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "72",
+        "rarity": "RARE",
+        "artist": "James Ryman",
+        "flavorText": "\"To death all must go, and so in death lies ultimate power.\"\n—Geth, Lord of the Vault",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/a/8af2c79f-a151-4628-90fe-c0ff7ccd9c2c.jpg?1783941730",
+        "rulings": [
+            {
+                "date": "2011-01-01",
+                "text": "Necrotic Ooze gains only activated abilities. It doesn't gain keyword abilities (unless those keyword abilities are activated), triggered abilities, or static abilities."
+            },
+            {
+                "date": "2011-01-01",
+                "text": "If an activated ability of a card in a graveyard references the card it's printed on by name, treat Necrotic Ooze's version of that ability as though it referenced Necrotic Ooze by name instead. For example, if Cudgel Troll (which says \"{G}: Regenerate Cudgel Troll\") is in a graveyard, Necrotic Ooze has the ability \"{G}: Regenerate Necrotic Ooze.\""
+            }
+        ]
     },
     "colorIdentityOverride": [
         "BLACK"
@@ -3019,6 +3579,31 @@
         "imageUri": "https://cards.scryfall.io/normal/front/4/b/4b942605-eb4a-452d-9b07-a4f912f96958.jpg?1783941699"
     },
     "colorIdentityOverride": []
+}
+
+// Plague Stinger
+{
+    "name": "Plague Stinger",
+    "manaCost": "{1}{B}",
+    "typeLine": "Creature — Phyrexian Insect Horror",
+    "oracleText": "Flying\nInfect (This creature deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.)",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "FLYING",
+        "INFECT"
+    ],
+    "metadata": {
+        "collectorNumber": "75",
+        "artist": "Ryan Pancoast",
+        "flavorText": "It leaves its victims one sting closer to phyresis.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/a/aae856bc-f65f-42ba-9344-1a30b356c041.jpg?1783941730"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
 }
 
 // Plated Seastrider
@@ -3464,6 +4049,64 @@
     ]
 }
 
+// Skithiryx, the Blight Dragon
+{
+    "name": "Skithiryx, the Blight Dragon",
+    "manaCost": "{3}{B}{B}",
+    "typeLine": "Legendary Creature — Phyrexian Dragon Skeleton",
+    "oracleText": "Flying\nInfect (This creature deals damage to creatures in the form of -1/-1 counters and to players in the form of poison counters.)\n{B}: Skithiryx gains haste until end of turn.\n{B}{B}: Regenerate Skithiryx.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING",
+        "INFECT"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Skithiryx, the Blight Dragon:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{B}"
+                    }
+                },
+                "effect": {
+                    "type": "GrantKeyword",
+                    "keyword": "HASTE",
+                    "target": "Self"
+                }
+            },
+            {
+                "id": "Skithiryx, the Blight Dragon:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{B}{B}"
+                    }
+                },
+                "effect": {
+                    "type": "Regenerate",
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "79",
+        "rarity": "MYTHIC",
+        "artist": "Chippy",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/9/c930c9cc-1b64-4f36-afe2-6bf120a74ce2.jpg?1783941728"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Sky-Eel School
 {
     "name": "Sky-Eel School",
@@ -3543,6 +4186,62 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Slice in Twain
+{
+    "name": "Slice in Twain",
+    "manaCost": "{2}{G}{G}",
+    "typeLine": "Instant",
+    "oracleText": "Destroy target artifact or enchantment.\nDraw a card.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "artifact|enchantment"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "127",
+        "rarity": "UNCOMMON",
+        "artist": "Efrem Palacios",
+        "flavorText": "\"The hypocrisy of these elves is thicker than steel—destroying 'unnatural metal' with their own enchanted swords.\"\n—Kara Vrist, Neurok agent",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/e/de9c572a-6dc0-432f-92e9-c52fb0efddb5.jpg?1783941716",
+        "rulings": [
+            {
+                "date": "2017-09-29",
+                "text": "If the target artifact or enchantment is an illegal target by the time Slice in Twain resolves, the entire spell doesn’t resolve. You won’t draw a card. If, on the other hand, the target is a legal target but isn’t destroyed (most likely because it has indestructible), you’ll draw a card."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 
@@ -3899,6 +4598,71 @@
         "artist": "Jason Chan",
         "flavorText": "There may exist powers even greater than Phyrexia.",
         "imageUri": "https://cards.scryfall.io/normal/front/3/2/32217d3b-8a44-40e3-a4fd-c849fdffc1e4.jpg?1783941741"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Sunspear Shikari
+{
+    "name": "Sunspear Shikari",
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature — Cat Soldier",
+    "oracleText": "As long as this creature is equipped, it has first strike and lifelink. (It deals combat damage before creatures without first strike. Damage dealt by it also causes you to gain that much life.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "GrantKeyword",
+                    "keyword": "FIRST_STRIKE",
+                    "filter": {
+                        "baseFilter": "permanent",
+                        "scope": "Self"
+                    }
+                },
+                "condition": {
+                    "type": "EntityMatches",
+                    "entity": "Self",
+                    "filter": {
+                        "statePredicates": [
+                            "IsEquipped"
+                        ]
+                    }
+                }
+            },
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "GrantKeyword",
+                    "keyword": "LIFELINK",
+                    "filter": {
+                        "baseFilter": "permanent",
+                        "scope": "Self"
+                    }
+                },
+                "condition": {
+                    "type": "EntityMatches",
+                    "entity": "Self",
+                    "filter": {
+                        "statePredicates": [
+                            "IsEquipped"
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "23",
+        "artist": "Allen Williams",
+        "flavorText": "Left without their leader Raksha, the leonin split into two prides: one side supported the regent kha, while the other rebelled in fury.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/0/20ac29ef-02e1-4500-bb83-5987beeaa849.jpg?1783941741"
     },
     "colorIdentityOverride": [
         "WHITE"
@@ -4454,6 +5218,165 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Turn Aside
+{
+    "name": "Turn Aside",
+    "manaCost": "{U}",
+    "typeLine": "Instant",
+    "oracleText": "Counter target spell that targets a permanent you control.",
+    "script": {
+        "spellEffect": "Counter",
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            {
+                                "type": "TargetsMatching",
+                                "subfilter": {
+                                    "cardPredicates": [
+                                        "IsPermanent"
+                                    ],
+                                    "controllerPredicate": "ControlledByYou"
+                                }
+                            }
+                        ]
+                    },
+                    "zone": "Stack"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "49",
+        "artist": "Shelly Wan",
+        "flavorText": "\"It's not my job to ask our leaders about their experiments at the Knowledge Pool. It's my job to make sure they can continue performing them.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/6/56226f57-6ff0-430e-aba6-6b3dd51f8d3c.jpg?1783941734",
+        "rulings": [
+            {
+                "date": "2016-07-13",
+                "text": "Turn Aside can target a spell that has multiple targets, as long as at least one of those targets is a permanent you control."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Turn to Slag
+{
+    "name": "Turn to Slag",
+    "manaCost": "{3}{R}{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Turn to Slag deals 5 damage to target creature. Destroy all Equipment attached to that creature.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 5
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "DestroyAllEquipmentOnTarget",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "106",
+        "artist": "Zoltan Boros & Gabor Szikszai",
+        "flavorText": "\"If it wasn't a blackened, stinking, melted abomination before, it certainly is now.\"\n—Koth of the Hammer",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/6/66fd5b49-b4f2-40da-94d5-6d6fc69506f6.jpg?1783941721",
+        "rulings": [
+            {
+                "date": "2020-06-23",
+                "text": "Turn to Slag can target a creature that has no Equipment attached to it."
+            },
+            {
+                "date": "2020-06-23",
+                "text": "If the target creature is an illegal target by the time Turn to Slag tries to resolve, the spell won't resolve. You won't destroy any Equipment."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Viridian Revel
+{
+    "name": "Viridian Revel",
+    "manaCost": "{1}{G}{G}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever an artifact is put into an opponent's graveyard from the battlefield, you may draw a card.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Viridian Revel:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "artifact own:opponent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "DrawCards",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    }
+                },
+                "descriptionOverride": "Whenever an artifact is put into an opponent's graveyard from the battlefield, you may draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "132",
+        "rarity": "UNCOMMON",
+        "artist": "rk post",
+        "flavorText": "\"Let them have their revel. Soon those who won't submit will be turned. Those who won't be turned will die.\"\n—Vorinclex, Voice of Hunger",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/d/2d7f565e-0fb8-40c8-9540-213d35af846a.jpg?1783941715",
+        "rulings": [
+            {
+                "date": "2011-01-01",
+                "text": "It doesn't matter who controlled the artifact while it was on the battlefield, only whose graveyard it was put into."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 

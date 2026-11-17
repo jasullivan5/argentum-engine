@@ -1,8 +1,10 @@
 package com.wingedsheep.ai.engine.knowledge
 
-import com.wingedsheep.sdk.scripting.values.CardNumericProperty
+import com.wingedsheep.sdk.scripting.effects.Effect
+import com.wingedsheep.sdk.scripting.effects.PayCountersEffect
+import com.wingedsheep.sdk.scripting.effects.StoreNumberEffect
+import com.wingedsheep.sdk.scripting.values.ContextPropertyKey
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
-import com.wingedsheep.sdk.scripting.values.EntityNumericProperty
 
 /**
  * Which way a [DynamicAmount] can point, read off its shape without a game state.
@@ -15,8 +17,8 @@ import com.wingedsheep.sdk.scripting.values.EntityNumericProperty
  * so is enough to call the modifier a gain.
  *
  * The `when` is exhaustive on purpose: a new [DynamicAmount] member must decide here rather than
- * fall through to a guess. Anything that can genuinely land on either side — power, toughness, a
- * life total mid-resolution, a pipeline variable — is [UNKNOWN], and callers treat that exactly as
+ * fall through to a guess. Anything that can genuinely land on either side — a life total
+ * mid-resolution, a pipeline variable — is [UNKNOWN], and callers treat that exactly as
  * they treated a non-fixed amount before.
  */
 internal enum class AmountSign {
@@ -63,28 +65,37 @@ internal enum class AmountSign {
                 ZERO, LOSS -> ZERO
                 GAIN, UNKNOWN -> GAIN
             }
-            is DynamicAmount.Max -> max(of(amount.left), of(amount.right))
+            // "The difference between its power and toughness" is max(a - b, b - a): whichever
+            // operand is larger, one side is never negative (Doran, Besieged by Time).
+            is DynamicAmount.Max -> if (isAbsoluteDifference(amount)) GAIN else max(of(amount.left), of(amount.right))
             is DynamicAmount.Min -> max(of(amount.left).flipped(), of(amount.right).flipped()).flipped()
             is DynamicAmount.Conditional -> either(of(amount.ifTrue), of(amount.ifFalse))
             is DynamicAmount.GreatestAmongPlayers -> of(amount.inner)
             is DynamicAmount.LeastAmongPlayers -> of(amount.inner)
 
-            // Power and toughness can be negative; so can a life total before state-based actions.
-            is DynamicAmount.EntityProperty -> when (amount.numericProperty) {
-                EntityNumericProperty.Power, EntityNumericProperty.Toughness,
-                EntityNumericProperty.BasePower, EntityNumericProperty.BaseToughness -> UNKNOWN
-                else -> GAIN
-            }
-            is DynamicAmount.AggregateBattlefield -> ofCardProperty(amount.property)
-            is DynamicAmount.AggregateZone -> ofCardProperty(amount.property)
+            // A power or toughness can be negative, but CR 107.1b floors a calculation that yields
+            // a negative result at zero: "+X/+X where X is its power", "double its power" never
+            // take anything away. Doubling a negative power is the rule's exception (CR 701.10c
+            // makes it -X/-0), a corner too rare to give up reading every doubler as a pump. Inside a sum the operand is still a raw value, so
+            // "X minus its power" stays unknown through [sum].
+            // The same floor holds for an aggregate: a total power, a greatest toughness.
+            is DynamicAmount.EntityProperty, is DynamicAmount.AggregateBattlefield,
+            is DynamicAmount.AggregateZone -> GAIN
+            // A life total is read as-is, not floored by an effect: it can be at or below zero
+            // before state-based actions.
             is DynamicAmount.YourLifeTotal, is DynamicAmount.LifeTotal -> UNKNOWN
-            // Opaque at analysis time: a pipeline variable or a trigger-context value could be anything.
-            is DynamicAmount.VariableReference, is DynamicAmount.ContextProperty -> UNKNOWN
+            // Opaque at analysis time: a pipeline variable could be anything.
+            is DynamicAmount.VariableReference -> UNKNOWN
+            // A trigger-context value is a magnitude of the event — life gained, damage dealt, a
+            // die result, counters placed — so "+X/+X where X is the life you gained" (Hurska
+            // Sweet-Tooth) is a pump. See [contextSign].
+            is DynamicAmount.ContextProperty -> contextSign(amount.key)
             // A cast-time capture holds whatever amount the card froze, which can be negative.
             is DynamicAmount.CapturedAtCast -> UNKNOWN
 
             // Counts, mana values, mana spent, X: none of them can go below zero.
             is DynamicAmount.Speed, is DynamicAmount.DungeonsCompleted, is DynamicAmount.PlayerCounterCount, is DynamicAmount.CardsCycledThisGame,
+            is DynamicAmount.SpellsCastThisGame, is DynamicAmount.ExtraTurnsBegunThisGame,
             is DynamicAmount.StartingLifeTotal, is DynamicAmount.UnspentMana, is DynamicAmount.XValue,
             is DynamicAmount.LastKnownSourceCounters, is DynamicAmount.LastKnownDamageDealtToSource,
             is DynamicAmount.CastX, is DynamicAmount.CastChoice, is DynamicAmount.TotalManaSpent,
@@ -94,25 +105,52 @@ internal enum class AmountSign {
             is DynamicAmount.DistinctCardTypesInCollections, is DynamicAmount.ManaValueSumOfCollection,
             is DynamicAmount.PlayerCount, is DynamicAmount.CountPlayersWith, is DynamicAmount.GraveyardRelativeCount,
             is DynamicAmount.Count, is DynamicAmount.UnlockedDoors, is DynamicAmount.StationCharge,
-            is DynamicAmount.TurnTracking, is DynamicAmount.SpellsCastThisTurn, is DynamicAmount.SpellsCastLastTurn,
+            is DynamicAmount.TurnTracking, is DynamicAmount.CombatDamageSourcesThisTurn,
+            is DynamicAmount.PermanentsSacrificedThisTurn,
+            is DynamicAmount.SpellsCastThisTurn, is DynamicAmount.SpellsCastLastTurn,
             is DynamicAmount.CraftedMaterialsTotalPower, is DynamicAmount.CraftedMaterialsTotalManaValue,
             is DynamicAmount.CraftedMaterialsColorCount, is DynamicAmount.CreaturesThatCrewedOrSaddledThisTurn,
             is DynamicAmount.CardTypeEnteredUnderControlThisTurn, is DynamicAmount.SubtypeEnteredUnderControlThisTurn,
             is DynamicAmount.CreaturesWithSubtypeDiedThisTurn, is DynamicAmount.PermanentsSacrificedThisWay,
             is DynamicAmount.CountersRemovedAsCost, is DynamicAmount.TotalPowerSacrificedThisWay,
             is DynamicAmount.LargestSharedCreatureTypeCount -> GAIN
+            is DynamicAmount.PartySize -> GAIN
+        }
+
+        private fun isAbsoluteDifference(amount: DynamicAmount.Max): Boolean {
+            val left = amount.left as? DynamicAmount.Subtract ?: return false
+            val right = amount.right as? DynamicAmount.Subtract ?: return false
+            return left.left == right.right && left.right == right.left
+        }
+
+        /**
+         * Every [ContextPropertyKey] names an amount, count, mana value or die result read off the
+         * triggering event or the resolving context; none can go below zero (a toughness or total
+         * power is floored like [DynamicAmount.EntityProperty]). Exhaustive on purpose, so a new
+         * key that could be negative has to say so here.
+         */
+        private fun contextSign(key: ContextPropertyKey): AmountSign = when (key) {
+            ContextPropertyKey.TRIGGER_DIE_RESULT, ContextPropertyKey.TRIGGER_HIGHEST_DIE_RESULT,
+            ContextPropertyKey.TRIGGER_DAMAGE_AMOUNT, ContextPropertyKey.TRIGGER_RECIPIENT_TOUGHNESS,
+            ContextPropertyKey.PREVENTED_DAMAGE_AMOUNT, ContextPropertyKey.TRIGGER_LIFE_GAINED,
+            ContextPropertyKey.TRIGGER_LIFE_LOST, ContextPropertyKey.ADDITIONAL_COST_EXILED_COUNT,
+            ContextPropertyKey.DISCARDED_AS_COST_TOTAL_MANA_VALUE, ContextPropertyKey.TARGET_COUNT,
+            ContextPropertyKey.TARGETS_TOTAL_MANA_VALUE, ContextPropertyKey.LAST_KNOWN_PLUS_ONE_COUNTER_COUNT,
+            ContextPropertyKey.TRIGGER_COUNTERS_PLACED_AMOUNT, ContextPropertyKey.TRIGGER_COUNTERS_REMOVED_AMOUNT,
+            ContextPropertyKey.LAST_KNOWN_TOTAL_COUNTER_COUNT, ContextPropertyKey.LINKED_EXILE_CARD_COUNT,
+            ContextPropertyKey.LINKED_EXILE_DISTINCT_CARD_TYPE_COUNT, ContextPropertyKey.MODES_CHOSEN_ON_TRIGGERING_SPELL,
+            ContextPropertyKey.MANA_SPENT_ON_TRIGGERING_SPELL, ContextPropertyKey.COLORS_SPENT_ON_TRIGGERING_SPELL,
+            ContextPropertyKey.TRIGGERING_SPELL_MANA_VALUE, ContextPropertyKey.X_VALUE_OF_TRIGGERING_SPELL,
+            ContextPropertyKey.TRIGGER_SCRY_COUNT, ContextPropertyKey.TRIGGER_SCRY_BOTTOM_COUNT,
+            ContextPropertyKey.TRIGGER_EXCESS_DAMAGE_AMOUNT, ContextPropertyKey.TRIGGER_DISCOVER_VALUE,
+            ContextPropertyKey.DIED_BATCH_TOTAL_POWER, ContextPropertyKey.TRIGGER_DISCARD_COUNT,
+            ContextPropertyKey.TRIGGER_MANA_PRODUCED -> GAIN
         }
 
         private fun ofInt(n: Int): AmountSign = when {
             n > 0 -> GAIN
             n < 0 -> LOSS
             else -> ZERO
-        }
-
-        private fun ofCardProperty(property: CardNumericProperty?): AmountSign = when (property) {
-            CardNumericProperty.POWER, CardNumericProperty.TOUGHNESS -> UNKNOWN
-            null, CardNumericProperty.MANA_VALUE, CardNumericProperty.COUNTERS,
-            CardNumericProperty.COLOR_COUNT -> GAIN
         }
 
         private fun sum(a: AmountSign, b: AmountSign): AmountSign = when {
@@ -154,4 +192,51 @@ internal fun statsSign(power: DynamicAmount, toughness: DynamicAmount): AmountSi
         (p == AmountSign.LOSS || p == AmountSign.ZERO) && (t == AmountSign.LOSS || t == AmountSign.ZERO) -> AmountSign.LOSS
         else -> AmountSign.UNKNOWN
     }
+}
+
+/**
+ * The numbers [effect]'s pipeline stores for a later step to read back, by variable name: a
+ * [StoreNumberEffect]'s own amount, and for "you may pay any amount of {E}" ([PayCountersEffect],
+ * Die Young, Galvanic Discharge) the payer's counters of that kind — what was paid lies between
+ * zero and that count, so it carries the same sign. [AmountSign.of] alone reads a
+ * [DynamicAmount.VariableReference] as [AmountSign.UNKNOWN]; [resolveStored] lets it see through.
+ */
+internal fun storedAmounts(effect: Effect): Map<String, DynamicAmount> = buildMap {
+    for (leaf in EffectWalker.leaves(effect)) when (leaf) {
+        is StoreNumberEffect -> put(leaf.name, leaf.amount)
+        is PayCountersEffect -> put(leaf.storeAmountAs, DynamicAmount.PlayerCounterCount(leaf.counterType, leaf.player))
+        else -> Unit
+    }
+}
+
+/**
+ * [amount] with every pipeline variable [stored] knows replaced by the amount it holds, through
+ * the arithmetic around it: "-1/-1 for each {E} paid this way" is `-paid`, and it is a loss only
+ * once `paid` is seen to be a count. Returns [amount] itself when nothing resolves.
+ */
+internal fun resolveStored(amount: DynamicAmount, stored: Map<String, DynamicAmount>): DynamicAmount {
+    if (stored.isEmpty()) return amount
+    fun r(a: DynamicAmount) = resolveStored(a, stored)
+    return when (amount) {
+        is DynamicAmount.VariableReference -> stored[amount.variableName] ?: amount
+        is DynamicAmount.Multiply -> r(amount.amount).let { if (it === amount.amount) amount else amount.copy(amount = it) }
+        is DynamicAmount.IfPositive -> r(amount.amount).let { if (it === amount.amount) amount else amount.copy(amount = it) }
+        is DynamicAmount.Add -> pair(amount.left, amount.right, ::r) { l, rt -> amount.copy(left = l, right = rt) } ?: amount
+        is DynamicAmount.Subtract -> pair(amount.left, amount.right, ::r) { l, rt -> amount.copy(left = l, right = rt) } ?: amount
+        is DynamicAmount.Max -> pair(amount.left, amount.right, ::r) { l, rt -> amount.copy(left = l, right = rt) } ?: amount
+        is DynamicAmount.Min -> pair(amount.left, amount.right, ::r) { l, rt -> amount.copy(left = l, right = rt) } ?: amount
+        is DynamicAmount.Divide -> pair(amount.numerator, amount.denominator, ::r) { n, d -> amount.copy(numerator = n, denominator = d) } ?: amount
+        else -> amount
+    }
+}
+
+private inline fun pair(
+    a: DynamicAmount,
+    b: DynamicAmount,
+    resolve: (DynamicAmount) -> DynamicAmount,
+    rebuild: (DynamicAmount, DynamicAmount) -> DynamicAmount,
+): DynamicAmount? {
+    val ra = resolve(a)
+    val rb = resolve(b)
+    return if (ra === a && rb === b) null else rebuild(ra, rb)
 }

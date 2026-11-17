@@ -82,6 +82,24 @@ class RandomDeckResolverTest : FunSpec({
         CardDefinition.basicLand("Forest", Subtype.FOREST, ScryfallMetadata(collectorNumber = "300")),
     )
 
+    /**
+     * Cards no booster set prints — what a constructed list spread across many sets looks like to
+     * set inference, which then finds no identity to match. Pauper-legal commons, legal everywhere
+     * but Standard.
+     */
+    val offSetCards = (1..20).map {
+        card("ZZZ Common $it", "{${it % 4}}{G}", Rarity.COMMON, allFormats - DeckFormat.STANDARD)
+    }
+
+    /**
+     * Set THN: four instants and nothing else — the shape of a set the corpus barely covers, whose
+     * own pool can't fill a 60-card deck's spell slots, let alone its creature count.
+     */
+    val thinSet = listOf("Strike", "Crescendo", "Shield", "Web").map {
+        CardDefinition.instant("THN $it", ManaCost.parse("{1}{G}"), "")
+            .copy(legalFormats = allFormats - DeckFormat.STANDARD)
+    }
+
     fun resolver(): RandomDeckResolver {
         val configs = listOf("AAA", "BBB").associateWith { code ->
             BoosterGenerator.SetConfig(
@@ -90,10 +108,11 @@ class RandomDeckResolverTest : FunSpec({
                 cards = pool(code),
                 basicLands = basics,
             )
-        }
+        } + ("THN" to BoosterGenerator.SetConfig("THN", "Set THN", thinSet, basics))
         val booster = BoosterGenerator(configs)
         val registry = CardRegistry()
         configs.values.forEach { registry.register(it.cards) }
+        registry.register(offSetCards)
         registry.register(basics)
         val inference = DeckSetInference(booster, registry)
         return RandomDeckResolver(
@@ -284,6 +303,18 @@ class RandomDeckResolverTest : FunSpec({
         deck.deckList.keys.filterNot { it.startsWith("Forest") }.forEach { it.startsWith("BBB") shouldBe true }
     }
 
+    test("Auto facing a set's deck declared for a format builds out of that set to the format") {
+        // BBB commons are Pauper-legal; its rares aren't, so a Pauper build has to leave them out.
+        val deck = resolver().resolveAgainst(
+            AiDeckSpec.Auto, format = null, fallbackSetCode = "AAA", commanderRules = false,
+            opponentDeck = bbbDeck(copies = 4, size = 60), opponentDeckFormat = DeckFormat.PAUPER,
+        )
+
+        deck.deckList.values.sum() shouldBe constructedSize
+        deck.deckList.keys.filterNot { it.startsWith("Forest") }.forEach { it.startsWith("BBB") shouldBe true }
+        deck.deckList.keys.none { "Rare" in it } shouldBe true
+    }
+
     test("a deck with no set identity leaves Auto as it was") {
         // Nothing but basics: every set prints them, so there is nothing to match.
         val deck = resolver().resolveAgainst(
@@ -293,6 +324,24 @@ class RandomDeckResolverTest : FunSpec({
 
         deck.deckList.values.sum() shouldBe sealedSize
         deck.deckList.keys.filterNot { it.startsWith("Forest") }.forEach { it.startsWith("AAA") shouldBe true }
+    }
+
+    test("Auto facing a 60-card deck from a set too thin to build from gets a format-wide constructed deck") {
+        // The ea90c6f3 shape: the human's list reads as one set whose pool is four instants. The
+        // set-matched build is refused (it would be 44 lands and no creatures), and the answer is
+        // a constructed deck for the list's format — not a thin pile, and not a 40-card sealed pool.
+        val thinList = thinSet.associate { it.name to 4 } + ("Forest" to 44)
+        resolver().matchingSets(thinList) shouldBe listOf("THN")
+
+        val deck = resolver().resolveAgainst(
+            AiDeckSpec.Auto, format = null, fallbackSetCode = "AAA", commanderRules = false,
+            opponentDeck = thinList,
+        )
+
+        deck.deckList.values.sum() shouldBe constructedSize
+        val spells = deck.deckList.filterKeys { !it.startsWith("Forest") }
+        (spells.values.sum() >= 28) shouldBe true
+        spells.keys.any { !it.startsWith("THN") } shouldBe true
     }
 
     test("the host's own set choice beats matching the human's deck") {
@@ -307,5 +356,47 @@ class RandomDeckResolverTest : FunSpec({
     test("the lobby label can name the sets an Auto AI will match") {
         resolver().matchingSets(bbbDeck(copies = 2, size = 40)) shouldBe listOf("BBB")
         resolver().matchingSets(null) shouldBe emptyList()
+    }
+
+    // --- A constructed list with no set identity is matched by format: a deck generated for the
+    // format the list was built for.
+
+    /** Fifteen off-set commons as playsets: legal in Pauper and Modern, and from no set. */
+    val offSetList = offSetCards.take(15).associate { it.name to 4 }
+
+    fun matchAgainst(deck: Map<String, Int>, declared: DeckFormat? = null, format: DeckFormat? = null, commanderRules: Boolean = false) =
+        resolver().resolveAgainst(
+            AiDeckSpec.Auto, format = format, fallbackSetCode = "AAA", commanderRules = commanderRules,
+            opponentDeck = deck, opponentDeckFormat = declared,
+        )
+
+    test("Auto facing a list with no set identity builds for the narrowest nested format it is legal in") {
+        // Not Standard-legal, so the narrowest step of the ladder it reaches is Modern.
+        resolver().matchedFormat(offSetList, null, null, commanderRules = false) shouldBe DeckFormat.MODERN
+        matchAgainst(offSetList).deckList.values.sum() shouldBe constructedSize
+    }
+
+    test("a declared format is built for, Pauper included") {
+        resolver().matchedFormat(offSetList, DeckFormat.PAUPER, null, commanderRules = false) shouldBe DeckFormat.PAUPER
+        val deck = matchAgainst(offSetList, declared = DeckFormat.PAUPER)
+
+        deck.deckList.values.sum() shouldBe constructedSize
+        deck.deckList.keys.none { "Rare" in it } shouldBe true
+    }
+
+    test("a singleton list with no set identity is matched too") {
+        val singletons = offSetCards.take(10).associate { it.name to 1 } + ("Forest" to 50)
+
+        matchAgainst(singletons).deckList.values.sum() shouldBe constructedSize
+    }
+
+    test("format-matched decks turn over from game to game") {
+        val decks = (1..3).map { matchAgainst(offSetList).deckList }
+
+        decks.distinct().size shouldNotBe 1
+    }
+
+    test("a commander game never format-matches a 60-card list") {
+        matchAgainst(offSetList, commanderRules = true).commander shouldNotBe null
     }
 })

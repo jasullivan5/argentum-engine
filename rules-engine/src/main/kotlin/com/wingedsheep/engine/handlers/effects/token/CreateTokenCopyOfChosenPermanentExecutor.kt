@@ -61,16 +61,24 @@ class CreateTokenCopyOfChosenPermanentExecutor(
             return EffectResult.success(state)
         }
 
-        if (candidates.size == 1) {
+        // Re-run after a token-substitution question: the permanent was already chosen.
+        val alreadyChosen = context.pipeline.chosenValues[CHOSEN_PERMANENT_KEY]
+            ?.let { id -> candidates.firstOrNull { it.value == id } }
+        if (alreadyChosen != null || candidates.size == 1) {
             // Auto-select the only option
-            return createTokenCopy(state, candidates.first(), controllerId, staticAbilityHandler, cardRegistry, predicateEvaluator = predicateEvaluator)
+            return createTokenCopy(
+                state, alreadyChosen ?: candidates.first(), controllerId, staticAbilityHandler, cardRegistry,
+                predicateEvaluator = predicateEvaluator, effect = effect, context = context
+            )
         }
 
         // Present choice to the player
         val continuation = CreateTokenCopyOfChosenContinuation(
             controllerId = controllerId,
             sourceId = sourceId,
-            sourceName = sourceName
+            sourceName = sourceName,
+            effect = effect,
+            effectContext = context,
         )
 
         val decisionResult = decisionHandler.createCardSelectionDecision(
@@ -95,9 +103,16 @@ class CreateTokenCopyOfChosenPermanentExecutor(
     }
 
     companion object {
+        /** Records the chosen permanent so a re-run after a token-substitution question skips the choice. */
+        private const val CHOSEN_PERMANENT_KEY = "__tokenCopyOfChosenPermanent"
+
         /**
          * Create a token copy of the chosen permanent, used by both the executor
          * (auto-select) and the continuation resumer.
+         *
+         * With the resolving [effect] and its [context], a token-substitution replacement
+         * (Holo-Engineer) gets a look at the copy first; a substitution question re-runs [effect]
+         * with the chosen permanent remembered, so the player isn't asked to choose it again.
          */
         fun createTokenCopy(
             state: GameState,
@@ -105,7 +120,37 @@ class CreateTokenCopyOfChosenPermanentExecutor(
             controllerId: EntityId,
             staticAbilityHandler: StaticAbilityHandler? = null,
             cardRegistry: CardRegistry? = null,
-            predicateEvaluator: PredicateEvaluator
+            predicateEvaluator: PredicateEvaluator,
+            effect: CreateTokenCopyOfChosenPermanentEffect,
+            context: EffectContext,
+        ): EffectResult {
+            if (state.getEntity(chosenId)?.copiableCardComponent() == null) return EffectResult.success(state)
+            // "Created under your control instead" (Crafty Cutpurse) before any other token
+            // replacement. A redirect question re-runs [effect] with the chosen permanent remembered.
+            val remembered = context.copy(pipeline = context.pipeline.copy(
+                chosenValues = context.pipeline.chosenValues + (CHOSEN_PERMANENT_KEY to chosenId.value)
+            ))
+            val tokenControllerId = when (val redirect = TokenCreationReplacementHelper.redirectController(
+                state, controllerId, remembered, effect, predicateEvaluator
+            )) {
+                is TokenControllerRedirect.Resolved -> redirect.controllerId
+                is TokenControllerRedirect.Ask -> return redirect.result
+            }
+            return mintTokenCopy(
+                state, chosenId, tokenControllerId, staticAbilityHandler, cardRegistry, predicateEvaluator,
+                effect, remembered
+            )
+        }
+
+        private fun mintTokenCopy(
+            state: GameState,
+            chosenId: EntityId,
+            controllerId: EntityId,
+            staticAbilityHandler: StaticAbilityHandler?,
+            cardRegistry: CardRegistry?,
+            predicateEvaluator: PredicateEvaluator,
+            effect: CreateTokenCopyOfChosenPermanentEffect,
+            remembered: EffectContext,
         ): EffectResult {
             val chosenContainer = state.getEntity(chosenId)
                 ?: return EffectResult.success(state)
@@ -113,11 +158,16 @@ class CreateTokenCopyOfChosenPermanentExecutor(
             val chosenCard = chosenContainer.copiableCardComponent()
                 ?: return EffectResult.success(state)
 
-            val (tokenId, stateWithId) = state.newEntity()
-
             // Copy the chosen permanent's CardComponent. `isDoubleFaced` is cleared, not inherited:
             // a token is not a card (CR 111.1) — see CreateTokenCopyOfTargetExecutor.
             val tokenCard = chosenCard.copy(ownerId = controllerId, isDoubleFaced = false)
+
+            TokenCreationReplacementHelper.substituteIfReplaced(
+                state, tokenCard, controllerId, 1, remembered, effect,
+                predicateEvaluator, staticAbilityHandler, cardRegistry,
+            )?.let { return it }
+
+            val (tokenId, stateWithId) = state.newEntity()
 
             var container = ComponentContainer.of(
                 tokenCard,
@@ -141,6 +191,10 @@ class CreateTokenCopyOfChosenPermanentExecutor(
             }
 
             var newState = stateWithId.withEntity(tokenId, container)
+            if (cardRegistry != null) newState = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy.applyBeforeEntry(newState, tokenId, cardRegistry, predicateEvaluator)
+            // A battlefield-entry replacement sends it elsewhere instead (Hallowed Moonlight).
+            TokenEntryRedirect.divert(newState, tokenId, state, predicateEvaluator, cardRegistry)
+                ?.let { return EffectResult.success(it.state, listOf(it.event)) }
             newState = com.wingedsheep.engine.handlers.effects.BattlefieldEntry
                 .place(newState, controllerId, tokenId)
 

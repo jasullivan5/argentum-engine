@@ -5,3 +5,10 @@ declare module 'world-atlas/countries-110m.json' {
   const topology: unknown
   export default topology
 }
+
+/** ISO alpha-2 → [longitude, latitude] country centroids, generated at build time from
+ * `world-countries` by the `country-centroids` plugin in `vite.config.ts` (admin GeoMap). */
+declare module 'virtual:country-centroids' {
+  const centroids: Record<string, [number, number]>
+  export default centroids
+}

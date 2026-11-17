@@ -163,6 +163,61 @@
     ]
 }
 
+// Angel of Jubilation
+{
+    "name": "Angel of Jubilation",
+    "manaCost": "{1}{W}{W}{W}",
+    "typeLine": "Creature — Angel",
+    "oracleText": "Flying\nOther nonblack creatures you control get +1/+1.\nPlayers can't pay life or sacrifice creatures to cast spells or activate abilities.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "NotColor",
+                                "color": "BLACK"
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    },
+                    "excludeSelf": true
+                }
+            },
+            "PlayersCantPayLifeForCosts",
+            {
+                "type": "CantBeSacrificed",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "scope": "CASTING_AND_ACTIVATION_COSTS"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "2",
+        "rarity": "RARE",
+        "artist": "Terese Nielsen",
+        "flavorText": "\"Though Innistrad is not cleansed of evil, we finally have cause to rejoice.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/6/16c5dfed-4dee-4e48-a445-89f03d7794e6.jpg?1783940743"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Angel's Tomb
 {
     "name": "Angel's Tomb",
@@ -416,6 +471,40 @@
         "artist": "Mike Bierek",
         "flavorText": "After the destruction of the Helvault, fearful mobs soon became fearless battalions.",
         "imageUri": "https://cards.scryfall.io/normal/front/a/7/a7792df3-e2ab-4e60-abee-f24b72807107.jpg?1783940690"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Battle Hymn
+{
+    "name": "Battle Hymn",
+    "manaCost": "{1}{R}",
+    "typeLine": "Instant",
+    "oracleText": "Add {R} for each creature you control.",
+    "script": {
+        "spellEffect": {
+            "type": "AddMana",
+            "color": "RED",
+            "amount": {
+                "type": "AggregateBattlefield",
+                "player": "You",
+                "filter": "creature"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "128",
+        "artist": "Nils Hamm",
+        "flavorText": "\"A church is just wood and walls. A congregation is the faithful praising the angels.\"\n—Kolman, elder of Gatstaf",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/3/43b5d46e-7054-44f8-9a14-b412f2f0ab86.jpg?1783940689",
+        "rulings": [
+            {
+                "date": "2012-05-01",
+                "text": "Battle Hymn uses the stack and can be responded to. The amount of mana produced is based on the number of creatures you control when Battle Hymn resolves."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "RED"
@@ -788,8 +877,11 @@
                 "id": "Cavern of Souls:2",
                 "cost": "CostTap",
                 "effect": {
-                    "type": "AddAnyColorManaSpendOnChosenType",
-                    "creatureOnly": true,
+                    "type": "AddManaOfChoice",
+                    "restriction": {
+                        "type": "OfChosenType",
+                        "creatureOnly": true
+                    },
                     "riders": [
                         "MakesSpellUncounterable"
                     ]
@@ -1806,6 +1898,71 @@
     ]
 }
 
+// Dreadwaters
+{
+    "name": "Dreadwaters",
+    "manaCost": "{3}{U}",
+    "typeLine": "Sorcery",
+    "oracleText": "Target player mills X cards, where X is the number of lands you control.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "TopOfLibrary",
+                        "count": {
+                            "type": "AggregateBattlefield",
+                            "player": "You",
+                            "filter": "land"
+                        },
+                        "player": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "isMill": true
+                    },
+                    "storeAs": "milled"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "milled",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard",
+                        "player": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        }
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetPlayer",
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "49",
+        "artist": "Cliff Childs",
+        "flavorText": "Stray into the Morkrut and it may rise to claim you.",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/8/88245a41-d4d5-46bf-969f-48d4dd540e2c.jpg?1783940724",
+        "rulings": [
+            {
+                "date": "2012-05-01",
+                "text": "The number of cards put into the graveyard is based on the number of lands you control when Dreadwaters resolves."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Driver of the Dead
 {
     "name": "Driver of the Dead",
@@ -2015,6 +2172,54 @@
         "rarity": "UNCOMMON",
         "artist": "Nic Klein",
         "imageUri": "https://cards.scryfall.io/normal/front/1/0/1091fadf-97c4-4f87-8466-6a1246a72226.jpg?1783940698"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Exquisite Blood
+{
+    "name": "Exquisite Blood",
+    "manaCost": "{4}{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever an opponent loses life, you gain that much life.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Exquisite Blood:1",
+                "trigger": {
+                    "type": "LifeLossEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGER_LIFE_LOST"
+                    }
+                },
+                "descriptionOverride": "Whenever an opponent loses life, you gain that much life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "102",
+        "rarity": "RARE",
+        "artist": "Cynthia Sheppard",
+        "flavorText": "Even as humans regained the upper hand, some still willingly traded their lives for a chance at immortality.",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/c/4cd54279-57f5-4cd9-b524-4f094bd2fc36.jpg?1783940698",
+        "rulings": [
+            {
+                "date": "2012-05-01",
+                "text": "Damage dealt to an opponent usually causes that opponent to lose life. An opponent paying life also causes loss of life."
+            },
+            {
+                "date": "2012-05-01",
+                "text": "If you and an opponent both lose life simultaneously, and this causes your life total to become 0 or less, you'll lose the game before Exquisite Blood's triggered ability can resolve."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "BLACK"
@@ -2433,6 +2638,75 @@
     ]
 }
 
+// Gisela, Blade of Goldnight
+{
+    "name": "Gisela, Blade of Goldnight",
+    "manaCost": "{4}{R}{W}{W}",
+    "typeLine": "Legendary Creature — Angel",
+    "oracleText": "Flying, first strike\nIf a source would deal damage to an opponent or a permanent an opponent controls, that source deals double that damage to that player or permanent instead.\nIf a source would deal damage to you or a permanent you control, prevent half that damage, rounded up.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING",
+        "FIRST_STRIKE"
+    ],
+    "script": {
+        "replacementEffects": [
+            {
+                "type": "DoubleDamage",
+                "appliesTo": {
+                    "type": "DamageEvent",
+                    "recipient": {
+                        "type": "RecipientAnyOf",
+                        "options": [
+                            {
+                                "type": "RecipientPlayer",
+                                "player": "EachOpponent"
+                            },
+                            {
+                                "type": "RecipientObject",
+                                "filter": "permanent ctrl:opponent"
+                            }
+                        ]
+                    }
+                }
+            },
+            {
+                "type": "PreventDamage",
+                "appliesTo": {
+                    "type": "DamageEvent",
+                    "recipient": {
+                        "type": "RecipientAnyOf",
+                        "options": [
+                            {
+                                "type": "RecipientPlayer",
+                                "player": "You"
+                            },
+                            {
+                                "type": "RecipientObject",
+                                "filter": "permanent ctrl:you"
+                            }
+                        ]
+                    }
+                },
+                "half": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "209",
+        "rarity": "MYTHIC",
+        "artist": "Jason Chan",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/2/7208fcb8-83e6-44ce-af9a-ca1566825018.jpg?1783940656"
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "WHITE"
+    ]
+}
+
 // Goldnight Commander
 {
     "name": "Goldnight Commander",
@@ -2804,6 +3078,77 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Herald of War
+{
+    "name": "Herald of War",
+    "manaCost": "{3}{W}{W}",
+    "typeLine": "Creature — Angel",
+    "oracleText": "Flying\nWhenever this creature attacks, put a +1/+1 counter on it.\nAngel spells and Human spells you cast cost {1} less to cast for each +1/+1 counter on this creature.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Herald of War:1",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifySpellCost",
+                "target": {
+                    "type": "YouCast",
+                    "filter": "Angel|Human"
+                },
+                "modification": {
+                    "type": "ReduceGenericBy",
+                    "source": {
+                        "type": "Dynamic",
+                        "amount": {
+                            "type": "EntityProperty",
+                            "entity": "Self",
+                            "numericProperty": {
+                                "type": "CounterCount",
+                                "counterType": "PLUS_ONE_PLUS_ONE"
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "24",
+        "rarity": "RARE",
+        "artist": "Eric Deschamps",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/7/77e92bbb-c22d-4879-9437-b87a3ff70a2d.jpg?1783940731",
+        "rulings": [
+            {
+                "date": "2012-05-01",
+                "text": "The cost reduction is based on the total number of +1/+1 counters on Herald of War, not just the ones put on it by its own ability."
+            },
+            {
+                "date": "2012-05-01",
+                "text": "A creature spell that's both an Angel and a Human will cost {1} less to cast for each +1/+1 counter on Herald of War."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }
 
@@ -4927,7 +5272,12 @@
     ],
     "script": {
         "staticAbilities": [
-            "OpponentsCantMakeYouSacrifice"
+            {
+                "type": "OpponentsCantCauseYouTo",
+                "actions": [
+                    "SACRIFICE"
+                ]
+            }
         ]
     },
     "metadata": {
@@ -6209,6 +6559,149 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Wingcrafter
+{
+    "name": "Wingcrafter",
+    "manaCost": "{U}",
+    "typeLine": "Creature — Human Wizard",
+    "oracleText": "Soulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, both creatures have flying.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "SOULBOND"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Wingcrafter:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "BattlefieldMatching",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "IsCreature"
+                                    ],
+                                    "statePredicates": [
+                                        {
+                                            "type": "StateNot",
+                                            "predicate": "IsPaired"
+                                        }
+                                    ]
+                                },
+                                "player": "You",
+                                "excludeSelf": true
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "gathered0",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "selected1",
+                            "prompt": "You may pair this creature with an unpaired creature you control",
+                            "useTargetingUI": true
+                        },
+                        {
+                            "type": "PairWithSource",
+                            "from": "selected1"
+                        }
+                    ]
+                },
+                "interveningIf": {
+                    "type": "EntityMatches",
+                    "entity": "Self",
+                    "filter": {
+                        "statePredicates": [
+                            {
+                                "type": "StateNot",
+                                "predicate": "IsPaired"
+                            }
+                        ]
+                    }
+                },
+                "descriptionOverride": "Soulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)"
+            },
+            {
+                "id": "Wingcrafter:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "Entity",
+                                    "entity": "TriggeringEntity"
+                                },
+                                "storeAs": "gathered0"
+                            },
+                            {
+                                "type": "PairWithSource",
+                                "from": "gathered0"
+                            }
+                        ]
+                    }
+                },
+                "interveningIf": {
+                    "type": "EntityMatches",
+                    "entity": "Self",
+                    "filter": {
+                        "statePredicates": [
+                            {
+                                "type": "StateNot",
+                                "predicate": "IsPaired"
+                            }
+                        ]
+                    }
+                },
+                "descriptionOverride": "You may pair that creature with this creature"
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "GrantKeyword",
+                "keyword": "FLYING",
+                "filter": {
+                    "baseFilter": "permanent",
+                    "scope": "SoulbondPair"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "83",
+        "artist": "Matt Stewart",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/4/04a3059f-92f2-4163-b79a-154118a4e36d.jpg?1783940708"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 

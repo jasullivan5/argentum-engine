@@ -25,6 +25,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 class FetchedLandDropFollowUpTest : ScenarioTestBase() {
 
     private val before = AiProfile.LIVE.copy(id = "live-without-fetched-land", fetchedLandDropFollowUp = false)
+    private val withoutHandRead = AiProfile.LIVE.copy(id = "live-without-hand-read-lands", surplusLandsReadTheHand = false)
 
     private fun TestGame.choice(profile: AiProfile = AiProfile.LIVE): GameAction =
         AIPlayer.create(cardRegistry, player1Id, profile).chooseAction(state)
@@ -63,6 +64,40 @@ class FetchedLandDropFollowUpTest : ScenarioTestBase() {
         .build()
         .advanceToPriority(1, Step.PRECOMBAT_MAIN)
 
+    /**
+     * Game b1a69afb turn 7 (2026-10-31 AI review), just after the AI cast Mabel off its Swamp: three
+     * lands, two Mountains untapped, and a hand of Swamp, Mountain and Apex Witchstalker — its only
+     * spell. Both land drops it can see coming are already in hand, so landcycling the 6/4 buys no
+     * land play and throws away the threat. It cycled; the game ended with two Swamps in hand.
+     *
+     * The opponent's library is a turn-7 game's, not a token handful: Theorix Charm's "mill three,
+     * then draw" would otherwise empty a six-card library inside the rollout horizon, and
+     * `LibraryClock` prices that near-decked opponent at up to 60 life — playout noise that drowned
+     * out the cards in our hand. The seed pins the rollouts so the position replays identically.
+     */
+    private fun witchstalkerPosition() = scenario().withPlayers()
+        .withRngSeed(1)
+        .withTurnNumber(7)
+        .withLandsOnBattlefield(1, "Mountain", 2)
+        .withCardOnBattlefield(1, "Swamp", tapped = true)
+        .withCardOnBattlefield(1, "Marwyn, the Clearcutter")
+        .withCardOnBattlefield(1, "Afterthought Sentry")
+        .withCardOnBattlefield(1, "Mabel, Bitter Recluse", summoningSickness = true)
+        .withCardInHand(1, "Swamp")
+        .withCardInHand(1, "Mountain")
+        .withCardInHand(1, "Apex Witchstalker")
+        .apply { repeat(6) { withCardInLibrary(1, "Swamp").withCardInLibrary(1, "Mountain") } }
+        .withLandsOnBattlefield(2, "Island", 1)
+        .withLandsOnBattlefield(2, "Swamp", 2)
+        .withCardInHand(2, "Vraska's Final Mercy")
+        .withCardInHand(2, "Extended Absence")
+        .withCardInHand(2, "Null Summoner")
+        .withCardInHand(2, "Theorix Charm")
+        .withLifeTotal(2, 16)
+        .apply { repeat(20) { withCardInLibrary(2, "Island") } }
+        .build()
+        .advanceToPriority(1, Step.PRECOMBAT_MAIN)
+
     init {
 
         test("stuck on three lands, Plainscycling finds the fourth instead of passing") {
@@ -83,12 +118,16 @@ class FetchedLandDropFollowUpTest : ScenarioTestBase() {
             game.findPermanents("Plains").size shouldBe 3
         }
 
-        test("with a land already in hand, the land is played first") {
+        test("with a land already in hand, that land is played and the idle mana still cycles for the next") {
+            // The Mountain is this turn's drop either way; what the two leftover lands buy is the
+            // cycle, which banks the fifth land the 5-drops in hand need next turn. Which of the two
+            // goes first is a tie the search may break either way.
             val game = position(landInHand = true)
+            game.letAiPlayOutMain()
 
-            val action = game.choice()
-            action.shouldBeInstanceOf<PlayLand>()
-            game.nameOf(action) shouldBe "Mountain"
+            game.findPermanents("Mountain").size shouldBe 2
+            game.isInGraveyard(1, "Noble Templar") shouldBe true
+            game.findCardsInHand(1, "Plains").size shouldBe 1
         }
 
         test("with the land drop already used, it does not cycle for a land it cannot play") {
@@ -98,6 +137,23 @@ class FetchedLandDropFollowUpTest : ScenarioTestBase() {
 
             val action = game.choice()
             (action is TypecycleCard) shouldBe false
+        }
+
+        test("with two lands already in hand, it keeps its only threat instead of landcycling it") {
+            val game = witchstalkerPosition()
+            game.letAiPlayOutMain()
+
+            game.isInHand(1, "Apex Witchstalker") shouldBe true
+            // This turn's drop is still made from hand, and the other land waits for next turn.
+            (game.findCardsInHand(1, "Swamp").size + game.findCardsInHand(1, "Mountain").size) shouldBe 1
+        }
+
+        test("with the land drop made, the Witchstalker is still not cycled for a land nothing needs") {
+            val game = witchstalkerPosition()
+            game.execute(PlayLand(game.player1Id, game.findCardsInHand(1, "Mountain").single())).error shouldBe null
+
+            game.choice(withoutHandRead).shouldBeInstanceOf<TypecycleCard>()
+            (game.choice() is TypecycleCard) shouldBe false
         }
     }
 }

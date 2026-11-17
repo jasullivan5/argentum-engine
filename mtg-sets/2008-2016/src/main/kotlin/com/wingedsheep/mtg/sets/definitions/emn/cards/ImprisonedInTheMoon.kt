@@ -38,9 +38,10 @@ import com.wingedsheep.sdk.scripting.targets.TargetObject
  *
  * Modeled as a stack of statics on the enchanted permanent, the same shape as Sugar Coat /
  * Witness Protection ("becomes a different thing entirely" via [TransformPermanent]):
- *  - [TransformPermanent] Layer 4 (TYPE) replaces all card types with LAND (subtypes are left
- *    UNCHANGED — `setSubtypes` is empty and `clearSubtypes` is false on purpose, see the land
- *    ruling below) and Layer 5 (COLOR) sets colorless.
+ *  - [TransformPermanent] Layer 4 (TYPE) replaces all card types with LAND (`setSubtypes` is empty
+ *    and `clearSubtypes` is false on purpose, see the land ruling below: land types stay, while the
+ *    engine drops the creature/planeswalker types of the lost card types per CR 205.1a) and
+ *    Layer 5 (COLOR) sets colorless.
  *  - [LoseAllAbilities] (Layer 6) strips every other ability — including any intrinsic mana
  *    ability the permanent already had (e.g. a Plains's "{T}: Add {W}").
  *  - [GrantActivatedAbility] (Layer 6) grants "{T}: Add {C}".
@@ -49,8 +50,8 @@ import com.wingedsheep.sdk.scripting.targets.TargetObject
  *  - "If the enchanted permanent is a land and has land types, it retains those types even
  *    though it loses any intrinsic mana abilities associated with them. For example, a Plains
  *    enchanted by Imprisoned in the Moon is still a Plains, but it can't tap for {W}, only for
- *    {C}." — this is why `setSubtypes`/`clearSubtypes` are left at their defaults: only card
- *    types and abilities are overwritten, not subtypes.
+ *    {C}." — this is why `setSubtypes`/`clearSubtypes` are left at their defaults: land types
+ *    survive because LAND is kept (CR 205.1a only drops the subtypes of lost card types).
  *  - "Becoming a land may cause other Auras to become illegally attached. These are put into
  *    their owner's graveyard, and any Equipment attached to the land become unattached and
  *    remain on the battlefield. Counters on the land remain on it even if they don't do

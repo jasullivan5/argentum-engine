@@ -109,6 +109,53 @@ class CompanionEligibilityTest : FunSpec({
         CompanionEligibility.conditionError(zirda, listOf(forest, bear), 40).shouldNotBeNull()
     }
 
+    test("EachCard: Jegantha — no card repeats a mana symbol; exact symbols compare (ruling)") {
+        val jegantha = companion(
+            CompanionCondition.EachCard(
+                GameObjectFilter.Any.withCardPredicate(CardPredicate.Not(CardPredicate.HasRepeatedManaSymbol))
+            )
+        )
+        val guildmage = creature("Guildmage", "{W}{U}", "Wizard")
+        val elk = creature("Elk", "{4}{R/G}", "Elk")
+        // {R/G} is a symbol of its own, distinct from {R}: no repeat.
+        val mixed = creature("Mixed", "{R}{R/G}", "Elemental")
+        // A land has no mana cost at all — nothing to repeat.
+        CompanionEligibility.conditionError(jegantha, listOf(forest, bear, giant, guildmage, elk, mixed, fireball), 40)
+            .shouldBeNull()
+
+        val ogre = creature("Ogre", "{1}{G}{G}", "Ogre")
+        val hydra = CardDefinition.sorcery("Double Blast", ManaCost.parse("{X}{X}{R}"), "Deal 2X.")
+        val hybridTwice = creature("Twin", "{R/G}{R/G}", "Elemental")
+        CompanionEligibility.conditionError(jegantha, listOf(forest, ogre), 40).shouldNotBeNull() shouldContain "Ogre"
+        CompanionEligibility.conditionError(jegantha, listOf(forest, hydra), 40).shouldNotBeNull() shouldContain "Double Blast"
+        CompanionEligibility.conditionError(jegantha, listOf(forest, hybridTwice), 40).shouldNotBeNull() shouldContain "Twin"
+    }
+
+    test("EachCard: Jegantha — a split card's halves combine, so a symbol on both halves repeats (CR 709.4b)") {
+        val jegantha = companion(
+            CompanionCondition.EachCard(
+                GameObjectFilter.Any.withCardPredicate(CardPredicate.Not(CardPredicate.HasRepeatedManaSymbol))
+            )
+        )
+        fun split(name: String, left: String, right: String) = card(name) {
+            layout = CardLayout.SPLIT
+            face(name.substringBefore(" // ")) {
+                manaCost = left
+                typeLine = "Instant"
+            }
+            face(name.substringAfter(" // ")) {
+                manaCost = right
+                typeLine = "Instant"
+            }
+        }
+        val ok = split("Wear // Tear", "{R}", "{W}")
+        val withinHalf = split("Find // Finality", "{B/G}{B/G}", "{4}{B}{G}")
+        val acrossHalves = split("Fire // Ice", "{1}{R}", "{1}{U}")
+        CompanionEligibility.conditionError(jegantha, listOf(forest, ok), 40).shouldBeNull()
+        CompanionEligibility.conditionError(jegantha, listOf(forest, withinHalf), 40).shouldNotBeNull() shouldContain "Find"
+        CompanionEligibility.conditionError(jegantha, listOf(forest, acrossHalves), 40).shouldNotBeNull() shouldContain "Fire"
+    }
+
     test("DeckSizeAboveMinimum: Yorion — twenty over the minimum; never in a 100-card Commander deck") {
         val yorion = companion(CompanionCondition.DeckSizeAboveMinimum(20))
         CompanionEligibility.conditionError(yorion, List(60) { forest }, 40).shouldBeNull()

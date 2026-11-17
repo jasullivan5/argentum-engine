@@ -199,6 +199,7 @@ export function selectCardInteraction(state: GameStore, input: CardInteractionIn
   const isTriggerYesNo = decision?.type === 'YesNoDecision'
     && !!decision.context.inlineOnTrigger
     && decision.context.triggeringEntityId === cardId
+    && decision.yesAvailable !== false
   const isDecisionSubject = decision?.context.subjectEntityId === cardId
 
   // Decision selection
@@ -231,12 +232,16 @@ export function selectCardInteraction(state: GameStore, input: CardInteractionIn
   const tapForGeneric = state.tapForGenericSelectionState
   const harmonize = state.harmonizeSelectionState
 
-  // Combat. In single-client hotseat the seat we control may render on the opponent row, so any
-  // creature counts as "ours" / "theirs" and combatState membership disambiguates.
+  // Combat. When this client declares for another seat — single-client hotseat, or a declaration
+  // the server routed to us (Master Warcraft, Brutal Hordechief: we choose an opponent's blocks) —
+  // the declaring seat's creatures may render on the opponent row, so any creature counts as
+  // "ours" / "theirs" and combatState membership disambiguates.
   const combat = state.combatState
   const hotseat = viewed?.hotseat ?? false
-  const ownForCombat = (!isOpponentCard && isCreature) || (hotseat && isCreature)
-  const opponentForCombat = isOpponentCard || hotseat
+  const declaringForAnotherSeat = !!combat?.actingSeat && !!state.playerId && combat.actingSeat !== state.playerId
+  const anySideForCombat = hotseat || declaringForAnotherSeat
+  const ownForCombat = (!isOpponentCard && isCreature) || (anySideForCombat && isCreature)
+  const opponentForCombat = isOpponentCard || anySideForCombat
   const isInAttackerMode = combat?.mode === 'declareAttackers'
   const isInBlockerMode = combat?.mode === 'declareBlockers'
   const isValidCombatCreature = listHas(combat?.validCreatures, cardId)
@@ -262,12 +267,15 @@ export function selectCardInteraction(state: GameStore, input: CardInteractionIn
     // "bands with other"), so the highlight never promises a band the link would refuse.
     bandIsLegal(mergedBand(combat.bands, draggingAttackerId, cardId), (id) => viewed?.cards?.[id])
 
-  const isValidBlocker = isInBlockerMode && ownForCombat && isValidCombatCreature
-  const isSelectedAsBlocker = isInBlockerMode && !!(combat.blockerAssignments[cardId]?.length)
-  const isAttackingInBlockerMode = isInBlockerMode && opponentForCombat && listHas(combat.attackingCreatures, cardId)
-  const isMustBeBlocked = isInBlockerMode && opponentForCombat && listHas(combat.mustBeBlockedAttackers, cardId)
-  // Multiplayer: an attacker in this combat that is attacking a *different* defender — you can't
-  // block it (CR 509.1b). `attackingCreatures` is already scoped to attacks on the acting defender.
+  // Shared-turn declarations include teammates' creatures wherever their board is displayed.
+  // Membership in the server's declaration lists is authoritative, not the card's screen row.
+  const isValidBlocker = isInBlockerMode && isCreature && isValidCombatCreature
+  const isSelectedAsBlocker = isInBlockerMode && !!(
+    combat.blockerAssignments[cardId]?.length || combat.proposedBlockerAssignments?.[cardId]?.length
+  )
+  const isAttackingInBlockerMode = isInBlockerMode && listHas(combat.attackingCreatures, cardId)
+  const isMustBeBlocked = isInBlockerMode && listHas(combat.mustBeBlockedAttackers, cardId)
+  // The server excludes attacks outside this declaration's defending player or shared-turn team.
   const isBystanderAttacker = isInBlockerMode && opponentForCombat &&
     !listHas(combat.attackingCreatures, cardId) &&
     (serverIndex?.attacking.has(cardId) ?? false)

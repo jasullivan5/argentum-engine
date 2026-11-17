@@ -10,7 +10,7 @@ import kotlinx.serialization.Serializable
  * [com.wingedsheep.sdk.scripting.AdditionalCostPayment].
  */
 @Serializable
-enum class AdditionalCostSelectionKind { SACRIFICE, DISCARD, EXILE, TAP, RETURN_TO_HAND }
+enum class AdditionalCostSelectionKind { SACRIFICE, DISCARD, EXILE, TAP, RETURN_TO_HAND, PUT_COUNTERS }
 
 /**
  * Pause/resume frame for choosing how to pay one selection-requiring additional cost during a
@@ -40,6 +40,15 @@ data class CastSpellAdditionalCostContinuation(
  */
 @Serializable
 data class CastChooseXContinuation(
+    val baseCastAction: CastSpell,
+) : AnswerContinuation
+
+/**
+ * The division of damage (CR 601.2d) a synthesized cast still owes — Avacyn's Judgment cast for
+ * its madness cost. Answered with a [DistributionResponse]; the cast re-enters with it announced.
+ */
+@Serializable
+data class CastDivideDamageContinuation(
     val baseCastAction: CastSpell,
 ) : AnswerContinuation
 

@@ -94,6 +94,28 @@ class PlanForAllOutcomesScenarioTest : ScenarioTestBase() {
             game.getLifeTotal(2) shouldBe 15
         }
 
+        test("a creature spell cast after the first noncreature spell doesn't trigger") {
+            val game = scenario().withPlayers()
+                .withCardOnBattlefield(1, "Plan for All Outcomes")
+                .withCardInHand(1, "Lightning Bolt")
+                .withCardInHand(1, "Raging Goblin")
+                .withLandsOnBattlefield(1, "Mountain", 2)
+                .withCardInLibrary(1, "Island")
+                .withCardInLibrary(2, "Island")
+                .withActivePlayer(1)
+                .inPhase(Phase.PRECOMBAT_MAIN, Step.PRECOMBAT_MAIN).build()
+
+            game.castSpellTargetingPlayer(1, "Lightning Bolt", 2).error shouldBe null
+            game.resolveStack()
+            game.jaceTokenLoyalty() shouldBe 1
+
+            // The noncreature tally is still 1 here — the creature spell mustn't read that as "first".
+            game.castSpell(1, "Raging Goblin").error shouldBe null
+            game.resolveStack()
+            game.isOnBattlefield("Raging Goblin") shouldBe true
+            game.jaceTokenLoyalty() shouldBe 1
+        }
+
         test("Plan itself was the turn's first noncreature spell, so a later one doesn't trigger") {
             val game = scenario().withPlayers()
                 .withCardInHand(1, "Plan for All Outcomes")

@@ -49,7 +49,9 @@ object DrawLoop {
         dispatcher: DrawReplacementDispatcher?,
         isDrawStep: Boolean,
         emptyLibraryReason: String = "Empty library",
-        context: EffectContext? = null
+        context: EffectContext? = null,
+        /** The card whose cycling ability causes these draws (`EventPattern.DrawEvent.cyclingOf`). */
+        cycledCardId: EntityId? = null
     ): EffectResult {
         var newState = state
         val drawnCards = mutableListOf<EntityId>()
@@ -87,12 +89,13 @@ object DrawLoop {
                     drawsLeftIncludingThis = remaining,
                     drawnCardsSoFar = drawnCards.toList(),
                     isDrawStep = isDrawStep,
-                    context = context
+                    context = context,
+                    cycledCardId = cycledCardId
                 )
                 when (dispatch) {
                     is DrawReplacementDispatcher.DispatchResult.Paused -> {
                         return buildPausedResult(
-                            newState, playerId, drawnCards, perCardEvents, dispatch.result
+                            newState, playerId, drawnCards, perCardEvents, dispatch.result, cycledCardId
                         )
                     }
                     is DrawReplacementDispatcher.DispatchResult.Replaced -> {
@@ -122,52 +125,85 @@ object DrawLoop {
 
             if (drawOneResult.failed) {
                 // Empty library — flush aggregate event for prior draws and stop here.
-                return buildSuccessResult(newState, playerId, drawnCards, perCardEvents)
+                return buildSuccessResult(newState, playerId, drawnCards, perCardEvents, cycledCardId)
             }
 
             drawnCards.add(drawOneResult.drawnCardId!!)
             remaining--
 
-            // 3. Miracle (CR 702.94a): "you may reveal this card from your hand as you draw it" —
-            //    asked now, before the next card is drawn, with the rest of the instruction waiting
-            //    beneath the question.
-            val miracle = drawOneResult.miracle
-            if (miracle != null) {
-                val pause = askMiracleReveal(
-                    newState, playerId, drawOneResult.drawnCardId, miracle.cost, remaining, isDrawStep
+            // 3. "As you draw it" questions about the first card of the turn — optional reveals
+            //    (God-Eternal Kefnet), then miracle (CR 702.94a: "you may reveal this card from your
+            //    hand as you draw it") — asked now, before the next card is drawn, with the rest of
+            //    the instruction waiting beneath them.
+            val miracleCost = drawOneResult.miracle?.cost
+            val revealSources = drawOneResult.optionalRevealSources
+            if (miracleCost != null || revealSources.isNotEmpty()) {
+                val withTail = newState.copy(activeReplacementChain = null).pushContinuation(
+                    DrawReplacementRemainingDrawsContinuation(
+                        drawingPlayerId = playerId,
+                        remainingDraws = remaining,
+                        isDrawStep = isDrawStep,
+                        announcementApplied = true,
+                        cycledCardId = cycledCardId
+                    )
                 )
-                return buildPausedResult(newState, playerId, drawnCards, perCardEvents, pause)
+                val pause = EffectResult.from(
+                    askFirstDrawQuestion(withTail, playerId, drawOneResult.drawnCardId, revealSources, miracleCost)!!
+                )
+                return buildPausedResult(newState, playerId, drawnCards, perCardEvents, pause, cycledCardId)
             }
         }
 
-        return buildSuccessResult(newState, playerId, drawnCards, perCardEvents)
+        return buildSuccessResult(newState, playerId, drawnCards, perCardEvents, cycledCardId)
     }
 
     /**
-     * Pause the draw on the miracle reveal question for [cardId]. The question is a
-     * [PrivateQuestion]: it exists only because the card has miracle, so it reaches no other seat.
-     * The [DrawReplacementRemainingDrawsContinuation] beneath it carries the rest of the
-     * instruction — an empty tail too, which in the draw step hands the drawing player priority
-     * once the answer is in.
+     * Ask the next "as you draw it" question about [cardId], the first card [playerId] drew this
+     * turn: the first of [revealSources]' optional reveals, else the miracle reveal when
+     * [miracleCost] is set. Null when nothing is left to ask. The caller has already pushed the
+     * [DrawReplacementRemainingDrawsContinuation] carrying the rest of the instruction — an empty
+     * tail too, which in the draw step hands the drawing player priority once the answers are in.
+     *
+     * The miracle question is a [PrivateQuestion]: it exists only because the card has miracle, so
+     * it reaches no other seat. An optional reveal's question is public — its source is on the
+     * battlefield — and names the drawn card only in the asked player's prompt.
      */
-    private fun askMiracleReveal(
+    fun askFirstDrawQuestion(
         state: GameState,
         playerId: EntityId,
         cardId: EntityId,
-        cost: com.wingedsheep.sdk.core.ManaCost,
-        remainingDraws: Int,
-        isDrawStep: Boolean
-    ): EffectResult {
+        revealSources: List<EntityId>,
+        miracleCost: com.wingedsheep.sdk.core.ManaCost?,
+        events: List<GameEvent> = emptyList()
+    ): ExecutionResult? {
         val cardName = state.getEntity(cardId)?.get<CardComponent>()?.name ?: "this card"
-        val withTail = state.copy(activeReplacementChain = null).pushContinuation(
-            DrawReplacementRemainingDrawsContinuation(
-                drawingPlayerId = playerId,
-                remainingDraws = remainingDraws,
-                isDrawStep = isDrawStep,
-                announcementApplied = true
+        val sourceId = revealSources.firstOrNull()
+        if (sourceId != null) {
+            val sourceName = state.getEntity(sourceId)?.get<CardComponent>()?.name ?: "this permanent"
+            return state.suspendForDecision(
+                question = { id ->
+                    YesNoDecision(
+                        id = id,
+                        playerId = playerId,
+                        prompt = "Reveal $cardName with $sourceName?",
+                        context = DecisionContext(
+                            sourceId = sourceId,
+                            sourceName = sourceName,
+                            phase = DecisionPhase.RESOLUTION
+                        ),
+                        yesText = "Reveal",
+                        noText = "Keep hidden",
+                        hint = "$sourceName lets you reveal the first card you draw each turn as you draw it."
+                    )
+                },
+                answer = OptionalFirstDrawRevealContinuation(
+                    playerId, cardId, sourceId, revealSources.drop(1), miracleCost
+                ),
+                events = events
             )
-        )
-        return EffectResult.from(withTail.suspendForDecision(
+        }
+        if (miracleCost == null) return null
+        return state.suspendForDecision(
             question = { id ->
                 YesNoDecision(
                     id = id,
@@ -180,12 +216,13 @@ object DrawLoop {
                     ),
                     yesText = "Reveal",
                     noText = "Keep hidden",
-                    hint = "Miracle $cost — reveal it as the first card you drew this turn, and a " +
-                        "trigger lets you cast it for $cost as it resolves."
+                    hint = "Miracle $miracleCost — reveal it as the first card you drew this turn, and a " +
+                        "trigger lets you cast it for $miracleCost as it resolves."
                 )
             },
-            answer = MiracleRevealContinuation(playerId, cardId, cost)
-        ))
+            answer = MiracleRevealContinuation(playerId, cardId, miracleCost),
+            events = events
+        )
     }
 
     /**
@@ -211,13 +248,14 @@ object DrawLoop {
         state: GameState,
         playerId: EntityId,
         drawnCards: List<EntityId>,
-        perCardEvents: List<GameEvent>
+        perCardEvents: List<GameEvent>,
+        cycledCardId: EntityId?
     ): EffectResult {
         val events = mutableListOf<GameEvent>()
         var newState = state.copy(activeReplacementChain = null)
         if (drawnCards.isNotEmpty()) {
             val cardNames = drawnCards.map { newState.getEntity(it)?.get<CardComponent>()?.name ?: "Card" }
-            events.add(CardsDrawnEvent(playerId, drawnCards.size, drawnCards, cardNames, setOf(state.actorFor(playerId)) - playerId))
+            events.add(CardsDrawnEvent(playerId, drawnCards.size, drawnCards, cardNames, setOf(state.actorFor(playerId)) - playerId, cycledCardId))
             newState = stampDrawnThisTurn(newState.copy(
                 lastCardDrawnThisTurnByPlayer = newState.lastCardDrawnThisTurnByPlayer + (playerId to drawnCards.last())
             ), drawnCards)
@@ -237,13 +275,14 @@ object DrawLoop {
         playerId: EntityId,
         drawnCards: List<EntityId>,
         perCardEvents: List<GameEvent>,
-        pauseResult: EffectResult
+        pauseResult: EffectResult,
+        cycledCardId: EntityId?
     ): EffectResult {
         val allEvents = mutableListOf<GameEvent>()
         var pausedState = pauseResult.state.copy(activeReplacementChain = null)
         if (drawnCards.isNotEmpty()) {
             val cardNames = drawnCards.map { state.getEntity(it)?.get<CardComponent>()?.name ?: "Card" }
-            allEvents.add(CardsDrawnEvent(playerId, drawnCards.size, drawnCards.toList(), cardNames, setOf(state.actorFor(playerId)) - playerId))
+            allEvents.add(CardsDrawnEvent(playerId, drawnCards.size, drawnCards.toList(), cardNames, setOf(state.actorFor(playerId)) - playerId, cycledCardId))
             pausedState = stampDrawnThisTurn(pausedState.copy(
                 lastCardDrawnThisTurnByPlayer = pausedState.lastCardDrawnThisTurnByPlayer + (playerId to drawnCards.last())
             ), drawnCards)

@@ -27,6 +27,12 @@ import java.util.concurrent.ConcurrentHashMap
  */
 object LegalityData {
 
+    /**
+     * Suffix the sync writes for a Scryfall `restricted` status (`VINTAGE_RESTRICTED`): legal as a
+     * single copy. Not a [DeckFormat] of its own — it only feeds [derivedFormats].
+     */
+    const val RESTRICTED_SUFFIX = "_RESTRICTED"
+
     private const val OTHER_BUCKET = "other"
     private const val NOT_FOUND_MARKER = "__NOT_ON_SCRYFALL__"
 
@@ -89,7 +95,15 @@ object LegalityData {
         return stream.use { it.readBytes().toString(Charsets.UTF_8) }
     }
 
-    private val formatsByName: Map<String, DeckFormat> = DeckFormat.entries.associateBy { it.name }
+    /**
+     * The sync writes each Scryfall key upper-cased (`legalities.standardbrawl` → `STANDARDBRAWL`),
+     * which is the enum name for every format except the ones whose [DeckFormat.scryfallKey] drops
+     * the underscore. Keying by both spellings keeps those formats from silently reading as legal
+     * nowhere — Standard Brawl did, so no card qualified and no deck could be built or validated.
+     */
+    private val formatsByName: Map<String, DeckFormat> = DeckFormat.entries.flatMap { format ->
+        listOfNotNull(format.name, format.scryfallKey?.uppercase()).map { it to format }
+    }.toMap()
 
     private fun parseRaw(text: String): Map<String, Set<DeckFormat>> {
         val raw: Map<String, List<String>> = parser.decodeFromString(mapSerializer, text)
@@ -98,9 +112,26 @@ object LegalityData {
             // cards, tokens). It is not a real format — drop it. Scryfall formats not represented in
             // our DeckFormat enum (e.g. brawl, alchemy) miss the lookup and are dropped too — a map
             // lookup rather than valueOf(), whose exception per miss per card added up at startup.
-            names.asSequence()
+            val formats = names.asSequence()
                 .filter { it != NOT_FOUND_MARKER }
                 .mapNotNullTo(mutableSetOf()) { formatsByName[it] }
+            formats += derivedFormats(names)
+            formats
         }
     }
+
+    private const val VINTAGE_RESTRICTED = "VINTAGE$RESTRICTED_SUFFIX"
+
+    /**
+     * The formats Scryfall publishes no legality for, read off the keys it does publish. Both
+     * Highlander formats play the Vintage card pool — every card Vintage allows, restricted ones
+     * included, since a singleton deck can't break the restricted list's one copy. Canadian
+     * Highlander's points are a deck-level rule, not a per-card one, so they don't enter here.
+     */
+    private fun derivedFormats(keys: List<String>): Set<DeckFormat> =
+        if ("VINTAGE" in keys || VINTAGE_RESTRICTED in keys) {
+            setOf(DeckFormat.HIGHLANDER, DeckFormat.CANADIAN_HIGHLANDER)
+        } else {
+            emptySet()
+        }
 }

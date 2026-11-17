@@ -141,9 +141,15 @@ class SuspensionTraceTest : ScenarioTestBase() {
             // The graveyard turn history (Crawling Sensation) postdates the capture, as does the
             // per-card stamp on a resolved spell; CardsPutIntoGraveyardThisTurnTrackerTest pins both.
             "com.wingedsheep.engine.state.components.player.CardsPutIntoGraveyardThisTurnComponent" -
+            // Its per-origin count (Cruel Calculations, Welcome the Dead) too.
+            "com.wingedsheep.engine.state.components.player.CardsPutIntoGraveyardByOriginThisTurnComponent" -
             // So does the per-owner card-type record of permanents put into a graveyard from the
             // battlefield; KamiOfTransienceScenarioTest pins it.
             "com.wingedsheep.engine.state.components.player.CardTypesPutIntoGraveyardFromBattlefieldThisTurnComponent" -
+            // Its hand-destination sibling too; MilesOBrienTransporterOpsScenarioTest pins it.
+            "com.wingedsheep.engine.state.components.player.CardTypesReturnedToHandFromBattlefieldThisTurnComponent" -
+            // The game-long spell count postdates the capture too; SpellsCastThisGameTest pins it.
+            "com.wingedsheep.engine.state.components.player.SpellsCastThisGameComponent" -
             "com.wingedsheep.engine.state.components.identity.PutIntoGraveyardThisTurnComponent").mapValues { (key, child) ->
             when {
                 // Captured ownership also postdates these traces; SourceOwnerLastKnownTest pins it.

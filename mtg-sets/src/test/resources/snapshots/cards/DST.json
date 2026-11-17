@@ -1122,6 +1122,46 @@
     "colorIdentityOverride": []
 }
 
+// Mycosynth Lattice
+{
+    "name": "Mycosynth Lattice",
+    "manaCost": "{6}",
+    "typeLine": "Artifact",
+    "oracleText": "All permanents are artifacts in addition to their other types.\nAll cards that aren't on the battlefield, spells, and permanents are colorless.\nPlayers may spend mana as though it were mana of any color.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantCardType",
+                "cardType": "ARTIFACT",
+                "filter": {
+                    "baseFilter": "permanent"
+                }
+            },
+            {
+                "type": "SetColors",
+                "colors": [],
+                "filter": {
+                    "baseFilter": {}
+                },
+                "offBattlefield": "Each"
+            },
+            {
+                "type": "SpendManaAsColor",
+                "fromColor": null,
+                "toColor": null,
+                "players": "Each"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "130",
+        "rarity": "RARE",
+        "artist": "Anthony S. Waters & Cara Mitten",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/7/e7e7f15a-074a-4137-88ca-e5d376d146fd.jpg?1783944422"
+    },
+    "colorIdentityOverride": []
+}
+
 // Myr Moonvessel
 {
     "name": "Myr Moonvessel",
@@ -1890,7 +1930,15 @@
                         "type": "RecipientPlayer",
                         "player": "EachOpponent"
                     },
-                    "sourceFilter": "ctrl:you"
+                    "sourceFilter": {
+                        "statePredicates": [
+                            {
+                                "type": "StateNot",
+                                "predicate": "IsSource"
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    }
                 },
                 "binding": "ANY",
                 "effect": {
@@ -1898,18 +1946,6 @@
                     "counterType": "CHARGE",
                     "count": 1,
                     "target": "Self"
-                },
-                "triggerRestriction": {
-                    "type": "EntityMatches",
-                    "entity": "TriggeringEntity",
-                    "filter": {
-                        "statePredicates": [
-                            {
-                                "type": "StateNot",
-                                "predicate": "IsSource"
-                            }
-                        ]
-                    }
                 }
             }
         ],
@@ -2422,6 +2458,68 @@
         "imageUri": "https://cards.scryfall.io/normal/front/1/1/1131c187-8fc3-4cee-9422-355ef6622de7.jpg"
     },
     "colorIdentityOverride": []
+}
+
+// Well of Lost Dreams
+{
+    "name": "Well of Lost Dreams",
+    "manaCost": "{4}",
+    "typeLine": "Artifact",
+    "oracleText": "Whenever you gain life, you may pay {X}, where X is less than or equal to the amount of life you gained. If you do, draw X cards.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Well of Lost Dreams:1",
+                "trigger": "LifeGainEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "ChooseNumberThen",
+                    "then": {
+                        "type": "Gated",
+                        "gate": {
+                            "type": "Gate.WhenCondition",
+                            "condition": {
+                                "type": "Compare",
+                                "left": "XValue",
+                                "operator": "GT",
+                                "right": {
+                                    "type": "Fixed",
+                                    "amount": 0
+                                }
+                            }
+                        },
+                        "then": {
+                            "type": "Gated",
+                            "gate": {
+                                "type": "Gate.MayPay",
+                                "cost": {
+                                    "type": "PayDynamicManaCost",
+                                    "amount": "XValue"
+                                }
+                            },
+                            "then": {
+                                "type": "DrawCards",
+                                "count": "XValue"
+                            }
+                        }
+                    },
+                    "maxValue": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGER_LIFE_GAINED"
+                    },
+                    "prompt": "Choose X — pay {X} to draw X cards (0 to decline)"
+                },
+                "descriptionOverride": "Whenever you gain life, you may pay {X}, where X is less than or equal to the amount of life you gained. If you do, draw X cards."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "159",
+        "rarity": "RARE",
+        "artist": "Jeff Miracola",
+        "flavorText": "Some say the knowledge lost during the Ritual of Rebuking is returned through the well's waters.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/b/6bf1b915-7790-43f4-b308-a80a1be6ec29.jpg?1783944414"
+    }
 }
 
 // Whispersilk Cloak

@@ -1,5 +1,7 @@
 package com.wingedsheep.engine.view.projection
 
+import com.wingedsheep.engine.state.components.identity.TextBoxExchangeComponent
+import com.wingedsheep.sdk.scripting.MustAttackDefender
 import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.effects.DamageUtils
@@ -25,6 +27,8 @@ import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.CantBeBlockedByMoreThan
 import com.wingedsheep.sdk.scripting.Duration
+import com.wingedsheep.sdk.scripting.GameObjectFilter
+import com.wingedsheep.sdk.scripting.predicates.CardPredicate
 import com.wingedsheep.sdk.scripting.events.DamageType
 import com.wingedsheep.sdk.scripting.filters.unified.Scope
 
@@ -59,6 +63,8 @@ internal class CardActiveEffectsProjector(
         effects += floatingEffectBadges(state, entityId, projectedState)
         effects += temporaryEffectBadges(state, entityId)
         effects += damageShieldBadges(state, entityId)
+        effects += sourceShieldBadges(state, entityId)
+        effects += redirectRecipientBadges(state, entityId)
         effects += combatRequirementBadges(state, entityId)
         // Check for triggered ability condition indicators (intervening-if progress)
         effects += conditionBadges.triggerConditionBadges(state, entityId)
@@ -114,7 +120,27 @@ internal class CardActiveEffectsProjector(
      * Check for text replacements. A global color-word change (Swirl the Mists) is one badge per
      * chosen color rather than one per replaced word, so it doesn't stack four badges on every card.
      */
-    private fun textReplacementBadges(state: GameState, entityId: EntityId): List<ClientCardEffect> {
+    private fun textReplacementBadges(state: GameState, entityId: EntityId): List<ClientCardEffect> =
+        textBoxExchangeBadges(state, entityId) + wordReplacementBadges(state, entityId)
+
+    /**
+     * An exchanged text box (Deadpool, Trading Card): the card image still shows the printed text,
+     * so the badge says whose rules text the permanent has now and spells it out.
+     */
+    private fun textBoxExchangeBadges(state: GameState, entityId: EntityId): List<ClientCardEffect> {
+        val exchange = state.getEntity(entityId)?.get<TextBoxExchangeComponent>() ?: return emptyList()
+        val text = exchange.textOf.oracleText.ifBlank { "no rules text" }
+        return listOf(
+            ClientCardEffect(
+                effectId = "text_box_exchanged",
+                name = "Text Swapped",
+                description = "Has ${exchange.textOf.name}'s rules text: $text",
+                icon = "text-change"
+            )
+        )
+    }
+
+    private fun wordReplacementBadges(state: GameState, entityId: EntityId): List<ClientCardEffect> {
         val all = TextChanges.of(state, entityId)?.replacements ?: return emptyList()
         val own = state.getEntity(entityId)?.get<TextReplacementComponent>()?.replacements.orEmpty()
         val globalBadges = all.dropLast(own.size).map { it.toWord }.distinct().map { toWord ->
@@ -161,16 +187,31 @@ internal class CardActiveEffectsProjector(
     /**
      * A dynamic-group floating effect locks no entity set, so whether it reaches this card is read
      * off the projection — which also honours its condition (Johan's "if Johan is untapped").
-     * Only modifications with a projected flag of their own can be answered this way.
+     * Only modifications with a projected flag of their own can be answered this way. "Can't
+     * block" / "can't attack" flags have other causes too (Decayed, a static), so those also ask
+     * whether the card is in this effect's group — Temur Charm's "power 3 or less", Rumbling Ruin's
+     * frozen count.
      */
     private fun appliesThroughDynamicGroup(
+        state: GameState,
         floating: ActiveFloatingEffect,
         entityId: EntityId,
         projectedState: ProjectedState?
     ): Boolean {
-        if (floating.effect.dynamicGroupFilter == null || projectedState == null) return false
-        return when (floating.effect.modification) {
+        val group = floating.effect.dynamicGroupFilter
+        if (group == null || projectedState == null) return false
+        fun inGroup() = predicateEvaluator.matches(
+            state, projectedState, entityId, group.baseFilter, PredicateContext(controllerId = floating.controllerId)
+        )
+        return when (val mod = floating.effect.modification) {
+            is SerializableModification.SetCantBlock -> projectedState.cantBlock(entityId) && inGroup()
+            is SerializableModification.SetCantAttack -> projectedState.cantAttack(entityId) && inGroup()
             is SerializableModification.SetAttacksWithoutTapping -> projectedState.attacksWithoutTapping(entityId)
+            is SerializableModification.SetMustAttack -> when (mod.defender) {
+                MustAttackDefender.PlayerOtherThanYou -> mod.otherThan in projectedState.mustAttackOtherThan(entityId)
+                MustAttackDefender.APlayer -> projectedState.mustAttackPlayer(entityId)
+                else -> projectedState.mustAttack(entityId)
+            }
             else -> false
         }
     }
@@ -185,7 +226,7 @@ internal class CardActiveEffectsProjector(
         projectedState: ProjectedState?
     ): List<ClientCardEffect> =
         state.floatingEffects
-            .filter { entityId in it.effect.affectedEntities || appliesThroughDynamicGroup(it, entityId, projectedState) }
+            .filter { entityId in it.effect.affectedEntities || appliesThroughDynamicGroup(state, it, entityId, projectedState) }
             // A granted "exile it instead" ability stripped by a later lose-all-abilities effect.
             .filterNot { floating ->
                 val mod = floating.effect.modification
@@ -251,12 +292,20 @@ internal class CardActiveEffectsProjector(
         return summedPump + (others + whileTrue).distinct()
     }
 
-    /** Whether a modification already has a badge that [lasting] can date: its own, or a damage shield's. */
+    /** "Alice", "Gideon, Battle-Forged" or "Alice or Bob" — the defenders a must-attack mark names. */
+    private fun defenderNames(state: GameState, defenderIds: Set<EntityId>): String =
+        defenderIds
+            .mapNotNull { id -> state.getEntity(id)?.let { it.get<PlayerComponent>()?.name ?: it.get<CardComponent>()?.name } }
+            .ifEmpty { listOf("a chosen defender") }
+            .joinToString(" or ")
+
+    /** Whether a modification already has a badge that [lasting] can date: its own, or a damage or source shield's. */
     private fun hasOwnBadge(state: GameState, modification: SerializableModification): Boolean =
         modificationBadge(state, modification) != null ||
             modification is SerializableModification.PreventNextDamage ||
             modification is SerializableModification.RegenerationShield ||
-            modification is SerializableModification.RemoveDamageShield
+            modification is SerializableModification.RemoveDamageShield ||
+            modification is SerializableModification.PreventNextDamageFromSourceShield
 
     /** A short account of a stat or keyword change, or null for one the card's own display covers. */
     private fun modificationSummary(modification: SerializableModification): String? = when (modification) {
@@ -271,6 +320,8 @@ internal class CardActiveEffectsProjector(
         is SerializableModification.PreventAllDamageTo -> when {
             modification.onlyCausedByObjectTargetingIt ->
                 "damage from spells and abilities that target it is prevented"
+            modification.sourceFilter != null ->
+                "${if (modification.combatOnly) "combat damage" else "damage"} to it from ${modification.sourceFilter!!.sourcesPhrase()} is prevented"
             modification.combatOnly -> "combat damage to it is prevented"
             else -> "damage to it is prevented"
         }
@@ -349,7 +400,8 @@ internal class CardActiveEffectsProjector(
         is SerializableModification.PreventAllDamageDealtBy -> ClientCardEffect(
             effectId = "prevent_all_damage_dealt_by",
             name = "Silenced",
-            description = "All damage this creature would deal is prevented",
+            description = if (modification.combatOnly) "All combat damage this creature would deal is prevented"
+                else "All damage this creature would deal is prevented",
             icon = "prevent-damage"
         )
         is SerializableModification.SetCantAttack -> ClientCardEffect(
@@ -422,6 +474,23 @@ internal class CardActiveEffectsProjector(
                 icon = "cant-block"
             )
         }
+        // Kardur, Doomscourge's group requirement. Badged on each creature it binds, like goad, so
+        // the attacking player sees whom to send it at before declaring. One id per requirement
+        // shape, so two of them on one creature stay two badges.
+        is SerializableModification.SetMustAttack -> ClientCardEffect(
+            effectId = "must_attack_group_${modification.otherThan?.value ?: modification.defender.name}",
+            name = "Must Attack",
+            description = when (modification.defender) {
+                MustAttackDefender.APlayer -> "This creature attacks a player each combat if able"
+                MustAttackDefender.PlayerOtherThanYou -> {
+                    val name = modification.otherThan
+                        ?.let { state.getEntity(it)?.get<PlayerComponent>()?.name } ?: "the player who created this requirement"
+                    "This creature attacks each combat if able and attacks a player other than $name if able"
+                }
+                else -> "This creature attacks each combat if able"
+            },
+            icon = "must-attack"
+        )
         // The unrestricted requirement (Culvert Ambusher). Badged for the same reason as
         // "Must Attack": the defending player finds out about it when their declaration is
         // rejected, which is far too late to be the first they hear of it.
@@ -451,18 +520,6 @@ internal class CardActiveEffectsProjector(
                 icon = "redirect"
             )
         }
-        is SerializableModification.PreventNextDamageFromSourceShield -> ClientCardEffect(
-            effectId = "deflect_damage_${modification.damageSourceId}",
-            name = "Deflect",
-            description = "The next damage from the chosen source is prevented; a triggered ability then resolves",
-            icon = "redirect"
-        )
-        is SerializableModification.ReflectCombatDamage -> ClientCardEffect(
-            effectId = "reflect_combat_damage",
-            name = "Reflect",
-            description = "Combat damage dealt to you is also dealt to the attacking player",
-            icon = "redirect"
-        )
         is SerializableModification.RedirectCombatDamageToController -> ClientCardEffect(
             effectId = "redirect_combat_damage_to_controller",
             name = "Redirected",
@@ -549,6 +606,64 @@ internal class CardActiveEffectsProjector(
         return effects
     }
 
+    /**
+     * A one-shot source shield ("the next time target creature would deal damage this turn, prevent
+     * that damage" — Dazzling Reflection; with a reaction, Awe Strike and Deflecting Palm) is keyed
+     * to the damage *source*, not to anything it protects, so badge the source: it is the permanent
+     * whose next hit won't land.
+     */
+    private fun sourceShieldBadges(state: GameState, entityId: EntityId): List<ClientCardEffect> =
+        state.floatingEffects.mapNotNull { floating ->
+            val mod = floating.effect.modification as? SerializableModification.PreventNextDamageFromSourceShield
+                ?: return@mapNotNull null
+            if (mod.damageSourceId != entityId) return@mapNotNull null
+            val kind = if (mod.combatOnly) "combat damage" else "damage"
+            val protectedName = floating.effect.affectedEntities.firstNotNullOfOrNull { protectedId ->
+                if (protectedId in state.turnOrder) state.getEntity(protectedId)?.get<PlayerComponent>()?.name
+                else state.getEntity(protectedId)?.get<CardComponent>()?.name
+            }
+            val recipient = when {
+                mod.playersOnly -> " to a player"
+                protectedName != null -> " to $protectedName"
+                else -> ""
+            }
+            val outcome = when {
+                !mod.preventDamage -> "it is still dealt, and a triggered ability resolves"
+                mod.hasReaction -> "that damage is prevented and a triggered ability resolves"
+                else -> "that damage is prevented"
+            }
+            ClientCardEffect(
+                effectId = "source_shield_${floating.id}",
+                name = if (mod.hasReaction) "Deflect" else "Prevent next damage",
+                description = "The next time this would deal $kind$recipient, $outcome",
+                icon = if (mod.hasReaction) "redirect" else "prevent-damage"
+            ).lasting(durationPhrase(state, floating))
+        }
+
+    /**
+     * A class-wide redirection shield ("all damage that would be dealt to creatures you control is
+     * dealt to that creature instead", Ascent of the Worthy) protects no listed permanent, so nothing
+     * would show it. Badge the permanent that soaks the damage instead, worded as the card words it.
+     */
+    private fun redirectRecipientBadges(state: GameState, entityId: EntityId): List<ClientCardEffect> =
+        state.floatingEffects.mapNotNull { floating ->
+            val mod = floating.effect.modification as? SerializableModification.RedirectNextDamage
+                ?: return@mapNotNull null
+            val filter = mod.protectedFilter ?: return@mapNotNull null
+            if (mod.redirectToId != entityId) return@mapNotNull null
+            val verb = if (mod.optional) "may be dealt" else "is dealt"
+            val source = publicSourceName(state, floating)?.let { "$it: " }.orEmpty()
+            // A listed player rides alongside the class (Gideon's Sacrifice: "you and permanents you control").
+            val you = if (floating.controllerId in floating.effect.affectedEntities) "you and " else ""
+            ClientCardEffect(
+                effectId = "redirect_recipient_${floating.id}",
+                name = "Takes damage",
+                description = "${source}All damage that would be dealt to " +
+                    "$you${filter.pluralPermanentDescription} $verb to this instead",
+                icon = "redirect"
+            ).lasting(durationPhrase(state, floating))
+        }
+
     /** One [GoadRules] per state: it scans the whole battlefield, and [project] runs once per card. */
     @Volatile private var goadRulesCache: Pair<GameState, GoadRules>? = null
 
@@ -569,6 +684,32 @@ internal class CardActiveEffectsProjector(
                     effectId = "must_attack_this_turn",
                     name = "Must Attack",
                     description = "This creature must attack this turn if able",
+                    icon = "must-attack"
+                )
+            )
+        }
+
+        // Directed mark (encore tokens, Gideon, Battle-Forged): "attacks <defender> this turn if able".
+        state.getEntity(entityId)?.get<MustAttackDefendersThisTurnComponent>()?.let { mark ->
+            effects.add(
+                ClientCardEffect(
+                    effectId = "must_attack_player_this_turn",
+                    name = "Must Attack",
+                    description = "This creature must attack ${defenderNames(state, mark.defenders.current(state))} this turn if able",
+                    icon = "must-attack"
+                )
+            )
+        }
+
+        // Waiting for its controller's next turn (Gideon, Battle-Forged).
+        state.getEntity(entityId)?.get<MustAttackNextTurnComponent>()?.let { mark ->
+            val named = mark.defenders.current(state)
+            val whom = if (named.isEmpty()) "" else " ${defenderNames(state, named)}"
+            effects.add(
+                ClientCardEffect(
+                    effectId = "must_attack_next_turn",
+                    name = "Must Attack",
+                    description = "This creature must attack$whom during its controller's next turn if able",
                     icon = "must-attack"
                 )
             )
@@ -884,6 +1025,7 @@ internal class CardActiveEffectsProjector(
         }
         for (granted in state.grantedTriggeredAbilities) {
             if (granted.entityId != entityId) continue
+            if (!com.wingedsheep.engine.mechanics.durations.GrantDurationGate.triggeredGrantLive(state, granted)) continue
             grant("granted_trig_${granted.ability.id.value}", granted.ability.description)
         }
         for (granted in state.grantedStateTriggeredAbilities) {
@@ -1010,4 +1152,17 @@ internal fun hasEveryCreatureType(subtypes: Collection<String>): Boolean {
     // this ~150 scans of it on every card of every state transform.
     val lookup = if (subtypes is Set<String>) subtypes else subtypes.toSet()
     return Subtype.ALL_CREATURE_TYPES.all { it in lookup }
+}
+
+/**
+ * A source filter as the sources it names: a bare color reads "colorless sources" / "red sources"
+ * (Lithomancer's Focus), anything with a type noun reads as its own description ("attacking
+ * creatures").
+ */
+internal fun GameObjectFilter.sourcesPhrase(): String {
+    val bareColor = cardPredicates.isNotEmpty() && cardPredicates.all {
+        it is CardPredicate.HasColor || it is CardPredicate.NotColor || it == CardPredicate.IsColorless ||
+            it == CardPredicate.IsMulticolored || it == CardPredicate.IsMonocolored
+    } && statePredicates.isEmpty() && controllerPredicate == null && anyOf.isEmpty()
+    return if (bareColor) "$description sources" else description
 }

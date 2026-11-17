@@ -8,7 +8,7 @@ For each set folder under `mtg-sets/.../definitions/<code>/`:
   - scans `.kt` files in `<code>/cards/` for implemented names
     (matches both `card("Name") { }` DSL calls and `name = "..."` Printing rows)
   - loads the canonical name list from Scryfall, cached under
-    `~/.cache/scryfall/<code>.json`, partitioned into draft cards (any
+    `~/.cache/scryfall/set-<code>.json`, partitioned into draft cards (any
     printing in the set has Scryfall `booster: true`) and extras
     (starter-deck exclusives, Special Guests, bonus sheets, etc.).
     Tokens and emblems are dropped — a handful of sets number them inside
@@ -51,6 +51,7 @@ from pathlib import Path
 
 from card_exclusions import load_exclusions
 from set_dirs import iter_set_dirs
+from scryfall_cache import set_cache_path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CACHE_ROOT = Path.home() / ".cache" / "scryfall"
@@ -199,7 +200,7 @@ def scan_implementations(cards_dir: Path) -> set[str]:
 
 
 def cache_path(code: str) -> Path:
-    return CACHE_ROOT / f"{code.lower()}.json"
+    return set_cache_path(code, CACHE_ROOT)
 
 
 def is_cache_fresh(payload: dict) -> bool:

@@ -46,6 +46,24 @@ class CombatContinuationResumer(
         resumer(PreventDamageFromChosenSourceContinuation::class, ::resumePreventDamageFromChosenSource),
         resumer(PreventNextDamageLeavingAmountContinuation::class, ::resumePreventNextDamageLeavingAmount),
         resumer(RedirectDamageSourceContinuation::class, ::resumeRedirectDamageSource),
+        resumer(CombatDamageReplacementContinuation::class) { state, continuation, response, _ ->
+            val option = if (continuation.numberPrefix != null && continuation.numberMax != null) {
+                (response as? NumberChosenResponse)?.number?.takeIf { it in continuation.numberMin..continuation.numberMax }
+                    ?.let { continuation.numberPrefix + it }
+            } else when (response) {
+                is OptionChosenResponse -> continuation.optionKeys.getOrNull(response.optionIndex)
+                is YesNoResponse -> continuation.optionKeys.getOrNull(if (response.choice) 0 else 1)
+                else -> null
+            }
+            if (option == null) ExecutionResult.error(state, "Expected a valid damage replacement choice")
+            else {
+                val recorded = com.wingedsheep.engine.handlers.effects.damage.DamageReplacementChain
+                    .record(state, continuation.choiceKey, option)
+                services.combatManager.applyCombatDamage(
+                    com.wingedsheep.engine.handlers.effects.damage.DamageReplacementReveals.begin(recorded),
+                    firstStrike = continuation.firstStrike)
+            }
+        },
         resumer(CombatOptionalRedirectContinuation::class) { state, continuation, response, _ ->
             resumeCombatOptionalRedirect(state, continuation, response)
         },
@@ -349,31 +367,23 @@ class CombatContinuationResumer(
             return ExecutionResult.error(state, "Expected distribution response for divided damage")
         }
 
-        val distribution = response.distribution
-        val events = mutableListOf<GameEvent>()
-        var newState = state
-
-        for ((targetId, damageAmount) in distribution) {
-            if (damageAmount > 0) {
-                val result = DamageUtils.dealDamageToTarget(
-                    services.zones,
-                    newState,
-                    targetId,
-                    damageAmount,
-                    continuation.sourceId, damageSourceRef = continuation.objectReferences.origin ?: continuation.sourceId?.let(state::objectRef)
-                )
-
-                // Dealing damage never asks a question, so the only other outcome is a rejection.
-                if (result.outcome is Outcome.Rejected) {
-                    return ExecutionResult(newState, events, result.outcome)
-                }
-
-                newState = result.state
-                events.addAll(result.events)
-            }
+        if (continuation.effect != null && continuation.context != null) {
+            // The division a DividedDamageEffect asked for at resolution is dealt as if it had
+            // been announced, through the effect's own executor, so its outputs are handed on.
+            val result = services.effectExecutorRegistry.execute(state, continuation.effect,
+                continuation.context.copy(damageDistribution = response.distribution))
+            if (result.outcome is Outcome.Paused) return ExecutionResult.propagatePause(result.state, result.events)
+            return checkForMore(result.stateWithOutputsHandedOn(), result.events)
         }
 
-        return checkForMore(newState, events)
+        val instances = response.distribution.filterValues { it > 0 }.map { (target, amount) ->
+            com.wingedsheep.engine.handlers.effects.damage.DamageReplacementChain.Instance(
+                continuation.sourceId, target, amount,
+                sourceRef = continuation.objectReferences.origin ?: continuation.sourceId?.let(state::objectRef))
+        }
+        val result = com.wingedsheep.engine.handlers.effects.damage.DamageReplacementChain.deal(services.zones, state, instances)
+        if (result.outcome is Outcome.Paused) return ExecutionResult.propagatePause(result.state, result.events)
+        return checkForMore(result.state, result.events)
     }
 
     fun resumeDeflectDamageSourceChoice(
@@ -477,12 +487,12 @@ class CombatContinuationResumer(
         // "Prevent all damage that would be dealt this turn by a source of your choice", with no
         // recipient clause (Mourner's Shield): the shield belongs on the *source*, not on a
         // protected recipient, so it reuses the same `PreventAllDamageDealtBy` silence shield that a
-        // targeted `PreventionDirection.FromTarget` installs — and is honored for combat and
-        // noncombat damage alike by the same two read sites.
+        // targeted `PreventionDirection.FromTarget` installs. `combatOnly` narrows it to the
+        // source's combat damage ("… combat damage a creature of your choice would deal", Ajani's Aid).
         if (continuation.silenceChosenSource && continuation.amount == null) {
             val silenced = state.addFloatingEffect(
                 layer = Layer.ABILITY,
-                modification = SerializableModification.PreventAllDamageDealtBy,
+                modification = SerializableModification.PreventAllDamageDealtBy(combatOnly = continuation.combatOnly),
                 affectedEntities = setOf(chosenSourceId),
                 duration = com.wingedsheep.sdk.scripting.Duration.EndOfTurn,
                 context = context
