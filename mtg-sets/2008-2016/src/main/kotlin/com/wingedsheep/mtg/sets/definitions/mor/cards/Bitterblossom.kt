@@ -52,4 +52,5 @@ val Bitterblossom = card("Bitterblossom") {
         ruling("2008-04-01", "The effect is mandatory. You'll lose 1 life even if you have only 1 life left.")
         ruling("2008-04-01", "The life loss isn't a payment. You'll get a token even if you had 0 life (and another effect is stopping you from losing the game).")
     }
-}
+}.let { it.copy(oracleId = "fb868840-09fa-49b1-85cb-b08ad065e972",
+    metadata = it.metadata.copy(scryfallId = "8145fed6-6b51-420a-84cf-4ea5e0aa1883", releaseDate = "2008-02-01")) }

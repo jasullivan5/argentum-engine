@@ -56,4 +56,5 @@ val GaladhrimAmbush = card("Galadhrim Ambush") {
                 "is cast during your combat phase."
         )
     }
-}
+}.let { it.copy(oracleId = "3b22d21f-e19a-40df-840b-a2b7f11f79c2",
+    metadata = it.metadata.copy(scryfallId = "e69e06f0-6142-4f80-9208-362b3e74d51d", releaseDate = "2023-06-23")) }

@@ -55,4 +55,5 @@ val HourOfPromise = card("Hour of Promise") {
         imageUri = "https://cards.scryfall.io/normal/front/c/5/c5ee374f-31dc-4b2c-beba-431d5b1126d0.jpg?1783936018"
         ruling("2017-07-14", "When Hour of Promise checks the number of Deserts you control, it includes any Deserts you found earlier with Hour of Promise.")
     }
-}
+}.let { it.copy(oracleId = "51ff3e53-90bb-41bf-80e4-bb3fd51d574a",
+    metadata = it.metadata.copy(scryfallId = "c5ee374f-31dc-4b2c-beba-431d5b1126d0", releaseDate = "2017-07-14")) }

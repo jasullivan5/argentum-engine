@@ -52,4 +52,5 @@ val SpinedTyrranax = card("Spined Tyrranax") {
                 "ability as it goes on the stack. Each player may respond to this triggered ability as normal.",
         )
     }
-}
+}.let { it.copy(oracleId = "2d09e689-c163-48c5-af5d-766f110d041e",
+    metadata = it.metadata.copy(scryfallId = "bb589caa-bba4-4d23-bdfe-7fc37f19bfd6", releaseDate = "2024-11-15")) }

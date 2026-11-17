@@ -54,4 +54,5 @@ val LabyrinthOfSkophos = card("Labyrinth of Skophos") {
                 "step unless removed from combat (by Labyrinth of Skophos or a similar effect)."
         )
     }
-}
+}.let { it.copy(oracleId = "9ec5a487-d8ed-459a-8f58-56f6e9a2dfe8",
+    metadata = it.metadata.copy(scryfallId = "ff0dd221-2660-43f6-8e28-8000e3fe72a4", releaseDate = "2020-01-24")) }

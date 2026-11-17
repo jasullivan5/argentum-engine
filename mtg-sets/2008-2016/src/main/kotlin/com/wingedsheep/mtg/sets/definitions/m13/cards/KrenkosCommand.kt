@@ -37,4 +37,5 @@ val KrenkosCommand = card("Krenko's Command") {
             "hurting, annoying, eating, destroying, or swearing."
         imageUri = "https://cards.scryfall.io/normal/front/8/4/84df41e9-e973-4441-b17f-434517134d46.jpg?1783940481"
     }
-}
+}.let { it.copy(oracleId = "9cfe86ae-eebe-44aa-a956-4b3e9e621105",
+    metadata = it.metadata.copy(scryfallId = "84df41e9-e973-4441-b17f-434517134d46", releaseDate = "2012-07-13")) }

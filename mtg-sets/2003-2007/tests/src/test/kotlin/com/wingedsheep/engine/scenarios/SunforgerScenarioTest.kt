@@ -2,6 +2,8 @@ package com.wingedsheep.engine.scenarios
 
 import com.wingedsheep.engine.core.ActivateAbility
 import com.wingedsheep.engine.core.SelectCardsDecision
+import com.wingedsheep.engine.core.SpellCastEvent
+import com.wingedsheep.engine.core.LibraryShuffledEvent
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.stack.ChosenTarget
 import com.wingedsheep.engine.support.GameTestDriver
@@ -94,6 +96,7 @@ class SunforgerScenarioTest : FunSpec({
 
         d.giveMana(d.player1, Color.RED, 1)
         d.giveMana(d.player1, Color.WHITE, 1)
+        val eventStart = d.events.size
         d.submit(ActivateAbility(d.player1, forger, forgeAbility)).error shouldBe null
         d.bothPass()
 
@@ -104,8 +107,15 @@ class SunforgerScenarioTest : FunSpec({
         }
         d.submitCardSelection(d.player1, listOf(bolt)).error shouldBe null
 
+        // The source says cast, then shuffle. Choosing the found spell's targets is part of casting.
+        d.events.drop(eventStart).filterIsInstance<LibraryShuffledEvent>() shouldBe emptyList()
+
         // Cast without paying its mana cost — the Bolt still needs a target.
         d.submitTargetSelection(d.player1, listOf(d.player2)).error shouldBe null
+        val sequence = d.events.drop(eventStart)
+        val castIndex = sequence.indexOfFirst { it is SpellCastEvent }
+        val shuffleIndex = sequence.indexOfFirst { it is LibraryShuffledEvent }
+        (castIndex >= 0 && shuffleIndex > castIndex) shouldBe true
         var guard = 0
         while (d.stackSize > 0 && guard++ < 10) d.bothPass()
 

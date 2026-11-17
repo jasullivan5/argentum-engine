@@ -46,4 +46,5 @@ val JudithTheScourgeDiva = card("Judith, the Scourge Diva") {
         flavorText = "At the end of the show, she stands alone on a stage brilliant with blood."
         imageUri = "https://cards.scryfall.io/normal/front/0/a/0a742125-730d-4082-bfd8-5feb7733def4.jpg?1783933645"
     }
-}
+}.let { it.copy(oracleId = "c01516e0-eec3-4370-b935-7674982e8850",
+    metadata = it.metadata.copy(scryfallId = "0a742125-730d-4082-bfd8-5feb7733def4", releaseDate = "2019-01-25")) }
