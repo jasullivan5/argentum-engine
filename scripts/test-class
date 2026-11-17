@@ -16,6 +16,7 @@ from __future__ import annotations
 import fnmatch
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -80,7 +81,7 @@ def main(argv: list[str]) -> int:
 
     print(f"test-class: {pattern} -> {' '.join(projects)}", file=sys.stderr)
     return subprocess.call(
-        (["bash", (REPO_ROOT / "scripts" / "gradle-locked").as_posix()] if os.name == "nt" else
+        ([shutil.which("bash") or "bash", (REPO_ROOT / "scripts" / "gradle-locked").as_posix()] if os.name == "nt" else
          [str(REPO_ROOT / "scripts" / "gradle-locked")]) + tasks + gradle_args,
         cwd=REPO_ROOT,
     )
