@@ -73,6 +73,21 @@ internal class CardSelectionValue private constructor(
         return if (card.isLand) landScore(cardId, card) else spellScore(cardId, card)
     }
 
+    /**
+     * Short of lands: some spell in hand costs more than the lands in play and in hand add up to,
+     * so the next land drawn is mana a held card is waiting on. The same reach
+     * `CardAdvantage` reads to tell a land in hand worth a card from a surplus one
+     * ([AiProfile.surplusLandsReadTheHand]).
+     */
+    val landShort: Boolean
+        get() = handSpells.any { it.second.manaValue > landsInPlay + handLands.size }
+
+    /** The mean [score] of the player's library cards — what a random draw is worth; 0 when it is empty. */
+    fun averageDraw(): Double {
+        val library = state.getZone(playerId, Zone.LIBRARY)
+        return if (library.isEmpty()) 0.0 else library.sumOf { score(it) } / library.size
+    }
+
     /** Turns until [card] is castable on mana alone, given what is coming. Exposed for tests. */
     internal fun turnsUntilCastable(cardId: EntityId, card: CardComponent): Double {
         val otherHandLands = handLands.filter { it.first != cardId }
@@ -116,7 +131,11 @@ internal class CardSelectionValue private constructor(
         if (card.typeLine.isSorcery) score += 2.0
 
         intents.forName(card.name)?.let { intent ->
-            if (REMOVAL_TAGS.any { it in intent }) score += REMOVAL_BONUS
+            // An answer is worth what it answers when it arrives: the bonus fades with the wait,
+            // as the first-creature bonus above does, down to nothing for a card that never can
+            // be cast. A seven-drop that sweeps (Toxrill, the Corrosive) at one land is not the
+            // removal spell a one-land hand holds on to.
+            if (REMOVAL_TAGS.any { it in intent }) score += REMOVAL_BONUS * (1.0 - turns / NEVER_TURNS).coerceAtLeast(0.0)
             else if (IntentTag.DRAW in intent) score += 0.5
         }
 

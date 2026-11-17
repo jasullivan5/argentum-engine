@@ -5,6 +5,7 @@ import com.wingedsheep.sdk.scripting.CostReductionSource
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.costs.PayCost
 import com.wingedsheep.sdk.scripting.effects.Effect
+import com.wingedsheep.sdk.scripting.effects.EntersWithCharacteristics
 import com.wingedsheep.sdk.scripting.effects.FaceDownMode
 import kotlinx.serialization.Serializable
 
@@ -13,6 +14,17 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data object FaceDownComponent : Component
+
+/**
+ * The ids a hidden card carried before [com.wingedsheep.engine.state.GameState.reidentify] gave it
+ * a fresh one (a shuffled face-down pile — Jeskai Infiltrator). Server-side only: the events of the
+ * same action still name the old ids, and the face-down event masker reads this to hide the card's
+ * name in them too. Never sent to a client.
+ */
+@Serializable
+data class ReidentifiedFromComponent(
+    val previousIds: List<com.wingedsheep.sdk.model.EntityId>
+) : Component
 
 /**
  * One way a face-down permanent can be turned face up — a cost plus the mechanic whose rule
@@ -47,6 +59,20 @@ data class TurnUpProcedure(
      */
     val costReduction: CostReductionSource? = null
 ) {
+    /**
+     * Whether this route is the card's own morph or disguise ability rather than a rule of the
+     * manifest/cloak that put it face down. The special action needs the permanent to "have a
+     * morph cost if it were face up" (CR 702.37e, 702.168d), so a "loses all abilities" effect on
+     * the face-down permanent (Dance of the Skywise, Turn to Frog) closes this route. The
+     * manifest/cloak route only needs a creature card with a mana cost (CR 701.40b, 701.58b), so it
+     * stays open.
+     */
+    val isAbilityRoute: Boolean
+        get() = mechanic == FaceDownMode.MORPH || mechanic == FaceDownMode.DISGUISE
+
+    /** Whether this route can be taken on a permanent whose projected abilities are all gone. */
+    fun isOpen(lostAllAbilities: Boolean): Boolean = !(lostAllAbilities && isAbilityRoute)
+
     /** Player-facing mechanic name, e.g. "Disguise". */
     val label: String get() = mechanic.name.lowercase().replaceFirstChar { it.uppercase() }
 }
@@ -119,9 +145,18 @@ data object HasDisguiseAbilityComponent : Component
  * disguise and cloak list among the face-down permanent's characteristics
  * ([FaceDownMode.faceDownWard], CR 702.168a / 701.58a). Present only while the permanent is face
  * down — turning it face up ends the characteristic-defining effect and drops the marker.
+ *
+ * [characteristics] is what the effect that put the permanent onto the battlefield face down
+ * specified instead of the plain 2/2 (CR 708.2a: "unless otherwise specified by the effect") —
+ * Tezzeret, Cruel Machinist's "They're 5/5 artifact creatures". Added types/subtypes/colors join
+ * the face-down creature's, and power/toughness replace the 2/2. Like the 2/2 itself these are the
+ * permanent's copiable values, and they end with the rest of the marker when it is turned face up.
  */
 @Serializable
-data class FaceDownModeComponent(val mode: FaceDownMode) : Component
+data class FaceDownModeComponent(
+    val mode: FaceDownMode,
+    val characteristics: EntersWithCharacteristics? = null,
+) : Component
 
 /**
  * A face-down permanent that turns face up *instead of* becoming tapped, assigning or dealing

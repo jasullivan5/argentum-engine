@@ -209,6 +209,84 @@
     }
 }
 
+// Beseech the Queen
+{
+    "name": "Beseech the Queen",
+    "manaCost": "{2/B}{2/B}{2/B}",
+    "typeLine": "Sorcery",
+    "oracleText": "({2/B} can be paid with any two mana or with {B}. This card's mana value is 6.)\nSearch your library for a card with mana value less than or equal to the number of lands you control, reveal it, put it into your hand, then shuffle.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "FromZone",
+                        "zone": "Library",
+                        "filter": {
+                            "cardPredicates": [
+                                {
+                                    "type": "ManaValueAtMostDynamic",
+                                    "amount": {
+                                        "type": "AggregateBattlefield",
+                                        "player": "You",
+                                        "filter": "land"
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "storeAs": "searchable",
+                    "search": true
+                },
+                {
+                    "type": "SelectFromCollection",
+                    "from": "searchable",
+                    "selection": {
+                        "type": "ChooseUpTo",
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    },
+                    "storeSelected": "found",
+                    "prompt": "Search your library for a card with mana value the number of lands you control or less to put into your hand",
+                    "selectedLabel": "Put into your hand"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "found",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Hand"
+                    },
+                    "revealed": true
+                },
+                "ShuffleLibrary",
+                "EmitLibrarySearchedEvent"
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "57",
+        "rarity": "UNCOMMON",
+        "artist": "Jason Chan",
+        "flavorText": "Those who hear her go mad with inspiration.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/4/64ee0a93-0f6d-42be-bdca-1de5422d8d54.jpg?1783942757",
+        "rulings": [
+            {
+                "date": "2008-05-01",
+                "text": "A card with monocolored hybrid mana symbols in its mana cost has a mana value equal to the highest possible cost it could be cast for. Its mana value never changes. Thus, Beseech the Queen has a mana value of 6, even if you spend {B}{B}{B} to cast it."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "If a cost includes more than one monocolored hybrid mana symbol, you can choose a different way to pay for each symbol. For example, you can pay for Beseech the Queen by spending {B}{B}{B}, {2}{B}{B}, {4}{B}, or {6}."
+            }
+        ]
+    }
+}
+
 // Blazethorn Scarecrow
 {
     "name": "Blazethorn Scarecrow",
@@ -399,6 +477,75 @@
     }
 }
 
+// Blowfly Infestation
+{
+    "name": "Blowfly Infestation",
+    "manaCost": "{2}{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever a creature dies, if it had a -1/-1 counter on it, put a -1/-1 counter on target creature.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Blowfly Infestation:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            {
+                                "type": "HasCounter",
+                                "counterType": "MINUS_ONE_MINUS_ONE"
+                            }
+                        ]
+                    },
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "MINUS_ONE_MINUS_ONE",
+                    "count": 1,
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "Whenever a creature dies, if it had a -1/-1 counter on it, put a -1/-1 counter on target creature."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "58",
+        "rarity": "UNCOMMON",
+        "artist": "Drew Tucker",
+        "flavorText": "When the giant Tollek Worldslayer fell, a corruption erupted from his corpse to carry on his name.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/e/ae027b38-a6cc-41f7-8f0d-9d1402b46517.jpg?1783942756",
+        "rulings": [
+            {
+                "date": "2008-05-01",
+                "text": "When Blowfly Infestation's ability resolves, it will put a single -1/-1 counter on the targeted creature. It doesn't matter how many -1/-1 counters were on the creature that went to a graveyard as long as it had at least one on it."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "This ability is mandatory. If you're the only player who controls any creatures when this ability triggers, you must target one of them."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Boartusk Liege
 {
     "name": "Boartusk Liege",
@@ -464,6 +611,39 @@
         "flavorText": "\"We're going to need a bigger gate.\"\n—Bowen, Barrenton guardcaptain",
         "imageUri": "https://cards.scryfall.io/normal/front/6/3/63e25b70-fa21-4663-aabd-34b7e0b75c34.jpg?1783942723"
     }
+}
+
+// Boon Reflection
+{
+    "name": "Boon Reflection",
+    "manaCost": "{4}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "If you would gain life, you gain twice that much life instead.",
+    "script": {
+        "replacementEffects": [
+            "ModifyLifeGain"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "5",
+        "rarity": "RARE",
+        "artist": "Terese Nielsen & Ron Spencer",
+        "flavorText": "Kithkin healers chant the clan songs of both their parents over the broth to double its curative effect.",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/a/1a27ba4d-53af-427d-9e51-be04db077fac.jpg?1783942769",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "The effects of multiple Boon Reflections are cumulative. For example, if you control two Boon Reflections, you'll gain four times the original amount of life. If you control three Boon Reflections, you'll gain eight times the original amount, and so on."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "If an effect would set your life total to a specific number that's higher than your current life total, that effect would cause you to gain life equal to the difference. Boon Reflection will then double the amount of life that effect would cause you to gain. For example, if you have 3 life and an effect says that your life total \"becomes 10,\" your life total will actually become 17."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
 }
 
 // Burn Trail
@@ -572,6 +752,74 @@
         "flavorText": "Guttering cinders stoke their dying flames by snuffing out the lights of others.",
         "imageUri": "https://cards.scryfall.io/normal/front/1/4/140457ff-ee7d-48ec-8b91-ef5c2cc1ed74.jpg?1783942756"
     }
+}
+
+// Crimson Wisps
+{
+    "name": "Crimson Wisps",
+    "manaCost": "{R}",
+    "typeLine": "Instant",
+    "oracleText": "Target creature becomes red and gains haste until end of turn. (It can attack and {T} this turn.)\nDraw a card.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ChangeColor",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "colors": [
+                        "RED"
+                    ]
+                },
+                {
+                    "type": "GrantKeyword",
+                    "keyword": "HASTE",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "88",
+        "artist": "Jim Nelson",
+        "flavorText": "The whispers are incomprehensible, yet cinders always hear a message of urgency.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/6/a65c81ff-fc5d-4191-93fb-52eb806457b7.jpg?1783942749",
+        "rulings": [
+            {
+                "date": "2008-05-01",
+                "text": "An effect that changes a permanent's colors overwrites all its old colors unless it specifically says \"in addition to its other colors.\" For example, after Cerulean Wisps resolves, the affected creature will just be blue. It doesn't matter what colors it used to be (even if, for example, it used to be blue and black)."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "Changing a permanent's color won't change its text. If you turn Wilt-Leaf Liege blue, it will still affect green creatures and white creatures."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
 }
 
 // Crowd of Cinders
@@ -693,6 +941,67 @@
         "flavorText": "Do not disturb.",
         "imageUri": "https://cards.scryfall.io/normal/front/c/b/cbe3a68e-c29e-48a8-a2d7-49c8bff3dd8a.jpg?1783942749"
     }
+}
+
+// Devoted Druid
+{
+    "name": "Devoted Druid",
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature — Elf Druid",
+    "oracleText": "{T}: Add {G}.\nPut a -1/-1 counter on this creature: Untap this creature.",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Devoted Druid:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "GREEN"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Devoted Druid:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomPutCountersOnSelf",
+                        "counterType": "MINUS_ONE_MINUS_ONE"
+                    }
+                },
+                "effect": {
+                    "type": "TapUntap",
+                    "target": "Self",
+                    "tap": false
+                },
+                "descriptionOverride": "Put a -1/-1 counter on this creature: Untap this creature."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "110",
+        "artist": "Darrell Riche",
+        "flavorText": "\"Mana lurks in all things, even in the depths of one's own heart.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/2/820e2f07-f637-4144-b45a-0e1430dcf55e.jpg?1783942744",
+        "rulings": [
+            {
+                "date": "2018-12-07",
+                "text": "If you can't put -1/-1 counters on Devoted Druid (due to an effect such as that of Solemnity), you can't activate its second ability. If you can put counters on it, but that is modified by an effect (such as that of Vizier of Remedies), you can activate the ability even if paying the cost causes no counters to be put on Devoted Druid."
+            },
+            {
+                "date": "2018-12-07",
+                "text": "You put the -1/-1 counter on Devoted Druid as a cost to activate its ability, not when it resolves. If paying the cost causes Devoted Druid to have 0 toughness, it's put into your graveyard before you can untap it and before you can even pay the cost again."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
 }
 
 // Drove of Elves
@@ -999,6 +1308,51 @@
         "artist": "Trevor Hairsine",
         "flavorText": "Gyara Spearhurler would have been renowned for her deadly accuracy, if it weren't for her deadly accuracy.",
         "imageUri": "https://cards.scryfall.io/normal/front/a/5/a567b570-81e4-4068-929c-9ce406fe7474.jpg?1783942749"
+    }
+}
+
+// Flourishing Defenses
+{
+    "name": "Flourishing Defenses",
+    "manaCost": "{4}{G}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever a -1/-1 counter is put on a creature, you may create a 1/1 green Elf Warrior creature token.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Flourishing Defenses:1",
+                "trigger": {
+                    "type": "CountersPlacedEvent",
+                    "counterType": "MINUS_ONE_MINUS_ONE",
+                    "filter": "creature",
+                    "perCounter": true
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "CreateToken",
+                        "power": 1,
+                        "toughness": 1,
+                        "colors": [
+                            "GREEN"
+                        ],
+                        "creatureTypes": [
+                            "Elf",
+                            "Warrior"
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "114",
+        "rarity": "UNCOMMON",
+        "artist": "Dan Murayama Scott",
+        "flavorText": "Many horrors take the bait of brave elf volunteers walking alone, only to fall to the blades of rescuers lurking nearby.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/2/6223f5d6-83f1-454e-9cd5-aba157850430.jpg?1783942743"
     }
 }
 
@@ -1473,6 +1827,57 @@
     }
 }
 
+// Greater Auramancy
+{
+    "name": "Greater Auramancy",
+    "manaCost": "{1}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "Other enchantments you control have shroud. (A permanent with shroud can't be the target of spells or abilities.)\nEnchanted creatures you control have shroud.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantKeyword",
+                "keyword": "SHROUD",
+                "filter": {
+                    "baseFilter": "enchantment ctrl:you",
+                    "excludeSelf": true
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "SHROUD",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            "IsEnchanted"
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "7",
+        "rarity": "RARE",
+        "artist": "Chuck Lukacs",
+        "flavorText": "A delicate veil of glamers can prove as sturdy as iron.",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/1/1177787f-bf1e-438b-9615-97d03b04128c.jpg?1783942768",
+        "rulings": [
+            {
+                "date": "2008-05-01",
+                "text": "If you have two on the battlefield, they’ll each grant the other one shroud."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Heap Doll
 {
     "name": "Heap Doll",
@@ -1515,6 +1920,156 @@
         "artist": "John Avon",
         "flavorText": "\"I know one night it won't come back. Then I'll know it's truly done its job.\"\n—Braenna, cobblesmith",
         "imageUri": "https://cards.scryfall.io/normal/front/8/6/86d726e1-a363-4d77-97d4-e8c94f93fd51.jpg?1783942712"
+    }
+}
+
+// Helm of the Ghastlord
+{
+    "name": "Helm of the Ghastlord",
+    "manaCost": "{3}{U/B}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant creature\nAs long as enchanted creature is blue, it gets +1/+1 and has \"Whenever this creature deals damage to an opponent, draw a card.\"\nAs long as enchanted creature is black, it gets +1/+1 and has \"Whenever this creature deals damage to an opponent, that player discards a card.\"",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "ModifyStats",
+                    "powerBonus": 1,
+                    "toughnessBonus": 1
+                },
+                "condition": {
+                    "type": "EntityMatches",
+                    "entity": "EnchantedPermanent",
+                    "filter": "creature blue"
+                }
+            },
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "GrantTriggeredAbility",
+                    "ability": {
+                        "id": "Helm of the Ghastlord:1",
+                        "trigger": {
+                            "type": "DealsDamageEvent",
+                            "recipient": {
+                                "type": "RecipientPlayer",
+                                "player": "EachOpponent"
+                            }
+                        },
+                        "effect": {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 1
+                            }
+                        }
+                    }
+                },
+                "condition": {
+                    "type": "EntityMatches",
+                    "entity": "EnchantedPermanent",
+                    "filter": "creature blue"
+                }
+            },
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "ModifyStats",
+                    "powerBonus": 1,
+                    "toughnessBonus": 1
+                },
+                "condition": {
+                    "type": "EntityMatches",
+                    "entity": "EnchantedPermanent",
+                    "filter": "creature black"
+                }
+            },
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "GrantTriggeredAbility",
+                    "ability": {
+                        "id": "Helm of the Ghastlord:2",
+                        "trigger": {
+                            "type": "DealsDamageEvent",
+                            "recipient": {
+                                "type": "RecipientPlayer",
+                                "player": "EachOpponent"
+                            }
+                        },
+                        "effect": {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "GatherCards",
+                                    "source": {
+                                        "type": "FromZone",
+                                        "zone": "Hand",
+                                        "player": "TriggeringPlayer"
+                                    },
+                                    "storeAs": "hand"
+                                },
+                                {
+                                    "type": "SelectFromCollection",
+                                    "from": "hand",
+                                    "selection": {
+                                        "type": "ChooseExactly",
+                                        "count": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        }
+                                    },
+                                    "chooser": "TriggeringPlayer",
+                                    "storeSelected": "discarded",
+                                    "prompt": "Choose 1 card to discard"
+                                },
+                                {
+                                    "type": "MoveCollection",
+                                    "from": "discarded",
+                                    "destination": {
+                                        "type": "ToZone",
+                                        "zone": "Graveyard",
+                                        "player": "TriggeringPlayer"
+                                    },
+                                    "moveType": "Discard"
+                                }
+                            ]
+                        }
+                    }
+                },
+                "condition": {
+                    "type": "EntityMatches",
+                    "entity": "EnchantedPermanent",
+                    "filter": "creature black"
+                }
+            }
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "creature"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "166",
+        "artist": "Franz Vohwinkel",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/5/653dd5b7-1ad3-4df1-bd2a-4e6ae362a8a2.jpg?1783942732",
+        "rulings": [
+            {
+                "date": "2008-05-01",
+                "text": "If the enchanted creature is both of the listed colors, it will get both bonuses."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "With regards to the two triggered abilities that Helm of the Ghastlord grants to the enchanted creature, the point when damage is actually dealt is the only time it matters what color the creature is. If the creature is blue or black at that time, the appropriate ability or abilities will trigger. They'll resolve even if the creature changes color or loses its Aura."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "The two abilities trigger when the enchanted creature deals damage to an opponent of the creature's controller, not when it deals damage to an opponent of the Helm's controller. They trigger from any damage, not just combat damage."
+            }
+        ]
     }
 }
 
@@ -1790,6 +2345,98 @@
         "flavorText": "The nova glyph is a potent symbol. A shield embossed with it can resist the force of even the most determined giant.",
         "imageUri": "https://cards.scryfall.io/normal/front/7/e/7e5102a7-2147-4e22-b683-c08b4a725617.jpg?1783942768"
     }
+}
+
+// Knollspine Dragon
+{
+    "name": "Knollspine Dragon",
+    "manaCost": "{5}{R}{R}",
+    "typeLine": "Creature — Dragon",
+    "oracleText": "Flying\nWhen this creature enters, you may discard your hand and draw cards equal to the damage dealt to target opponent this turn.",
+    "creatureStats": {
+        "power": 7,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Knollspine Dragon:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "FromZone",
+                                    "zone": "Hand"
+                                },
+                                "storeAs": "discardedHand"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "discardedHand",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Graveyard"
+                                },
+                                "moveType": "Discard"
+                            },
+                            {
+                                "type": "DrawCards",
+                                "count": {
+                                    "type": "TurnTracking",
+                                    "player": {
+                                        "type": "ContextPlayer",
+                                        "index": 0
+                                    },
+                                    "tracker": "DAMAGE_RECEIVED"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetOpponent",
+                    "id": "t0"
+                },
+                "descriptionOverride": "When this creature enters, you may discard your hand and draw cards equal to the damage dealt to target opponent this turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "98",
+        "rarity": "RARE",
+        "artist": "Steve Prescott",
+        "flavorText": "It woke to find a vast world in need of a master.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/f/bfcfec58-bfe4-4b04-80e3-ee11c44e91a7.jpg?1783942747",
+        "rulings": [
+            {
+                "date": "2008-05-01",
+                "text": "You target an opponent when the ability triggers. You don't decide whether you want to discard and draw until the ability resolves."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "This ability counts the total amount of damage (both combat and noncombat) dealt to the targeted opponent by all sources (including ones you controlled and ones you didn't) over the course of the turn. Damage that was prevented or replaced doesn't count. Damage that resolved but didn't cause loss of life (due to Worship, for example) will count."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "Knollspine Dragon's ability checks only whether damage was dealt. It doesn't care whether the player's life total also changed for other reasons (such as if the player paid life or gained life). For example, if an opponent was dealt 4 damage and gained 6 life during the turn, that player will have a higher life total than they started the turn with — but Knollspine Dragon's ability will let you discard your hand and draw four cards."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
 }
 
 // Leechridden Swamp
@@ -2269,6 +2916,119 @@
         "flavorText": "\"So now you've seen Glen Elendra. Take a good look. It will be the last thing you'll ever see.\"",
         "imageUri": "https://cards.scryfall.io/normal/front/9/7/972bb6e4-300c-49f5-8305-459a3ba67baa.jpg?1783942729"
     }
+}
+
+// Oona, Queen of the Fae
+{
+    "name": "Oona, Queen of the Fae",
+    "manaCost": "{3}{U/B}{U/B}{U/B}",
+    "typeLine": "Legendary Creature — Faerie Wizard",
+    "oracleText": "Flying\n{X}{U/B}: Choose a color. Target opponent exiles the top X cards of their library. For each card of the chosen color exiled this way, create a 1/1 blue and black Faerie Rogue creature token with flying.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Oona, Queen of the Fae:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{X}{U/B}"
+                    }
+                },
+                "effect": {
+                    "type": "ChooseColorThen",
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "TopOfLibrary",
+                                    "count": "XValue",
+                                    "player": "TargetOpponent"
+                                },
+                                "storeAs": "gathered0"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "gathered0",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Exile",
+                                    "player": "TargetOpponent"
+                                }
+                            },
+                            {
+                                "type": "FilterCollection",
+                                "from": "gathered0",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "HasChosenColor"
+                                    ]
+                                },
+                                "storeMatching": "matching2"
+                            },
+                            {
+                                "type": "CreateToken",
+                                "count": {
+                                    "type": "VariableReference",
+                                    "variableName": "matching2_count"
+                                },
+                                "power": 1,
+                                "toughness": 1,
+                                "colors": [
+                                    "BLUE",
+                                    "BLACK"
+                                ],
+                                "creatureTypes": [
+                                    "Faerie",
+                                    "Rogue"
+                                ],
+                                "keywords": [
+                                    "FLYING"
+                                ],
+                                "imageUri": "https://cards.scryfall.io/normal/front/a/0/a07b4786-1592-42c7-9d3e-d0d66abaed99.jpg?1783942698"
+                            }
+                        ]
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetOpponent",
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{X}{U/B}: Choose a color. Target opponent exiles the top X cards of their library. For each card of the chosen color exiled this way, create a 1/1 blue and black Faerie Rogue creature token with flying."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "172",
+        "rarity": "RARE",
+        "artist": "Adam Rex",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/4/24ae75f6-fb74-422c-93f6-a0be7f919e47.jpg?1783942730",
+        "rulings": [
+            {
+                "date": "2008-05-01",
+                "text": "You target the opponent when you activate Oona's ability. You don't choose the color until the ability resolves."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "The tokens enter under your control."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "BLACK"
+    ]
 }
 
 // Oversoul of Dusk
@@ -2833,6 +3593,92 @@
     }
 }
 
+// River Kelpie
+{
+    "name": "River Kelpie",
+    "manaCost": "{3}{U}{U}",
+    "typeLine": "Creature — Beast",
+    "oracleText": "Whenever this creature or another permanent enters from a graveyard, draw a card.\nWhenever a player casts a spell from a graveyard, draw a card.\nPersist (When this creature dies, if it had no -1/-1 counters on it, return it to the battlefield under its owner's control with a -1/-1 counter on it.)",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "PERSIST"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "River Kelpie:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "permanent",
+                    "from": "Graveyard",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "Whenever this creature or another permanent enters from a graveyard, draw a card."
+            },
+            {
+                "id": "River Kelpie:2",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "player": "Each",
+                    "requires": [
+                        {
+                            "type": "SpellCastFromZone",
+                            "zone": "Graveyard"
+                        }
+                    ]
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "Whenever a player casts a spell from a graveyard, draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "49",
+        "rarity": "RARE",
+        "artist": "Jeff Easley",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/7/970adaaf-1534-4529-8da4-c4dcf7c08b7b.jpg?1783942758",
+        "rulings": [
+            {
+                "date": "2008-05-01",
+                "text": "If River Kelpie and another permanent are each put onto the battlefield from a graveyard at the same time, River Kelpie's first ability will trigger twice. (It will see the other permanent entering.)"
+            },
+            {
+                "date": "2008-05-01",
+                "text": "If you cast another artifact, creature, enchantment, or planeswalker spell from a graveyard, only the second ability triggers. That's because the card is put onto the stack, not onto the battlefield."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "If you cast River Kelpie itself from your graveyard (by using Yawgmoth's Will, for example), neither ability triggers. The first ability doesn't trigger because River Kelpie is put onto the stack; the second ability doesn't trigger because it works only while River Kelpie is already on the battlefield."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "If you play a land card from a graveyard (by using Crucible of Worlds, for example), only the first ability triggers. That's because the land (which isn't a spell) is put directly onto the battlefield from the graveyard."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Roughshod Mentor
 {
     "name": "Roughshod Mentor",
@@ -2908,6 +3754,38 @@
         "flavorText": "Things of beauty are in constant peril. The riders whisk them to safety, ahead of the encroaching darkness.",
         "imageUri": "https://cards.scryfall.io/normal/front/9/d/9d9574f6-40b3-4fe2-950c-234bc358ecf6.jpg?1783942766"
     }
+}
+
+// Runed Halo
+{
+    "name": "Runed Halo",
+    "manaCost": "{W}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "As this enchantment enters, choose a card name.\nYou have protection from the chosen card name. (You can't be targeted, dealt damage, or enchanted by anything with that name.)",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantProtectionToController",
+                "scope": "ProtectionScope.ChosenCardName"
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithChoice",
+                "choiceType": "CARD_NAME",
+                "cardNamePool": "ANY"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "21",
+        "rarity": "RARE",
+        "artist": "Steve Prescott",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/2/92b45f79-f23e-4eef-8cac-91780dc2a044.jpg?1783942765"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
 }
 
 // Rustrazor Butcher
@@ -3368,6 +4246,62 @@
     }
 }
 
+// Smash to Smithereens
+{
+    "name": "Smash to Smithereens",
+    "manaCost": "{1}{R}",
+    "typeLine": "Instant",
+    "oracleText": "Destroy target artifact. Smash to Smithereens deals 3 damage to that artifact's controller.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 3
+                    },
+                    "target": "TargetController"
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "artifact"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "107",
+        "artist": "Pete Venters",
+        "flavorText": "The giant Tarvik dreamed that trinkets and machines caused all the world's woe. When he awoke from his troubled sleep, he took the name Tarvik Relicsmasher.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/e/7eda1524-44dd-4f70-ac21-bac51578860e.jpg?1783942745",
+        "rulings": [
+            {
+                "date": "2015-06-22",
+                "text": "Smash to Smithereens targets only the artifact, not any player. If that artifact becomes an illegal target by the time Smash to Smithereens tries to resolve, Smash to Smithereens won't resolve and none of its effects will happen. No damage will be dealt."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Smolder Initiate
 {
     "name": "Smolder Initiate",
@@ -3548,6 +4482,197 @@
         "flavorText": "\"The dead have it easy. They suffer no more. If breaking their rest helps the living, so be it.\"\n—Olka, mistmeadow witch",
         "imageUri": "https://cards.scryfall.io/normal/front/5/e/5e26bd0c-5ec7-4653-8e63-747157c20af1.jpg?1783942765"
     }
+}
+
+// Spiteful Visions
+{
+    "name": "Spiteful Visions",
+    "manaCost": "{2}{B/R}{B/R}",
+    "typeLine": "Enchantment",
+    "oracleText": "At the beginning of each player's draw step, that player draws an additional card.\nWhenever a player draws a card, this enchantment deals 1 damage to that player.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Spiteful Visions:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "DRAW",
+                    "player": "Each"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    }
+                }
+            },
+            {
+                "id": "Spiteful Visions:2",
+                "trigger": {
+                    "type": "DrawEvent",
+                    "player": "Each"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "198",
+        "rarity": "RARE",
+        "artist": "Brandon Kitkouski",
+        "flavorText": "Knowledge brings the sting of disillusionment, but the pain teaches perspective.",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/9/19039ac4-1aaa-4aca-ba09-f7fc400b9ada.jpg?1783942725",
+        "rulings": [
+            {
+                "date": "2013-04-15",
+                "text": "The triggered ability is put onto the stack after you have already drawn your card for the turn."
+            },
+            {
+                "date": "2008-05-01",
+                "text": "Spiteful Visions's second ability triggers any time any player draws a card, not just when a player draws a card as a result of its first ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
+// Sunken Ruins
+{
+    "name": "Sunken Ruins",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "{T}: Add {C}.\n{U/B}, {T}: Add {U}{U}, {U}{B}, or {B}{B}.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Sunken Ruins:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Sunken Ruins:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{U/B}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "AddMana",
+                    "color": "BLUE",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Sunken Ruins:3",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{U/B}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "AddMana",
+                            "color": "BLUE"
+                        },
+                        {
+                            "type": "AddMana",
+                            "color": "BLACK"
+                        }
+                    ]
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Sunken Ruins:4",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{U/B}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "AddMana",
+                    "color": "BLACK",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "280",
+        "rarity": "RARE",
+        "artist": "Warren Mahy",
+        "flavorText": "Without the care of the tideshapers, the Lanes lie neglected. Some have flooded entire towns; others dried to cracked mud.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/d/9d91a31c-b70a-45bd-a8dd-48d49b277f24.jpg?1783942705"
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "BLACK"
+    ]
 }
 
 // Tattermunge Duo

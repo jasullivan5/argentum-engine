@@ -381,6 +381,99 @@
     ]
 }
 
+// Cemetery Reaper
+{
+    "name": "Cemetery Reaper",
+    "manaCost": "{1}{B}{B}",
+    "typeLine": "Creature — Zombie",
+    "oracleText": "Other Zombie creatures you control get +1/+1.\n{2}{B}, {T}: Exile target creature card from a graveyard. Create a 2/2 black Zombie creature token.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Cemetery Reaper:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{2}{B}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "MoveToZone",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            },
+                            "destination": "Exile"
+                        },
+                        {
+                            "type": "CreateToken",
+                            "power": 2,
+                            "toughness": 2,
+                            "colors": [
+                                "BLACK"
+                            ],
+                            "creatureTypes": [
+                                "Zombie"
+                            ]
+                        }
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature",
+                            "zone": "Graveyard"
+                        },
+                        "id": "t0"
+                    }
+                ]
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "creature Zombie ctrl:you",
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "87",
+        "rarity": "RARE",
+        "artist": "Dave Allsop",
+        "flavorText": "Every grave cradles a recruit.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/3/639b48f0-3426-46cf-b857-4611f7de4826.jpg?1783942385",
+        "rulings": [
+            {
+                "date": "2009-10-01",
+                "text": "The creature card in a graveyard is exiled as part of the activated ability's effect, not as a cost. If that card has left the graveyard by the time the ability would resolve, the ability doesn't resolve and you don't get a Zombie token."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Centaur Courser
 {
     "name": "Centaur Courser",
@@ -1174,6 +1267,111 @@
     ]
 }
 
+// Goblin Chieftain
+{
+    "name": "Goblin Chieftain",
+    "manaCost": "{1}{R}{R}",
+    "typeLine": "Creature — Goblin",
+    "oracleText": "Haste (This creature can attack and {T} as soon as it comes under your control.)\nOther Goblin creatures you control get +1/+1 and have haste.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "HASTE"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "creature Goblin ctrl:you",
+                    "excludeSelf": true
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "HASTE",
+                "filter": {
+                    "baseFilter": "creature Goblin ctrl:you",
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "139",
+        "rarity": "RARE",
+        "artist": "Sam Wood",
+        "flavorText": "\"We are goblinkind, heirs to the mountain empires of chieftains past. Rest is death to us, and arson is our call to war.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/5/f5c8a4a4-1611-4188-9c59-8aefb016b5ad.jpg?1783942372"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Gorgon Flail
+{
+    "name": "Gorgon Flail",
+    "manaCost": "{2}",
+    "typeLine": "Artifact — Equipment",
+    "oracleText": "Equipped creature gets +1/+1 and has deathtouch. (Any amount of damage it deals to a creature is enough to destroy that creature.)\nEquip {2} ({2}: Attach to target creature you control. Equip only as a sorcery.)",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Gorgon Flail:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}"
+                    }
+                },
+                "effect": {
+                    "type": "AttachEquipment",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "creature you control"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        },
+                        "id": "creature you control"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "isEquipAbility": true
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "DEATHTOUCH"
+            }
+        ]
+    },
+    "equipCost": "{2}",
+    "metadata": {
+        "collectorNumber": "211",
+        "rarity": "UNCOMMON",
+        "artist": "Lars Grant-West",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/e/eefc48cb-79aa-4e28-a736-ae9e4e2bc97b.jpg?1783942356"
+    },
+    "colorIdentityOverride": []
+}
+
 // Griffin Sentinel
 {
     "name": "Griffin Sentinel",
@@ -1226,6 +1424,54 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Howling Banshee
+{
+    "name": "Howling Banshee",
+    "manaCost": "{2}{B}{B}",
+    "typeLine": "Creature — Spirit",
+    "oracleText": "Flying\nWhen this creature enters, each player loses 3 life.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Howling Banshee:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 3
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "Each"
+                    }
+                },
+                "descriptionOverride": "When this creature enters, each player loses 3 life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "99",
+        "rarity": "UNCOMMON",
+        "artist": "Andrew Robinson",
+        "flavorText": "Villagers cloaked the town in magical silence, but their ears still bled.",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/7/e7e38e91-696e-4bf9-b46c-c9ed85c82b19.jpg?1783942382"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -1696,6 +1942,122 @@
     ]
 }
 
+// Prized Unicorn
+{
+    "name": "Prized Unicorn",
+    "manaCost": "{3}{G}",
+    "typeLine": "Creature — Unicorn",
+    "oracleText": "All creatures able to block this creature do so.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "MustBeBlockedStatic",
+                "allCreatures": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "199",
+        "rarity": "UNCOMMON",
+        "artist": "Sam Wood",
+        "flavorText": "\"The desire for its magic horn inspires such bloodthirsty greed that all who see the unicorn will kill to possess it.\"\n—Dionus, elvish archdruid",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/d/cde88869-5202-43e9-b0eb-4e40a50d311e.jpg?1783942359",
+        "rulings": [
+            {
+                "date": "2019-07-12",
+                "text": "If a creature the defending player controls can't block Prized Unicorn for any reason (such as being tapped), then it doesn't block Prized Unicorn. If there's a cost associated with having a creature block Prized Unicorn, the defending player isn't forced to pay that cost, so it doesn't have to block."
+            },
+            {
+                "date": "2019-07-12",
+                "text": "If more than one Prized Unicorn is attacking, creatures that could block must block one Prized Unicorn, but they don't all have to block the same Prized Unicorn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Rise from the Grave
+{
+    "name": "Rise from the Grave",
+    "manaCost": "{4}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Put target creature card from a graveyard onto the battlefield under your control. That creature is a black Zombie in addition to its other colors and types.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Battlefield",
+                    "controllerOverride": "Controller"
+                },
+                {
+                    "type": "AddColor",
+                    "colors": [
+                        "BLACK"
+                    ],
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "AddCreatureType",
+                    "subtype": "Zombie",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature",
+                    "zone": "Graveyard"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "109",
+        "rarity": "UNCOMMON",
+        "artist": "Vance Kovacs",
+        "flavorText": "\"Death is no excuse for disobedience.\"\n—Liliana Vess",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/b/cb9dd0d9-8e35-4a8c-af6f-83c7d2a3ea7d.jpg?1783942379",
+        "rulings": [
+            {
+                "date": "2018-07-13",
+                "text": "Rise from the Grave doesn’t overwrite any previous colors or types. Rather, it adds another color and another subtype."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "If the creature is normally colorless, it will simply become black. It can’t be both black and colorless."
+            },
+            {
+                "date": "2018-07-13",
+                "text": "A later effect that changes the affected creature’s colors will overwrite that part of Rise from the Grave’s effect; the creature will be only the new color. The same is true about an effect that changes the affected creature’s types or subtypes."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Rootbound Crag
 {
     "name": "Rootbound Crag",
@@ -1809,6 +2171,70 @@
     ]
 }
 
+// Sanguine Bond
+{
+    "name": "Sanguine Bond",
+    "manaCost": "{3}{B}{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever you gain life, target opponent loses that much life.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Sanguine Bond:1",
+                "trigger": "LifeGainEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGER_LIFE_GAINED"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetOpponent",
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "111",
+        "rarity": "RARE",
+        "artist": "Jaime Jones",
+        "flavorText": "\"Blood is constant. Every drop I drink, someone must bleed.\"\n—Vradeen, vampire nocturnus",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/4/445d6a68-ed53-4c96-973a-c29282514f41.jpg?1783942379",
+        "rulings": [
+            {
+                "date": "2009-10-01",
+                "text": "Sanguine Bond's ability triggers just once for each life-gaining event, whether it's 1 life from Soul Warden or 8 life from Tendrils of Corruption."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "If you gain an amount of life \"for each\" of something, that life is gained as one event and Sanguine Bond's ability triggers only once."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "If an ability triggers whenever an opponent loses life and causes you to gain life, such as the ability of Exquisite Blood, this will loop until either you win the game or a player takes an action to break the loop. If neither of these happen, the game ends in a draw."
+            },
+            {
+                "date": "2023-09-01",
+                "text": "Each creature with lifelink dealing combat damage causes a separate life-gaining event. For example, if two creatures you control with lifelink deal combat damage at the same time, Sanguine Bond's ability will trigger twice and you may choose a different opponent for each trigger. However, if a single creature you control with lifelink deals combat damage to multiple creatures, players, planeswalkers, and/or battles at the same time (perhaps because it has trample or was blocked by more than one creature), the ability will trigger only once."
+            },
+            {
+                "date": "2024-04-12",
+                "text": "In a Two-Headed Giant game, life gained by your teammate won't cause Sanguine Bond's ability to trigger, even though it caused your team's life total to increase."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Seismic Strike
 {
     "name": "Seismic Strike",
@@ -1869,6 +2295,99 @@
     ]
 }
 
+// Sign in Blood
+{
+    "name": "Sign in Blood",
+    "manaCost": "{B}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Target player draws two cards and loses 2 life.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetPlayer",
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "112",
+        "artist": "Howard Lyon",
+        "flavorText": "\"You know I accept only one currency here, and yet you have sought me out. Why now do you hesitate?\"\n—Xathrid demon",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/9/1975ed97-acb8-4bb6-804a-e5da725d876e.jpg?1783942379"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Silence
+{
+    "name": "Silence",
+    "manaCost": "{W}",
+    "typeLine": "Instant",
+    "oracleText": "Your opponents can't cast spells this turn.",
+    "script": {
+        "spellEffect": {
+            "type": "CantCastSpells",
+            "target": {
+                "type": "PlayerRef",
+                "player": "EachOpponent"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "31",
+        "rarity": "RARE",
+        "artist": "Wayne Reynolds",
+        "flavorText": "\"All the wizardry in the world has to pass through one small and easily sealed door.\"\n—Ajani Goldmane",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/5/1559d660-8a9d-422b-95d3-710a046583dd.jpg?1783942397",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "Silence won't affect spells that your opponents cast before you cast Silence, including any spells that are still on the stack. Silence also won't stop your opponents from casting spells after you cast Silence but before Silence resolves."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "The only thing Silence stops is casting spells. Your opponents can still activate abilities, including abilities of cards in their hands (like cycling). Their triggered abilities work as normal, they can still play lands, and so on."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "A player who can't cast a spell can't suspend a card."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Silvercoat Lion
 {
     "name": "Silvercoat Lion",
@@ -1886,6 +2405,80 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Sleep
+{
+    "name": "Sleep",
+    "manaCost": "{2}{U}{U}",
+    "typeLine": "Sorcery",
+    "oracleText": "Tap all creatures target player controls. Those creatures don't untap during that player's next untap step.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": {
+                                "cardPredicates": [
+                                    "IsCreature"
+                                ],
+                                "controllerPredicate": {
+                                    "type": "ControlledByReferencedPlayer",
+                                    "target": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "body": {
+                        "type": "TapUntap",
+                        "target": "IterationEntity"
+                    }
+                },
+                {
+                    "type": "SkipUntap",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "permanents": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ]
+                    },
+                    "lockedAtResolution": true
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetPlayer",
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "71",
+        "rarity": "UNCOMMON",
+        "artist": "Chris Rahn",
+        "flavorText": "\"I give them dreams so wondrous that they hesitate to return to the world of the conscious.\"\n—Garild, merfolk mage",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/3/133be4f4-1daa-41b6-b509-9e64c6b00059.jpg?1783942388",
+        "rulings": [
+            {
+                "date": "2018-07-13",
+                "text": "The second part of Sleep's ability affects all creatures the targeted player controls as Sleep resolves, not only the ones that Sleep actually caused to become tapped."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 

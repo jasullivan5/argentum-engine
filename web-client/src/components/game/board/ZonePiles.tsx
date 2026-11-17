@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useGameStore } from '@/store/gameStore.ts'
 import { useZoneCards, useStackCards, useZone, useCard, selectGameState, librarySlots, useOutsidePlayableKey, splitOutsidePlayable } from '@/store/selectors.ts'
@@ -7,18 +7,21 @@ import type { ClientCard, ClientDeckCard, ClientPlayer } from '@/types'
 import { CARD_BACK_IMAGE_URL } from '@/utils/cardImages.ts'
 import { getCardImageUrl } from '@/utils/cardImages.ts'
 import { useResponsiveContext, handleImageError, getStashCounters, getTimeCounters, getCounterCount } from './shared'
-import { DeckBrowser } from './DeckBrowser'
 import { counterManaClass } from '@/assets/icons/keywords'
 import { styles, passiveCounterBadgeStyle } from './styles'
 import { collectGraveyardTargets, type GraveyardTarget } from './graveyardTargets'
 import { GraveyardTargetCallout } from './GraveyardTargetCallout'
+
+// Opened only by clicking a Deck pile, and it brings the deck-view components with it, so it loads
+// on demand rather than riding in the game board chunk.
+const DeckBrowser = lazy(() => import('./DeckBrowser').then(({ DeckBrowser }) => ({ default: DeckBrowser })))
 
 /** Stable empty array so the `ownDeck` selector doesn't hand Zustand a new reference each render. */
 const EMPTY_DECK: readonly ClientDeckCard[] = []
 
 const CARD_RATIO = 1.4
 /** Counters that only mark a card in exile for some effect, badged in the exile browser. */
-const EXILE_MARKER_COUNTERS = [CounterType.BRAIN, CounterType.HATCHING, CounterType.STUDY] as const
+const EXILE_MARKER_COUNTERS = [CounterType.BRAIN, CounterType.HATCHING, CounterType.STUDY, CounterType.HIT, CounterType.REFINE, CounterType.VOYAGE] as const
 const LABEL_HEIGHT = 14
 // Deck + Graveyard + Exile are always present; extra "Plotted", "Paradigm", and "Suspended"
 // piles appear only when the player has those cards in exile (see `pileCount` below).
@@ -509,14 +512,16 @@ export function ZonePile({
         document.body,
       )}
       {browsingLibrary && createPortal(
-        <DeckBrowser
-          ownerLabel={isOpponent ? `${player.name}'s` : 'Your'}
-          slots={librarySlotIds}
-          deck={ownDeck}
-          outsideCards={outsideCards}
-          outsidePlayable={outsidePlayable}
-          onClose={() => setBrowsingLibrary(false)}
-        />,
+        <Suspense fallback={null}>
+          <DeckBrowser
+            ownerLabel={isOpponent ? `${player.name}'s` : 'Your'}
+            slots={librarySlotIds}
+            deck={ownDeck}
+            outsideCards={outsideCards}
+            outsidePlayable={outsidePlayable}
+            onClose={() => setBrowsingLibrary(false)}
+          />
+        </Suspense>,
         document.body,
       )}
     </div>
@@ -761,7 +766,7 @@ function ExileBrowser({ cards, ownerLabel, onClose }: { cards: readonly ClientCa
                 </div>
               )}
               {/* Exile-marker counters (brain: Rex, Cyber-Hound's ability donors; hatching: the
-                  cards Dragon-Kami's Egg can cast; study: the cards Kianne // Imbraham read) say which exiled cards count, so the exile browser
+                  cards Dragon-Kami's Egg can cast; study: the cards Kianne // Imbraham read; hit: Etrata's marks) say which exiled cards count, so the exile browser
                   is where a player checks them. Bottom-left, clear of the plotted and stash badges. */}
               {EXILE_MARKER_COUNTERS.filter((type) => getCounterCount(card, type) > 0).map((type) => (
                 <div

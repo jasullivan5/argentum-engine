@@ -24,6 +24,7 @@ import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.player.CardsCycledThisGameComponent
+import com.wingedsheep.engine.state.components.player.CycledThisTurnComponent
 import com.wingedsheep.engine.state.components.player.ManaPoolComponent
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.ManaCost
@@ -33,6 +34,7 @@ import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.PreventCycling
 import kotlin.reflect.KClass
 import com.wingedsheep.engine.core.Outcome
+import com.wingedsheep.engine.state.components.identity.faceUpCardDefinition
 
 /**
  * Handler for the TypecycleCard action.
@@ -216,13 +218,16 @@ class TypecycleCardHandler(
         events.addAll(discardResult.events)
 
         // "Cycled a card named X N times this game" (Yidaro, Wandering Monster) — counted before
-        // the event so a "when you cycle" trigger already sees this cycle.
+        // the event so a "when you cycle" trigger already sees this cycle. "For the first time each
+        // turn" (Valiant Rescuer) is read before this cycle marks the player.
+        val firstCycleThisTurn = currentState.getEntity(action.playerId)?.has<CycledThisTurnComponent>() != true
         currentState = currentState.updateEntity(action.playerId) { player ->
             player.with((player.get<CardsCycledThisGameComponent>() ?: CardsCycledThisGameComponent()).record(cardComponent.name))
+                .with(CycledThisTurnComponent)
         }
 
         // Emit cycling event (typecycling triggers cycling abilities per MTG rules)
-        events.add(CardCycledEvent(action.playerId, action.cardId, cardComponent.name))
+        events.add(CardCycledEvent(action.playerId, action.cardId, cardComponent.name, firstThisTurn = firstCycleThisTurn))
 
         currentState = currentState.tick()
 
@@ -278,8 +283,7 @@ class TypecycleCardHandler(
 
     private fun isCyclingPrevented(state: GameState): Boolean {
         for (entityId in state.getBattlefield()) {
-            val card = state.getEntity(entityId)?.get<CardComponent>() ?: continue
-            val cardDef = cardRegistry.getCard(card.cardDefinitionId) ?: continue
+            val cardDef = state.getEntity(entityId)?.faceUpCardDefinition(cardRegistry) ?: continue
             if (cardDef.script.staticAbilities.any { it is PreventCycling }) {
                 return true
             }
@@ -291,9 +295,13 @@ class TypecycleCardHandler(
      * [cost] after the board's activated-ability cost reductions — typecycling is an activated
      * ability of the card in hand (CR 702.29a), so Zirda's "abilities you activate" reaches it.
      */
-    private fun reduced(state: GameState, action: TypecycleCard, cost: ManaCost): ManaCost =
-        castPermissionUtils?.applyActivatedAbilityCostReduction(cost, state, action.cardId, action.playerId)
-            ?: cost
+    private fun reduced(state: GameState, action: TypecycleCard, cost: ManaCost): ManaCost {
+        val utils = castPermissionUtils ?: return cost
+        // Typecycling is cycling (CR 702.29e): a free-cycling grant (New Perspectives) swaps the
+        // printed cost for {0} before the reductions apply.
+        val base = utils.cyclingBaseCost(cost, null, state, action.playerId)
+        return utils.applyActivatedAbilityCostReduction(base, state, action.cardId, action.playerId)
+    }
 
     companion object {
         fun create(services: EngineServices): TypecycleCardHandler {

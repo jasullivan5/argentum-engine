@@ -4,11 +4,13 @@ import com.wingedsheep.sdk.core.CardType
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Keyword
+import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.scripting.events.DamageType
 import com.wingedsheep.sdk.scripting.predicates.BlockDirection
 import com.wingedsheep.sdk.scripting.predicates.CardPredicate
+import com.wingedsheep.sdk.scripting.predicates.ControlMark
 import com.wingedsheep.sdk.scripting.predicates.ControllerPredicate
 import com.wingedsheep.sdk.scripting.predicates.StatePredicate
 import com.wingedsheep.sdk.scripting.references.Player
@@ -150,6 +152,7 @@ interface ObjectFilterBuilder<out Self> {
 
     /** Restrict to cards with a cycling ability, typecycling included ("card with a cycling ability"). */
     fun withCycling() = withCardPredicate(CardPredicate.HasCycling)
+    fun withKicker() = withCardPredicate(CardPredicate.HasKicker)
 
     /** Restrict to lands that could produce colorless mana ("a land you control could produce {C}"). */
     fun couldProduceColorlessMana() = withCardPredicate(CardPredicate.CouldProduceColorlessMana)
@@ -195,6 +198,13 @@ interface ObjectFilterBuilder<out Self> {
      */
     fun ofChosenCardTypeComponent(slot: ChoiceSlot = ChoiceSlot.CARD_TYPE) =
         withCardPredicate(CardPredicate.CardTypeEqualsChosenComponent(slot))
+
+    /**
+     * Match cards with the card type stored in chosenValues[variableName] by an earlier
+     * `ChooseOption(OptionType.CARD_TYPE)` step — `CardPredicate.CardTypeEqualsChosen`.
+     */
+    fun ofChosenCardTypeFromVariable(variableName: String) =
+        withCardPredicate(CardPredicate.CardTypeEqualsChosen(variableName))
 
     /** Mana value equals */
     fun manaValue(value: Int) = withCardPredicate(CardPredicate.ManaValueEquals(value))
@@ -271,6 +281,25 @@ interface ObjectFilterBuilder<out Self> {
 
     /** Printed mana cost contains an {X} symbol (Paradox Surveyor). */
     fun hasXInManaCost() = withCardPredicate(CardPredicate.HasXInManaCost)
+
+    /** Printed mana cost has the same mana symbol more than once — `{X}{X}{R}`, `{G}{G}` (Jegantha). */
+    fun hasRepeatedManaSymbol() = withCardPredicate(CardPredicate.HasRepeatedManaSymbol)
+
+    /**
+     * Printed mana cost is exactly one of [costs] — "with mana cost {0} or {1}" (Urza's Saga) is
+     * `manaCostIs("{0}", "{1}")`. Compares symbols, not mana value, so `{U}` and `{X}` never match
+     * `{1}` / `{0}`, and a card with no mana cost never matches `{0}` (see [CardPredicate.ManaCostIs]).
+     */
+    fun manaCostIs(vararg costs: String): Self {
+        require(costs.isNotEmpty()) { "manaCostIs needs at least one cost" }
+        val predicates = costs.map { cost ->
+            val parsed = ManaCost.parse(cost)
+            // Matching compares symbols in order, so the cost must be written in canonical order.
+            require(parsed.toString() == cost) { "manaCostIs(\"$cost\") is not in canonical order: $parsed" }
+            CardPredicate.ManaCostIs(parsed)
+        }
+        return withCardPredicate(predicates.singleOrNull() ?: CardPredicate.Or(predicates))
+    }
 
     /**
      * Printed mana cost contains at least [min] mana symbols of [colors] — "with one or more blue
@@ -507,17 +536,26 @@ interface ObjectFilterBuilder<out Self> {
      * you control").
      */
     fun sharingNameWithPermanentYouControl(filter: GameObjectFilter) =
-        withCardPredicate(CardPredicate.SharesNameWithPermanentYouControl(filter))
+        withCardPredicate(CardPredicate.SharesNameWithYourCard(filter))
+
+    /**
+     * Must have the same name as at least one card matching [filter] in the evaluating player's own
+     * [zone] — "an instant or sorcery card with the same name as a card in your graveyard"
+     * (Frostpyre Arcanist, `zone = Zone.GRAVEYARD`). The battlefield form is
+     * [sharingNameWithPermanentYouControl].
+     */
+    fun sharingNameWithCardInYour(zone: Zone, filter: GameObjectFilter = GameObjectFilter.Any) =
+        withCardPredicate(CardPredicate.SharesNameWithYourCard(filter, zone = zone))
 
     /**
      * Must **not** have the same name as any permanent the evaluating player controls matching
      * [filter] — "that doesn't have the same name as a token you control" (The Apprentice's Folly,
      * `filter = GameObjectFilter.Token`). With [another] the candidate is left out of the compared
      * set, for "… as **another** permanent you control" (Yenna, Redtooth Regent,
-     * `filter = GameObjectFilter.Permanent`). `Not` over [CardPredicate.SharesNameWithPermanentYouControl].
+     * `filter = GameObjectFilter.Permanent`). `Not` over [CardPredicate.SharesNameWithYourCard].
      */
     fun nameNotSharedWithPermanentYouControl(filter: GameObjectFilter, another: Boolean = false) =
-        withCardPredicate(CardPredicate.Not(CardPredicate.SharesNameWithPermanentYouControl(filter, excludeSelf = another)))
+        withCardPredicate(CardPredicate.Not(CardPredicate.SharesNameWithYourCard(filter, excludeSelf = another)))
 
     /**
      * Must share **no** creature type with any permanent the evaluating player controls matching
@@ -620,7 +658,16 @@ interface ObjectFilterBuilder<out Self> {
     fun enteredThisTurnUnderYourControl() = withStatePredicate(StatePredicate.EnteredThisTurn(underYourControl = true))
 
     /** Current controller has controlled this battlefield object continuously since this turn began. */
-    fun controlledSinceTurnBegan() = withStatePredicate(StatePredicate.ControlledSinceTurnBegan)
+    fun controlledSinceTurnBegan() =
+        withStatePredicate(StatePredicate.ControlledContinuouslySince(ControlMark.TURN_BEGAN))
+
+    /**
+     * Current controller has controlled this battlefield object continuously since the beginning of
+     * their last upkeep — negate it for echo's "came under your control since the beginning of your
+     * last upkeep".
+     */
+    fun controlledSinceYourLastUpkeep() =
+        withStatePredicate(StatePredicate.ControlledContinuouslySince(ControlMark.YOUR_LAST_UPKEEP))
 
     /**
      * Must have been declared as an attacker at least once during the current turn.
@@ -715,7 +762,10 @@ interface ObjectFilterBuilder<out Self> {
 
     /**
      * Must have **dealt** damage this turn — the active voice, and the mirror of
-     * [wasDealtDamageThisTurn]. Combat and noncombat damage both count, to any recipient. Used by
+     * [wasDealtDamageThisTurn]. Combat and noncombat damage both count, to any recipient, unless
+     * [combatOnly] / [to] narrow it — `hasDealtDamageThisTurn(combatOnly = true, to =
+     * DamageRecipientKind.Creature)` is "dealt combat damage to a creature this turn" (Thirsting
+     * Axe). Used by
      * "target creature an opponent controls that dealt damage this turn" (Red Guardian,
      * Super-Soldier).
      *
@@ -724,7 +774,11 @@ interface ObjectFilterBuilder<out Self> {
      * caller into a compile error at the exact line instead of a silent flip to the opposite set of
      * permanents. It also pairs with [hasDealtDamage], the same predicate's lifetime window.
      */
-    fun hasDealtDamageThisTurn() = withStatePredicate(StatePredicate.HasDealtDamage(thisTurnOnly = true))
+    fun hasDealtDamageThisTurn(
+        combatOnly: Boolean = false,
+        to: com.wingedsheep.sdk.scripting.predicates.DamageRecipientKind =
+            com.wingedsheep.sdk.scripting.predicates.DamageRecipientKind.Any
+    ) = withStatePredicate(StatePredicate.HasDealtDamage(thisTurnOnly = true, combatOnly = combatOnly, recipient = to))
 
     /**
      * Must have dealt damage at least once since entering the battlefield — [hasDealtDamageThisTurn]
@@ -736,9 +790,14 @@ interface ObjectFilterBuilder<out Self> {
     /**
      * Must have dealt *combat* damage (to any recipient) at least once since entering the
      * battlefield — [hasDealtDamage] narrowed to combat damage. `Conditions.SourceHasDealtCombatDamage`
-     * is this predicate under `SourceMatches` (Ruric Thar, Magecrusher).
+     * is this predicate under `SourceMatches` (Ruric Thar, Magecrusher). [to] narrows the recipient
+     * kind — `DamageRecipientKind.Player` for "has dealt combat damage to a player"
+     * (`Conditions.SourceHasDealtCombatDamageToPlayer`).
      */
-    fun hasDealtCombatDamage() = withStatePredicate(StatePredicate.HasDealtDamage(combatOnly = true))
+    fun hasDealtCombatDamage(
+        to: com.wingedsheep.sdk.scripting.predicates.DamageRecipientKind =
+            com.wingedsheep.sdk.scripting.predicates.DamageRecipientKind.Any
+    ) = withStatePredicate(StatePredicate.HasDealtDamage(combatOnly = true, recipient = to))
 
     /**
      * Must be in the same combat band as the effect's source (the source itself, or a band-mate
@@ -798,12 +857,12 @@ interface ObjectFilterBuilder<out Self> {
         withStatePredicate(StatePredicate.WasDealtDamageThisTurnBy(sourceFilter))
 
     /**
-     * The candidate's controller controls at least one permanent matching [subfilter] — Seasinger's
-     * "target creature whose controller controls an Island". The subfilter's "you" is the
-     * *candidate's* controller, not the ability's.
+     * The candidate's controller satisfies [condition], with the condition's "you" bound to that
+     * controller rather than to the ability's — Seasinger's "target creature whose controller
+     * controls an Island" is `controllerMeets(Conditions.YouControl(Island))`.
      */
-    fun controllerControls(subfilter: GameObjectFilter) =
-        withStatePredicate(StatePredicate.ControllerControls(subfilter))
+    fun controllerMeets(condition: com.wingedsheep.sdk.scripting.conditions.Condition) =
+        withStatePredicate(StatePredicate.ControllerMeets(condition))
 
     /** Must be blocking */
     fun blocking() = withStatePredicate(StatePredicate.IsBlocking)
@@ -923,6 +982,20 @@ interface ObjectFilterBuilder<out Self> {
     fun notGrantingPermanent() = withStatePredicate(StatePredicate.Not(StatePredicate.IsGrantingPermanent))
 
     /**
+     * Must NOT be the object [reference] names — "another nonland permanent" where "another" is
+     * relative to a target rather than the source (Torment of Venom: other than the target
+     * creature, `EffectTarget.ContextTarget(0)`). See [StatePredicate.IsEntity].
+     */
+    fun otherThan(reference: EffectTarget.SingleEntity) =
+        withStatePredicate(StatePredicate.Not(StatePredicate.IsEntity(reference)))
+
+    /**
+     * Must NOT be the triggering entity of the resolving trigger — "any target other than that
+     * permanent" (Toralf, God of Fury). See [StatePredicate.IsTriggeringEntity].
+     */
+    fun notTriggeringEntity() = withStatePredicate(StatePredicate.Not(StatePredicate.IsTriggeringEntity))
+
+    /**
      * Must be attached to a permanent matching [hostFilter] (general form of attachment matching —
      * the host filter may carry a controller predicate, e.g. "a creature you control"). Used by
      * Stolen Uniform's reflexive "if it's attached to a creature you control" guard.
@@ -965,6 +1038,25 @@ interface ObjectFilterBuilder<out Self> {
     fun milledThisTurn() = withStatePredicate(StatePredicate.MilledThisTurn)
 
     /**
+     * Must currently be in a graveyard *and* have been discarded this turn (Shadow of the Grave).
+     * See [StatePredicate.DiscardedThisTurn].
+     */
+    fun discardedThisTurn() = withStatePredicate(StatePredicate.DiscardedThisTurn)
+
+    /**
+     * Must currently be in a graveyard *and* have been put there during the current combat phase.
+     * See [StatePredicate.PutIntoGraveyardThisCombat].
+     */
+    fun putIntoGraveyardThisCombat() = withStatePredicate(StatePredicate.PutIntoGraveyardThisCombat)
+
+    /**
+     * Must *not* have been put into a graveyard during the current combat phase — Storrev,
+     * Devkarin Lich's "card in your graveyard that wasn't put there this combat".
+     */
+    fun notPutIntoGraveyardThisCombat() =
+        withStatePredicate(StatePredicate.Not(StatePredicate.PutIntoGraveyardThisCombat))
+
+    /**
      * Must currently be in a hand *and* have been drawn this turn (Sylvan Library). See
      * [StatePredicate.DrawnThisTurn].
      */
@@ -984,6 +1076,9 @@ interface ObjectFilterBuilder<out Self> {
 
     /** Must have the monstrous designation (CR 701.37b) — see [StatePredicate.IsMonstrous]. */
     fun monstrous() = withStatePredicate(StatePredicate.IsMonstrous)
+
+    /** Must be an embalmed token (CR 702.128b) — see [StatePredicate.IsEmbalmed]. */
+    fun embalmed() = withStatePredicate(StatePredicate.IsEmbalmed)
 
     /**
      * Must have crewed (CR 702.122) or saddled (CR 702.171) the effect's source permanent this
@@ -1069,9 +1164,14 @@ interface ObjectFilterBuilder<out Self> {
     /** Must **not** be soulbond-paired — the "unpaired creature" of CR 702.95b. */
     fun unpaired() = withStatePredicate(StatePredicate.Not(StatePredicate.IsPaired))
 
-    /** Must have blocked, or been blocked by, a legendary creature this turn (You Cannot Pass!). */
-    fun blockedOrWasBlockedByLegendaryThisTurn() =
-        withStatePredicate(StatePredicate.BlockedOrWasBlockedByLegendaryThisTurn)
+    /**
+     * Must have blocked, or been blocked by, a creature matching [partner] this turn — as that
+     * creature stood when the block was declared: "target creature that blocked or was blocked by a
+     * legendary creature this turn" (You Cannot Pass!, `Creature.legendary()`), "… by a Zombie this
+     * turn" (Time to Reflect, `Creature.withSubtype("Zombie")`).
+     */
+    fun blockedOrWasBlockedByThisTurn(partner: GameObjectFilter) =
+        withStatePredicate(StatePredicate.BlockPairedWithMatchingThisTurn(partner, BlockDirection.EITHER))
 
     /**
      * Must have blocked, or been blocked by, the creature [reference] names this turn — "all
@@ -1125,6 +1225,18 @@ interface ObjectFilterBuilder<out Self> {
     fun warpExiled() = withStatePredicate(StatePredicate.IsWarpExiled)
 
     /**
+     * Must be a foretold card (CR 702.143) — a card in exile foretold by its owner. Use with an
+     * exile-zone filter for "foretold cards you own in exile".
+     */
+    fun foretold() = withStatePredicate(StatePredicate.IsForetold)
+
+    /**
+     * Must be a suspended card (CR 702.62b) — in exile, with suspend and a time counter on it.
+     * Use with an exile-zone filter ("suspended card you own").
+     */
+    fun suspended() = withStatePredicate(StatePredicate.IsSuspended)
+
+    /**
      * Must be a card exiled by the effect's source permanent (recorded in the source's
      * `LinkedExileComponent`). Source-relative — use when filtering candidates in the exile zone
      * for "target card exiled with ~" reanimation abilities (The Darkness Crystal).
@@ -1157,7 +1269,9 @@ interface ObjectFilterBuilder<out Self> {
      * Must be a spell on the stack that was *not* cast — not from [fromZone] when set, not at all
      * (a copy) when null. Backs Wash Away's "counter target spell that wasn't cast from its
      * owner's hand" (`Zone.HAND`) and Errant, Street Artist's "copy target spell you control that
-     * wasn't cast" (no zone).
+     * wasn't cast" (no zone). On a battlefield-entry `RedirectZoneChange` it is the entering
+     * object that wasn't cast — Containment Priest's "if a nontoken creature would enter and it
+     * wasn't cast, exile it instead".
      */
     fun notCast(fromZone: Zone? = null) =
         withStatePredicate(StatePredicate.Not(StatePredicate.WasCast(fromZone)))

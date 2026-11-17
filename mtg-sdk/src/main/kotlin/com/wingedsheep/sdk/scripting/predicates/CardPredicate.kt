@@ -2,8 +2,10 @@ package com.wingedsheep.sdk.scripting.predicates
 
 import com.wingedsheep.sdk.core.CardType
 import com.wingedsheep.sdk.core.Color
+import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.scripting.ChoiceSlot
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.references.Player
@@ -378,6 +380,21 @@ sealed interface CardPredicate : TextReplaceable<CardPredicate> {
     }
 
     /**
+     * Matches cards with a **card type** equal to a card type chosen earlier in the pipeline and
+     * stored in `chosenValues[variableName]` (via
+     * [com.wingedsheep.sdk.scripting.effects.OptionType.CARD_TYPE]). The pipeline-variable sibling of
+     * [CardTypeEqualsChosenComponent], as [NameEqualsChosen] is of [NameEqualsChosenComponent].
+     * Case-insensitive; fails closed when nothing has been stored, or in static/projection contexts
+     * that have no pipeline. Used by "choose a card type, then … cards of the chosen type" effects
+     * (Alrund, God of the Cosmos).
+     */
+    @SerialName("CardTypeEqualsChosen")
+    @Serializable
+    data class CardTypeEqualsChosen(val variableName: String) : CardPredicate {
+        override val description: String = "of the chosen type"
+    }
+
+    /**
      * Matches cards whose **card type** equals a card type **durably chosen by the source
      * permanent** as it entered — read from that permanent's
      * [com.wingedsheep.engine.state.components.battlefield.CastChoicesComponent] under [slot] (a
@@ -652,6 +669,41 @@ sealed interface CardPredicate : TextReplaceable<CardPredicate> {
     @Serializable
     data object HasXInManaCost : CardPredicate {
         override val description: String = "with {X} in its mana cost"
+    }
+
+    /**
+     * Matches a card whose printed mana cost holds the same mana symbol more than once —
+     * `{1}{G}{G}`, `{X}{X}{R}`, `{R/G}{R/G}`. Exact symbols are compared (Jegantha, the
+     * Wellspring's ruling): a hybrid `{R/G}` is a symbol of its own, distinct from `{R}` and `{G}`,
+     * so `{R}{R/G}` has no repeat; each numeric generic symbol is one symbol, so `{4}{R}` has none.
+     * Face-down objects (no mana cost, CR 708.2) and cards with no mana cost never match; the
+     * cast-record path returns `false` (a record stores the mana value, not the printed cost).
+     *
+     * Jegantha's companion condition is `EachCard(Any.not(hasRepeatedManaSymbol))`. Closest
+     * neighbours: [HasXInManaCost] inspects one symbol; [ColoredManaSymbolsAtLeast] counts pips of
+     * a colour set without telling `{W}{U}` from `{U}{U}`; [ManaCostIs] compares one whole cost.
+     */
+    @SerialName("HasRepeatedManaSymbol")
+    @Serializable
+    data object HasRepeatedManaSymbol : CardPredicate {
+        override val description: String = "with a repeated mana symbol in its mana cost"
+    }
+
+    /**
+     * Matches a card whose printed mana cost is exactly [manaCost] — "an artifact card with mana
+     * cost {0} or {1}" (Urza's Saga, an [Or] of two). This compares the printed symbols, not the
+     * mana value: per the Urza's Saga ruling a card costing `{U}` or `{X}` does not match `{1}` /
+     * `{0}` even though its mana value does. A card with no mana cost (a land, Ancestral Vision)
+     * is not a card with mana cost `{0}` — a printed `{0}` parses to a `{0}` symbol while no cost
+     * parses to the empty cost — and face-down objects (no mana cost, CR 708.2) never match.
+     *
+     * Closest neighbours: [ManaValueEquals] reads the computed number, so it cannot tell `{1}`
+     * from `{U}`; [HasXInManaCost] inspects one symbol, not the whole cost.
+     */
+    @SerialName("ManaCostIs")
+    @Serializable
+    data class ManaCostIs(val manaCost: ManaCost) : CardPredicate {
+        override val description: String = "with mana cost $manaCost"
     }
 
     /**
@@ -1150,7 +1202,7 @@ sealed interface CardPredicate : TextReplaceable<CardPredicate> {
      * Matches objects whose name **equals** the referenced entity's name — "a land with the same
      * name as the exiled card" (Extraplanar Lens). The name sibling of [SharesManaValueWith] over
      * the same [EffectTarget.SingleEntity] vocabulary, and the entity-referencing counterpart of
-     * [SharesNameWithPermanentYouControl], which searches a filter over your battlefield instead
+     * [SharesNameWithYourCard], which searches a filter over your cards in a zone instead
      * of naming one object.
      *
      * Names are read from *projected* state with a fall back to base card data, so a permanent
@@ -1186,7 +1238,7 @@ sealed interface CardPredicate : TextReplaceable<CardPredicate> {
 
     /**
      * Matches objects that share a color with the mana a land produced when it was tapped for mana
-     * — the mana of the [com.wingedsheep.sdk.scripting.EventPattern.LandTappedForMana] event that
+     * — the mana of the [com.wingedsheep.sdk.scripting.EventPattern.PermanentTappedForMana] event that
      * triggered the resolving ability ("If that creature shares a color with the mana that land
      * produced" — C.A.M.P.). Colorless is a type of mana but not a color (CR 106.1a–b), so it shares none; outside such
      * a trigger nothing matches. The sibling of [SharesColorWithRecipient], whose reference is the
@@ -1217,33 +1269,43 @@ sealed interface CardPredicate : TextReplaceable<CardPredicate> {
     }
 
     /**
-     * Matches objects whose name equals that of at least one permanent the evaluating player
-     * controls matching [filter]. The name-sharing sibling of [SharesColorWithPermanentYouControl].
+     * Matches objects whose name equals that of at least one of the evaluating player's cards in
+     * [zone] matching [filter] — on the battlefield (the default) a permanent they **control**,
+     * anywhere else a card in their own [zone] (a graveyard, hand, library or exile are owned
+     * zones). The name-sharing sibling of [SharesColorWithPermanentYouControl].
      *
      * - Key to the Side-Door — "a legendary card with the same name as a legendary permanent you
      *   control": `filter = GameObjectFilter.Permanent.legendary()`.
+     * - Frostpyre Arcanist — "an instant or sorcery card with the same name as a card in your
+     *   graveyard": `zone = Zone.GRAVEYARD`, `filter = GameObjectFilter.Any`.
      * - Under [Not], the "doesn't have the same name as …" restrictions: The Apprentice's Folly's
      *   "… as a token you control" (`filter = GameObjectFilter.Token`) and Yenna, Redtooth Regent's
      *   "… as **another** permanent you control" (`filter = GameObjectFilter.Permanent`,
-     *   [excludeSelf] = true). [excludeSelf] leaves the candidate out of the compared set so a
-     *   permanent never disqualifies itself; two permanents sharing a name still disqualify each
-     *   other.
+     *   [excludeSelf] = true). [excludeSelf] leaves the candidate out of the compared set so an
+     *   object never disqualifies itself; two objects sharing a name still disqualify each other.
      *
      * Names are compared exactly and read through the projection on both sides (falling back to
      * the card's own name), so a Layer 3 name-changing effect (Witness Protection, Honest Work) is
-     * respected. A nameless object — a face-down permanent (CR 708.2a) — never shares a name
-     * (CR 201.2a). Outside a controller's scope it never matches — so the [Not] form matches. Only
-     * the live evaluator can answer it; matchers without a battlefield in scope (layer projection,
-     * cast permissions, cast records) fail closed on both it and its [Not] form.
+     * respected. A nameless object — a face-down permanent or a face-down exiled card (CR 708.2a)
+     * — never shares a name (CR 201.2a). Outside a controller's scope it never matches — so the
+     * [Not] form matches. Only the live evaluator can answer it; matchers without the game state in
+     * scope (layer projection, cast permissions, cast records) fail closed on both it and its [Not]
+     * form.
      */
-    @SerialName("SharesNameWithPermanentYouControl")
+    @SerialName("SharesNameWithYourCard")
     @Serializable
-    data class SharesNameWithPermanentYouControl(
+    data class SharesNameWithYourCard(
         val filter: GameObjectFilter,
         val excludeSelf: Boolean = false,
+        val zone: Zone = Zone.BATTLEFIELD,
     ) : CardPredicate {
-        override val description: String =
-            "with the same name as ${if (excludeSelf) "another " else ""}${filter.description} you control"
+        override val description: String = buildString {
+            val noun = filter.description
+            append("with the same name as ")
+            append(if (excludeSelf) "another " else if (noun.firstOrNull()?.lowercaseChar()?.let { it in "aeiou" } == true) "an " else "a ")
+            append(noun)
+            append(if (zone == Zone.BATTLEFIELD) " you control" else " in your ${zone.noun}")
+        }
         override fun applyTextReplacement(replacer: TextReplacer): CardPredicate {
             val newFilter = filter.applyTextReplacement(replacer)
             return if (newFilter !== filter) copy(filter = newFilter) else this
@@ -1322,6 +1384,17 @@ sealed interface CardPredicate : TextReplaceable<CardPredicate> {
     }
 
     /**
+     * Matches only **loyalty abilities** on the stack — activated abilities with a loyalty symbol
+     * in their cost (CR 606.2). A copy of a loyalty ability is one too: it copies the ability,
+     * cost included. Used by Verdant Command: "Counter target loyalty ability of a planeswalker."
+     */
+    @SerialName("IsLoyaltyAbility")
+    @Serializable
+    data object IsLoyaltyAbility : CardPredicate {
+        override val description: String = "loyalty ability"
+    }
+
+    /**
      * Matches a permanent that has at least one intrinsic activated ability that isn't a
      * mana ability (and isn't a loyalty ability). Backed by the precomputed
      * `CardComponent.hasNonManaActivatedAbility` flag, so abilities granted by other
@@ -1358,6 +1431,19 @@ sealed interface CardPredicate : TextReplaceable<CardPredicate> {
     @Serializable
     data object HasCycling : CardPredicate {
         override val description: String = "with a cycling ability"
+    }
+
+    /**
+     * Matches a card with a kicker ability — kicker, multikicker (a kicker variant, CR 702.33c) or
+     * "kicker [A] and/or [B]". Not Offspring, Bargain, Squad or a flash-timing unlock, which ride the
+     * same optional-additional-cost rail but are not kicker. Backed by the precomputed
+     * `CardComponent.hasKicker` flag stamped from the card's printed keyword abilities. Used by
+     * Murasa Sproutling: "return target card with a kicker ability from your graveyard to your hand."
+     */
+    @SerialName("HasKicker")
+    @Serializable
+    data object HasKicker : CardPredicate {
+        override val description: String = "with a kicker ability"
     }
 
     /**

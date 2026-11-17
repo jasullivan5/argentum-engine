@@ -19,10 +19,13 @@ import com.wingedsheep.engine.core.ModesChosenResponse
 import com.wingedsheep.engine.core.OrderObjectsDecision
 import com.wingedsheep.engine.core.ReorderLibraryDecision
 import com.wingedsheep.engine.core.SearchCardInfo
+import com.wingedsheep.engine.core.SearchLibraryDecision
 import com.wingedsheep.engine.core.SelectCardsDecision
 import com.wingedsheep.engine.core.SelectManaSourcesDecision
 import com.wingedsheep.engine.core.TargetRequirementInfo
 import com.wingedsheep.engine.core.TargetsResponse
+import com.wingedsheep.engine.core.YesNoDecision
+import com.wingedsheep.engine.core.YesNoResponse
 import com.wingedsheep.engine.handlers.actions.decision.DecisionValidators
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.sdk.core.Color
@@ -67,6 +70,14 @@ class TrivialDecisionsTest : FunSpec({
                 prompt = "Choose",
                 context = context,
                 options = listOf("Only option"),
+            ),
+            // "You may discard a creature card" with none in hand: asked, but only "no" is legal.
+            YesNoDecision(
+                id = "yesno",
+                playerId = player,
+                prompt = "You may discard a creature card",
+                context = context,
+                yesAvailable = false,
             ),
             ChooseColorDecision(
                 id = "color",
@@ -119,6 +130,40 @@ class TrivialDecisionsTest : FunSpec({
         }
     }
 
+    test("an optional pick with nothing to pick from is forced to select nothing") {
+        val reveal = SelectCardsDecision(
+            id = "reveal",
+            playerId = player,
+            prompt = "You may reveal a Dragon card from your hand",
+            context = context,
+            options = emptyList(),
+            minSelections = 0,
+            maxSelections = 1,
+        )
+        val search = SearchLibraryDecision(
+            id = "search",
+            playerId = player,
+            prompt = "Search for a basic land",
+            context = context,
+            options = emptyList(),
+            minSelections = 0,
+            maxSelections = 1,
+            cards = emptyMap(),
+            filterDescription = "basic land",
+        )
+
+        for (decision in listOf(reveal, search)) {
+            val response = TrivialDecisions.responseFor(decision)
+            response.shouldBeInstanceOf<CardsSelectedResponse>()
+            response.selectedCards shouldBe emptyList()
+            DecisionValidators.validate(decision, response, GameState()) shouldBe null
+        }
+
+        // One eligible card under an "up to one" is a real choice: take it or not.
+        TrivialDecisions.responseFor(reveal.copy(options = listOf(first))).shouldBeNull()
+        TrivialDecisions.responseFor(search.copy(options = listOf(first))).shouldBeNull()
+    }
+
     test("a lone target is not forced when cancellation or declining is legal") {
         val cancellable = ChooseTargetsDecision(
             id = "target",
@@ -157,7 +202,9 @@ class TrivialDecisionsTest : FunSpec({
                 TargetRequirementInfo(
                     index = 0,
                     description = "target with limited total mana value",
-                    totalManaValueAtMost = 0,
+                    totalCap = 0,
+                    totalCapLabel = "mana value",
+                    targetValues = mapOf(first to 0),
                 ),
             ),
             legalTargets = mapOf(0 to listOf(first)),
@@ -182,6 +229,13 @@ class TrivialDecisionsTest : FunSpec({
         // The original TargetRequirement objects may impose cross-slot distinctness (for example,
         // TargetOther), but ChooseTargetsDecision exposes no such field to this state-free helper.
         TrivialDecisions.responseFor(decision).shouldBeNull()
+    }
+
+    test("a yes/no is forced only when yes is impossible, and then the answer is no") {
+        val may = YesNoDecision(id = "may", playerId = player, prompt = "You may discard a creature card", context = context)
+        TrivialDecisions.responseFor(may).shouldBeNull()
+        TrivialDecisions.responseFor(may.copy(yesAvailable = false)) shouldBe YesNoResponse("may", false)
+        DecisionValidators.validate(may.copy(yesAvailable = false), YesNoResponse("may", true), GameState()).shouldNotBeNull()
     }
 
     test("a lone option is not forced when the decision can be cancelled") {
@@ -239,7 +293,7 @@ class TrivialDecisionsTest : FunSpec({
         TrivialDecisions.responseFor(decision).shouldBeNull()
     }
 
-    test("multi-card selection is not forced without explicit repeated-selection semantics") {
+    test("selecting every one of several distinct options when that many are required is forced") {
         val decision = SelectCardsDecision(
             id = "shared-card-selection",
             playerId = player,
@@ -250,18 +304,34 @@ class TrivialDecisionsTest : FunSpec({
             maxSelections = 2,
         )
 
-        // The same pending-decision shape is used by distributed counter-removal costs,
-        // where repeated IDs carry multiplicity. The decision itself does not identify
-        // that use, so selecting each option once is not provably the unique response.
+        // Without selectionLimits an option may be named only once, so naming both is the only
+        // legal answer (#3340: a selection over hidden cards is asked even when it is forced).
         DecisionValidators.validate(
             decision,
-            CardsSelectedResponse(decision.id, listOf(first, second)),
+            CardsSelectedResponse(decision.id, listOf(first, first)),
+        ).shouldNotBeNull()
+        val forced = TrivialDecisions.responseFor(decision).shouldBeInstanceOf<CardsSelectedResponse>()
+        forced.selectedCards shouldBe listOf(first, second)
+    }
+
+    test("an allocation that may repeat an option is not forced") {
+        val decision = SelectCardsDecision(
+            id = "counter-allocation",
+            playerId = player,
+            prompt = "Remove two counters",
+            context = context,
+            options = listOf(first, second),
+            minSelections = 2,
+            maxSelections = 2,
+            selectionLimits = mapOf(first to 2, second to 2),
+        )
+
+        // Repeated IDs carry multiplicity here: two counters from the first permanent is legal too.
+        DecisionValidators.validate(
+            decision,
+            CardsSelectedResponse(decision.id, listOf(first, first)),
         ) shouldBe null
         TrivialDecisions.responseFor(decision).shouldBeNull()
-
-        val rollout = FastDecisionResponder().respond(GameState(), decision, player)
-        rollout.shouldBeInstanceOf<CardsSelectedResponse>()
-        rollout.selectedCards shouldBe listOf(first, second)
     }
 
     test("state-dependent card constraints are not guessed without state") {

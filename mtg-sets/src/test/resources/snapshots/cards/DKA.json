@@ -77,6 +77,95 @@
     ]
 }
 
+// Blood Feud
+{
+    "name": "Blood Feud",
+    "manaCost": "{4}{R}{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Target creature fights another target creature. (Each deals damage equal to its power to the other.)",
+    "script": {
+        "spellEffect": {
+            "type": "Fight",
+            "target1": {
+                "type": "BoundVariable",
+                "name": "t0[0]"
+            },
+            "target2": {
+                "type": "BoundVariable",
+                "name": "t0[1]"
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "count": 2,
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "83",
+        "rarity": "UNCOMMON",
+        "artist": "Winona Nelson",
+        "flavorText": "Succession is a matter of blood, and by blood it is often decided.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/3/634d59b8-6046-4796-95c5-eec75a239986.jpg?1783940821",
+        "rulings": [
+            {
+                "date": "2011-01-22",
+                "text": "Blood Feud can target two creatures with the same controller."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Bone to Ash
+{
+    "name": "Bone to Ash",
+    "manaCost": "{2}{U}{U}",
+    "typeLine": "Instant",
+    "oracleText": "Counter target creature spell.\nDraw a card.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                "Counter",
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature",
+                    "zone": "Stack"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "29",
+        "artist": "Clint Cearley",
+        "flavorText": "\"I can think of worse ways to go. On second thought, maybe not.\"\n—Ludevic, necro-alchemist",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/4/c4a75cef-9551-45e2-b1ff-80662c76ec20.jpg?1783940846"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Briarpack Alpha
 {
     "name": "Briarpack Alpha",
@@ -418,6 +507,72 @@
     ]
 }
 
+// Dungeon Geists
+{
+    "name": "Dungeon Geists",
+    "manaCost": "{2}{U}{U}",
+    "typeLine": "Creature — Spirit",
+    "oracleText": "Flying\nWhen this creature enters, tap target creature an opponent controls. That creature doesn't untap during its controller's untap step for as long as you control this creature.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Dungeon Geists:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "TapUntap",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        {
+                            "type": "GrantKeyword",
+                            "keyword": "DOESNT_UNTAP",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            },
+                            "duration": {
+                                "type": "WhileYouControlSource",
+                                "sourceDescription": "Dungeon Geists"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature ctrl:opponent"
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "36",
+        "rarity": "RARE",
+        "artist": "Nils Hamm",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/7/b715da2e-c816-4c14-8522-811c97c66fed.jpg?1783940842"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Faithless Looting
 {
     "name": "Faithless Looting",
@@ -721,6 +876,60 @@
     ]
 }
 
+// Grafdigger's Cage
+{
+    "name": "Grafdigger's Cage",
+    "manaCost": "{1}",
+    "typeLine": "Artifact",
+    "oracleText": "Creature cards in graveyards and libraries can't enter the battlefield.\nPlayers can't cast spells from graveyards or libraries.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "CantEnterTheBattlefield",
+                "filter": "creature",
+                "fromZones": [
+                    "Graveyard",
+                    "Library"
+                ]
+            },
+            {
+                "type": "PlayersCantCastSpells",
+                "affected": "Each",
+                "fromZones": [
+                    "Graveyard",
+                    "Library"
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "149",
+        "rarity": "RARE",
+        "artist": "Daniel Ljunggren",
+        "flavorText": "\"If you wind up in one of mine, you can be sure as silver it will be your last.\"\n—Grafdigger Wulmer",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/a/2a6240e7-d3aa-40e9-a627-58e7bf62525c.jpg?1783940792",
+        "rulings": [
+            {
+                "date": "2019-07-12",
+                "text": "Players can still play lands from graveyards or libraries if an effect allows them to do so."
+            },
+            {
+                "date": "2019-07-12",
+                "text": "If an effect exiles a card from a library and allows a player to cast it, that player may do so. The spell is cast from exile, not a library."
+            },
+            {
+                "date": "2019-07-12",
+                "text": "Look at the card as it exists in your graveyard to determine whether it can enter the battlefield. For example, Sculpting Steel can be put onto the battlefield as a copy of a creature, but Phyrexian Metamorph can't be put onto the battlefield, even if it would copy a noncreature artifact."
+            },
+            {
+                "date": "2019-07-12",
+                "text": "Manifesting a card from a graveyard or library is an impossible action while Grafdigger's Cage is on the battlefield."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
 // Gravecrawler
 {
     "name": "Gravecrawler",
@@ -753,6 +962,77 @@
         "rarity": "RARE",
         "artist": "Steven Belledin",
         "imageUri": "https://cards.scryfall.io/normal/front/4/8/48d73cb5-22ac-43df-9c4b-0c860bb80b3e.jpg?1782714614"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Gravepurge
+{
+    "name": "Gravepurge",
+    "manaCost": "{2}{B}",
+    "typeLine": "Instant",
+    "oracleText": "Put any number of target creature cards from your graveyard on top of your library.\nDraw a card.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": "ChosenTargets",
+                    "storeAs": "gathered0"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "gathered0",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Library",
+                        "placement": "Top"
+                    },
+                    "order": "ControllerChooses"
+                },
+                {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "unlimited": true,
+                "filter": {
+                    "baseFilter": "creature own:you",
+                    "zone": "Graveyard"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "65",
+        "artist": "Zoltan Boros",
+        "flavorText": "\"The Blessed Sleep? Ha! Wake up my lovelies, there's work to be done!\"\n—Gisa, ghoulcaller of Gavony",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/c/3c0c266b-9ef5-4de2-a358-65739de41491.jpg?1783940828",
+        "rulings": [
+            {
+                "date": "2011-01-22",
+                "text": "You choose the order of the cards you put on top of your library."
+            },
+            {
+                "date": "2011-01-22",
+                "text": "You can cast Gravepurge with zero targets. If you do, you'll draw a card as the spell resolves."
+            },
+            {
+                "date": "2011-01-22",
+                "text": "If you cast Gravepurge with at least one target and all of those targets become illegal, the spell won't resolve and you won't get to draw a card."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "BLACK"
@@ -1319,7 +1599,13 @@
                     "effect": "Transform",
                     "interveningIf": {
                         "type": "Compare",
-                        "left": "SpellsCastLastTurn",
+                        "left": {
+                            "type": "GreatestAmongPlayers",
+                            "inner": {
+                                "type": "SpellsCastLastTurn",
+                                "player": "You"
+                            }
+                        },
                         "operator": "GTE",
                         "right": {
                             "type": "Fixed",
@@ -1459,6 +1745,52 @@
     ]
 }
 
+// Markov Blademaster
+{
+    "name": "Markov Blademaster",
+    "manaCost": "{1}{R}{R}",
+    "typeLine": "Creature — Vampire Warrior",
+    "oracleText": "Double strike (This creature deals both first-strike and regular combat damage.)\nWhenever this creature deals combat damage to a player, put a +1/+1 counter on it.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "DOUBLE_STRIKE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Markov Blademaster:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "96",
+        "rarity": "RARE",
+        "artist": "Jana Schirmer & Johannes Voss",
+        "flavorText": "\"Mortals practice swordplay for a few decades at best. How can they ever attain the exquisite mastery that eternity has to offer?\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/2/122163dd-e070-48af-8036-e9850541d138.jpg?1783940816"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Markov Warlord
 {
     "name": "Markov Warlord",
@@ -1552,6 +1884,107 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Mikaeus, the Unhallowed
+{
+    "name": "Mikaeus, the Unhallowed",
+    "manaCost": "{3}{B}{B}{B}",
+    "typeLine": "Legendary Creature — Zombie Cleric",
+    "oracleText": "Intimidate (This creature can't be blocked except by artifact creatures and/or creatures that share a color with it.)\nWhenever a Human deals damage to you, destroy it.\nOther non-Human creatures you control get +1/+1 and have undying. (When a creature with undying dies, if it had no +1/+1 counters on it, return it to the battlefield under its owner's control with a +1/+1 counter on it.)",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "INTIMIDATE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Mikaeus, the Unhallowed:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "You"
+                    },
+                    "sourceFilter": "Human"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": "TriggeringEntity",
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "NotSubtype",
+                                "subtype": "Human"
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    },
+                    "excludeSelf": true
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "UNDYING",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "NotSubtype",
+                                "subtype": "Human"
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    },
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "70",
+        "rarity": "MYTHIC",
+        "artist": "Chris Rahn",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/0/801b124d-3546-4882-a6e1-c9c353628a18.jpg?1783940827",
+        "rulings": [
+            {
+                "date": "2018-12-07",
+                "text": "Any damage dealt to you by a Human will cause Mikaeus's ability to trigger, including noncombat damage dealt to you by a Human and damage dealt to you by a Human you control."
+            },
+            {
+                "date": "2018-12-07",
+                "text": "If a Human deals damage to you at the same time that Mikaeus is dealt lethal damage, Mikaeus's triggered ability triggers. That Human will be destroyed even though Mikaeus has left the battlefield."
+            },
+            {
+                "date": "2018-12-07",
+                "text": "If a non-Human creature you control without a +1/+1 counter dies at the same time as Mikaeus, that creature's undying ability granted by Mikaeus triggers and will return it to the battlefield."
+            },
+            {
+                "date": "2018-12-07",
+                "text": "The +1/+1 bonus that Mikaeus gives to other non-Human creatures you control isn't a counter. It won't prevent undying from triggering."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -1892,7 +2325,13 @@
                     "effect": "Transform",
                     "interveningIf": {
                         "type": "Compare",
-                        "left": "SpellsCastLastTurn",
+                        "left": {
+                            "type": "GreatestAmongPlayers",
+                            "inner": {
+                                "type": "SpellsCastLastTurn",
+                                "player": "You"
+                            }
+                        },
                         "operator": "GTE",
                         "right": {
                             "type": "Fixed",
@@ -1997,6 +2436,108 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Secrets of the Dead
+{
+    "name": "Secrets of the Dead",
+    "manaCost": "{2}{U}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever you cast a spell from your graveyard, draw a card.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Secrets of the Dead:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "requires": [
+                        {
+                            "type": "SpellCastFromZone",
+                            "zone": "Graveyard"
+                        }
+                    ]
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "Whenever you cast a spell from your graveyard, draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "48",
+        "rarity": "UNCOMMON",
+        "artist": "Eytan Zana",
+        "flavorText": "\"The veil between the living and the dead is so very thin that the whispers of the ancients can finally be heard.\"\n—Amalric of Midvast Hall",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/9/c982d679-581d-43e1-acd0-db77eb0987c2.jpg?1783940836",
+        "rulings": [
+            {
+                "date": "2011-01-22",
+                "text": "Secrets of the Dead's triggered ability resolves before the spell you cast from your graveyard does."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Stromkirk Captain
+{
+    "name": "Stromkirk Captain",
+    "manaCost": "{1}{B}{R}",
+    "typeLine": "Creature — Vampire Soldier",
+    "oracleText": "First strike\nOther Vampire creatures you control get +1/+1 and have first strike.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FIRST_STRIKE"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "creature Vampire ctrl:you",
+                    "excludeSelf": true
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "FIRST_STRIKE",
+                "filter": {
+                    "baseFilter": "creature Vampire ctrl:you",
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "143",
+        "rarity": "UNCOMMON",
+        "artist": "Jana Schirmer & Johannes Voss",
+        "flavorText": "\"No longer can we allow our human populations to be mindlessly slaughtered by ghouls. Slay all who trespass.\"\n—Runo Stromkirk",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/b/5bfcca87-04f8-480a-bae6-ae87f7afb7e1.jpg?1783940795",
+        "rulings": [
+            {
+                "date": "2011-01-22",
+                "text": "If a creature with first strike deals damage in the first combat damage step, but then loses first strike before regular combat damage, it won't deal combat damage a second time (unless it also has double strike)."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
     ]
 }
 
@@ -2296,6 +2837,102 @@
     ]
 }
 
+// Vault of the Archangel
+{
+    "name": "Vault of the Archangel",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "{T}: Add {C}.\n{2}{W}{B}, {T}: Creatures you control gain deathtouch and lifelink until end of turn.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Vault of the Archangel:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Vault of the Archangel:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{2}{W}{B}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Group",
+                                "filter": {
+                                    "baseFilter": "creature ctrl:you"
+                                }
+                            },
+                            "body": {
+                                "type": "GrantKeyword",
+                                "keyword": "DEATHTOUCH",
+                                "target": "IterationEntity"
+                            }
+                        },
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Group",
+                                "filter": {
+                                    "baseFilter": "creature ctrl:you"
+                                }
+                            },
+                            "body": {
+                                "type": "GrantKeyword",
+                                "keyword": "LIFELINK",
+                                "target": "IterationEntity"
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "Creatures you control gain deathtouch and lifelink until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "158",
+        "rarity": "RARE",
+        "artist": "John Avon",
+        "flavorText": "\"For centuries my creation kept this world in balance. Now only her shadow remains.\"\n—Sorin Markov",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/5/35a65437-430a-42ef-854f-6e66f8e1a04a.jpg?1783940789",
+        "rulings": [
+            {
+                "date": "2011-01-22",
+                "text": "Multiple instances of deathtouch or lifelink on the same creature are redundant."
+            },
+            {
+                "date": "2011-01-22",
+                "text": "Vault of the Archangel's last ability affects only creatures you control when that ability resolves. It won't affect creatures that come under your control later in the turn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLACK"
+    ]
+}
+
 // Wakedancer
 {
     "name": "Wakedancer",
@@ -2429,5 +3066,80 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Zombie Apocalypse
+{
+    "name": "Zombie Apocalypse",
+    "manaCost": "{3}{B}{B}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Return all Zombie creature cards from your graveyard to the battlefield tapped, then destroy all Humans.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "FromZone",
+                        "zone": "Graveyard",
+                        "filter": "creature Zombie"
+                    },
+                    "storeAs": "gathered0"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "gathered0",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Battlefield",
+                        "placement": "Tapped"
+                    }
+                },
+                {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "BattlefieldMatching",
+                                "filter": "permanent Human"
+                            },
+                            "storeAs": "destroyAll_gathered"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "destroyAll_gathered",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard"
+                            },
+                            "moveType": "Destroy"
+                        }
+                    ]
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "80",
+        "rarity": "RARE",
+        "artist": "Peter Mohrbacher",
+        "flavorText": "\"There will come a day so dark you will pray for death. On that day your prayers will be answered.\"\n—Minaldra, the Vizag Atum",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/e/fe662a08-a8b1-4f25-b7c0-dca1c7ad7271.jpg?1783940823",
+        "rulings": [
+            {
+                "date": "2011-01-22",
+                "text": "All Humans are destroyed, not just ones you control."
+            },
+            {
+                "date": "2011-01-22",
+                "text": "If a creature card in your graveyard is both a Zombie and a Human, it will be returned to the battlefield tapped, then be destroyed."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }

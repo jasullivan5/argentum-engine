@@ -347,7 +347,7 @@ Fields that hand-written cards set on a subtype Assay does emit, but that Assay 
 | `ZoneChangeEvent` | `excludeSacrifice` (1), `excludeTo` (1), `requireCraftMaterial` (1) |
 | `AddColorlessMana` | `riders` (2) |
 | `ChangeTarget` | `newTargetMustBePlayer` (1), `onlyIfCurrentTargetIsController` (1) |
-| `CreaturesAttackYouEvent` | `includePlaneswalkersYouControl` (1), `minAttackers` (1) |
+| `CreaturesAttackYouEvent` | `defenders` (1), `minAttackers` (1) |
 | `FromZone` | `excludeSacrificedThisWay` (2) |
 | `Numeric` | `keyword` (1), `n` (1) |
 | `Power` | `base` (1), `exponent` (1) |
@@ -564,7 +564,7 @@ Every subtype hand-written cards use that Assay never produces. Examples are up 
 | `ReturnSpellOrPermanentToOwnersHand` | 4 | Fatehold Charm; Press the Enemy; Divide by Zero; Jeskai Revelation |
 | `ReturnSpellToOwnersHand` | 4 | Bilbo's Gambit; Reprieve; Hullbreaker Horror; Spellscorn Coven |
 | `UnlockDoor` | 4 | Ghostly Dancers; Ghostly Keybearer; Keys to the House; Marina Vendrell |
-| `AddAnyColorManaSpendOnChosenType` | 3 | Cavern of Souls; Eclipsed Realms; Secluded Courtyard |
+| ~~`AddAnyColorManaSpendOnChosenType`~~ (deleted — now `AddManaOfChoice` + `ManaRestriction.OfChosenType`) | 3 | Cavern of Souls; Eclipsed Realms; Secluded Courtyard |
 | `AddMainPhase` | 3 | Aggravated Assault; All-Out Assault; Relentless Assault |
 | `AddOneManaOfEachColorAmong` | 3 | Tarnation Vista; Bloom Tender; Sunbird Standard |
 | `BecomeSaddled` | 3 | Alacrian Armory; Guidelight Matrix; Kolodin, Triumph Caster |
@@ -634,7 +634,7 @@ Also (1–2 cards each): `AddAdditionalEndSteps`, `AddAdditionalUpkeepSteps`, `A
 | `CanBlockAnyNumber` | 4 | Thoughtweft Trio; Ironfist Crusher; Entangler; Wall of Glare |
 | `CantBeAttackedBy` | 4 | Teferi's Moat; Storm, Windrider; Blazing Archon; Form of the Dragon |
 | `SpendAnyManaTypeForActivatedAbilities` | 4 | Sharkey, Tyrant of the Shire; Drana and Linvala; Quicksilver Elemental; Agatha's Soul Cauldron |
-| `SuppressEntersTriggers` | 4 | Karn, Argent Defender; Doorkeeper Thrull; Torpor Orb; Elesh Norn, Mother of Machines |
+| `SuppressZoneChangeTriggers` | 5 | Hushbringer; Karn, Argent Defender; Doorkeeper Thrull; Torpor Orb; Elesh Norn, Mother of Machines |
 | `CanBlockAdditionalForCreatureGroup` | 3 | Brave the Sands; Lairwatch Giant; Selesnya Sagittars |
 | `CantAttackUnlessCoAttacker` | 3 | Toby, Beastie Befriender; Scarred Puma; Militia Rallier |
 | `CantBeBlockedByCreaturesWithLessPower` | 3 | Shrill Howler; Formation Breaker; Elusive Otter |
@@ -772,7 +772,7 @@ Also (1–2 cards each): `BasePowerEquals`, `BaseToughnessEquals`, `CardTypeEqua
 | `ReceivedCounterThisTurn` | 3 | Beast, Erudite Aerialist; Kid Loki; Fractal Tender |
 | `WasDealtDamageBySourceThisTurn` | 3 | Frostwielder; Kumano's Pupils; Kumano, Master Yamabushi |
 
-Also (1–2 cards each): `ActivatedThisTurn`, `AttackedABattleThisTurn`, `AttackedLastTurn`, `BecameTappedOnlyOnceThisTurn`, `BlockPairedWithEntityThisTurn`, `BlockedOrWasBlockedByLegendaryThisTurn`, `BlockedThisTurn`, `ControlledSinceTurnBegan`, `ControllerControls`, `ControllerDealtCombatDamageBySourceThisTurn`, `CrewedOrSaddledBySourceThisTurn`, `DealtCombatDamageToSourceControllerThisTurn`, `DealtDamageToSourceControllerThisTurn`, `HasDisguiseAbility`, `HasGreatestManaValueAmongAllCreatures`, `HasLeastManaValueAmong`, `HasLeastPower`, `HasLeastPowerAmongAllCreatures`, `HasLockedDoor`, `InSameBandAsSource`, `IsAttachedToCardType`, `IsAttackingABattle`, `IsAttackingEnchantedPlayer`, `IsAttackingYouOrYourPlaneswalkers`, `IsBlocked`, `IsBlockingIterationEntity`, `IsBlockingSource`, `IsCombatPairedWithSource`, `IsEnchantedByAura`, `IsRingBearer`, `IsWarpExiled`, `NotTargetedByAbilityFromSameNamedSource`, `SharesNameWithSpellCastThisTurn`, `WasCastForWarp`
+Also (1–2 cards each): `ActivatedThisTurn`, `AttackedABattleThisTurn`, `AttackedLastTurn`, `BecameTappedOnlyOnceThisTurn`, `BlockPairedWithEntityThisTurn`, `BlockedOrWasBlockedByLegendaryThisTurn`, `BlockedThisTurn`, `ControlledSinceTurnBegan`, `ControllerMeets`, `ControllerDealtCombatDamageBySourceThisTurn`, `CrewedOrSaddledBySourceThisTurn`, `DealtCombatDamageToSourceControllerThisTurn`, `DealtDamageToSourceControllerThisTurn`, `HasDisguiseAbility`, `HasGreatestManaValueAmongAllCreatures`, `HasLeastManaValueAmong`, `HasLeastPower`, `HasLeastPowerAmongAllCreatures`, `HasLockedDoor`, `InSameBandAsSource`, `IsAttachedToCardType`, `IsAttackingABattle`, `IsAttackingEnchantedPlayer`, `IsAttackingYouOrYourPlaneswalkers`, `IsBlocked`, `IsBlockingIterationEntity`, `IsBlockingSource`, `IsCombatPairedWithSource`, `IsEnchantedByAura`, `IsRingBearer`, `IsWarpExiled`, `NotTargetedByAbilityFromSameNamedSource`, `SharesNameWithSpellCastThisTurn`, `WasCastForWarp`
 
 ### `EventPattern` — 55 gap subtypes
 
@@ -860,7 +860,7 @@ Also (1–2 cards each): `CardTypeEnteredUnderControlThisTurn`, `CountersRemoved
 | `DoubleCounterPlacement` | 4 | Innkeeper's Talent; Loading Zone; The Earth Crystal; Doubling Season |
 | `RedirectZoneChangeWithEffect` | 4 | Darigaaz Reincarnated; The Darkness Crystal; Head of the Hunt; Ugin's Nexus |
 
-Also (1–2 cards each): `CapCounterPlacementThisTurn`, `CapDamage`, `EntersUntapped`, `EntersWithExileCounters`, `ExileCounteredSpellInstead`, `HalveDamage`, `HealOtherDamage`, `LifeLossFloor`, `ModifyDrawAmount`, `ModifyKeywordAction`, `ModifyLifeLoss`, `ModifyMillAmount`, `PreventDamageByRemovingCounter`, `PreventDraw`, `PreventExtraTurns`, `RepeatKeywordAction`, `ReplaceDamageWithMill`, `ReplaceLifePaymentWithLibraryExile`, `ReplaceTokenCreationWithAttachedCopy`, `ReplaceTokenCreationWithToken`, `SetMinimumDamage`
+Also (1–2 cards each): `CapCounterPlacementThisTurn`, `CapDamage`, `EntersUntapped`, `EntersWithExileCounters`, `ExileCounteredSpellInstead`, `HalveDamage`, `HealOtherDamage`, `LifeLossFloor`, `ModifyDrawAmount`, `ModifyKeywordAction`, `ModifyLifeLoss`, `ModifyMillAmount`, `PreventDamageByRemovingCounter`, `PreventDraw`, `SkipExtraTurns`, `RepeatKeywordAction`, `ReplaceDamageWithMill`, `ReplaceLifePaymentWithLibraryExile`, `ReplaceTokenCreationWithAttachedCopy`, `ReplaceTokenCreationWithToken`, `SetMinimumDamage`
 
 ### `AbilityCost` — 20 gap subtypes
 

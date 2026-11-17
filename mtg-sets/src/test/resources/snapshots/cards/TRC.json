@@ -306,6 +306,71 @@
     ]
 }
 
+// Mek'leth Berserker
+{
+    "name": "Mek'leth Berserker",
+    "manaCost": "{3}{R}",
+    "typeLine": "Creature — Klingon Berserker",
+    "oracleText": "Menace (This creature can't be blocked except by two or more creatures.)",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 3
+    },
+    "keywords": [
+        "MENACE"
+    ],
+    "metadata": {
+        "collectorNumber": "166",
+        "artist": "Johann Bodin",
+        "flavorText": "\"We Klingons have a reputation for ruthlessness. You will find that it is deserved.\"\n—Commander Kor, military governor of Organia",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/f/4f503eb1-d95d-4c72-bc58-a7b9e9f92eb6.jpg"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Spock, Logical Choice
+{
+    "name": "Spock, Logical Choice",
+    "manaCost": "{3}{U}{U}",
+    "typeLine": "Legendary Creature — Vulcan Human Scientist",
+    "oracleText": "Vigilance (Attacking doesn't cause this creature to tap.)\n{T}: Draw a card.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 5
+    },
+    "keywords": [
+        "VIGILANCE"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Spock, Logical Choice:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "{T}: Draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "194",
+        "rarity": "MYTHIC",
+        "artist": "Bastien Jez",
+        "flavorText": "\"In critical moments, men sometimes see exactly what they wish to see.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/a/5a741052-e92d-4e9c-8cfa-3b5ed1f432f5.jpg?1784065332"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Starfleet Crew
 {
     "name": "Starfleet Crew",
@@ -367,5 +432,30 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Worf, Chief Tactical Officer
+{
+    "name": "Worf, Chief Tactical Officer",
+    "manaCost": "{2}{W}",
+    "typeLine": "Legendary Creature — Klingon Warrior Officer",
+    "oracleText": "Vigilance (Attacking doesn't cause this creature to tap.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "keywords": [
+        "VIGILANCE"
+    ],
+    "metadata": {
+        "collectorNumber": "141",
+        "rarity": "UNCOMMON",
+        "artist": "Ariel Orea",
+        "flavorText": "\"The true test of a warrior is not without. It is within.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/e/ced54aa6-c8ee-451f-91cd-967fe766ec13.jpg?1786005790"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }

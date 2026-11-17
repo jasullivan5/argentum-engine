@@ -7,6 +7,7 @@ import com.wingedsheep.engine.core.ForEachItem
 import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.effects.token.TokenEntryGroups
 import com.wingedsheep.engine.handlers.effects.BattlefieldFilterUtils
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
@@ -57,7 +58,8 @@ class ForEachExecutor(
     private val effectExecutor: (GameState, Effect, EffectContext) -> EffectResult,
     private val predicateEvaluator: PredicateEvaluator,
     /** For the group look-back freeze in [execute]; the continuation resumer needs none. */
-    private val cardRegistry: com.wingedsheep.engine.registry.CardRegistry? = null
+    private val cardRegistry: com.wingedsheep.engine.registry.CardRegistry? = null,
+    private val damageExecutor: com.wingedsheep.engine.handlers.effects.damage.DealDamageExecutor? = null
 ) : EffectExecutor<ForEachEffect> {
 
     override val effectType: KClass<ForEachEffect> = ForEachEffect::class
@@ -84,16 +86,43 @@ class ForEachExecutor(
             }
         }
 
+        val damage = effect.body as? com.wingedsheep.sdk.scripting.effects.DealDamageEffect
+        val simultaneousDamage = when (effect.space) {
+            IterationSpace.Targets, is IterationSpace.TargetsOf,
+            is IterationSpace.Group, is IterationSpace.Collection, is IterationSpace.Players -> true
+            else -> false
+        }
+        if (damage != null && simultaneousDamage && damageExecutor != null) {
+            // Atomic damage is one instruction across all recipients. A composite body remains
+            // a per-item sequence; it can contain intervening choices or state-changing effects.
+            // Preparation is already in the paused state. Replaying the damage instruction
+            // must not install another copy of each no-regeneration floating effect.
+            val replayEffect = if (space is IterationSpace.Group && space.noRegenerate) {
+                effect.copy(space = space.copy(noRegenerate = false))
+            } else effect
+            return damageExecutor.executeSimultaneously(currentState, damage,
+                items.map { bindIterationContext(currentState, context, it) }, replayEffect, context, aggregateExcess = true)
+        }
+
         // A group loop is one simultaneous event: freeze each member's look-back grants
         // before the first iteration moves anything, for its leaves-the-battlefield look-back
         // (CR 603.10a). Carried on the outer context, so it survives a mid-loop pause.
-        val loopContext = if (space is IterationSpace.Group && cardRegistry != null) {
+        val lookBackContext = if (space is IterationSpace.Group && cardRegistry != null) {
             val frozen = com.wingedsheep.engine.event.LookBackGrants.frozen(
                 state, items.mapNotNull { (it as? ForEachItem.OfEntity)?.entityId },
                 cardRegistry, predicateEvaluator.conditions
             )
             if (frozen.isEmpty()) context else context.copy(lookBackGrants = context.lookBackGrants + frozen)
         } else context
+
+        // "For each creature, create a token …" is one instruction: every token it makes enters
+        // at once and sees the others enter (CR 603.6a), so the iterations share one entry group.
+        // Carried on the outer context, so it survives a mid-loop pause.
+        val loopContext = if (TokenEntryGroups.createsTokens(effect.body) && TokenEntryGroups.group(context) == null) {
+            val (group, allocated) = currentState.newRoutingId()
+            currentState = allocated
+            TokenEntryGroups.withGroup(lookBackContext, group)
+        } else lookBackContext
 
         val move = effect.body as? com.wingedsheep.sdk.scripting.effects.MoveToZoneEffect
         // An atomic move over a group or all chosen targets is one instruction. A
@@ -236,7 +265,7 @@ class ForEachExecutor(
                 .map { ForEachItem.OfEntity(it) }
 
         is IterationSpace.Group ->
-            resolveGroup(state, space, context).map { ForEachItem.OfEntity(it) }
+            BattlefieldFilterUtils.resolveGroup(state, space.filter, context, predicateEvaluator).map { ForEachItem.OfEntity(it) }
 
         is IterationSpace.ColorsOf -> {
             val sourceId = TargetResolutionUtils.resolveEntity(space.source, context, state)
@@ -250,7 +279,7 @@ class ForEachExecutor(
         }
 
         is IterationSpace.CounterKindsAmong ->
-            resolveGroup(state, IterationSpace.Group(space.filter), context)
+            BattlefieldFilterUtils.resolveGroup(state, space.filter, context, predicateEvaluator)
                 .flatMap { id ->
                     state.getEntity(id)?.get<CountersComponent>()?.counters
                         ?.filterValues { it > 0 }?.keys.orEmpty()
@@ -314,11 +343,14 @@ class ForEachExecutor(
     private fun resolvePlayers(player: Player, state: GameState, context: EffectContext): List<EntityId> {
         return when (player) {
             Player.EachDefendingPlayer -> com.wingedsheep.engine.mechanics.combat.CombatDefenders.allDefendingPlayersInApnapOrder(state)
+            Player.EachAttackedPlayer -> com.wingedsheep.engine.mechanics.combat.CombatDefenders.attackedPlayersInApnapOrder(state)
             Player.Each -> state.activePlayers
             Player.ActivePlayerFirst -> state.apnapOrder
             Player.EachStartingWithYou -> state.turnOrderStartingWith(context.controllerId)
+            Player.EachStartingWithNextOpponent -> state.turnOrderStartingWithNextOpponent(context.controllerId)
             Player.You -> listOf(context.controllerId)
             Player.EachOpponent -> state.getOpponents(context.controllerId)
+            Player.EachOtherPlayer -> state.getOtherPlayers(context.controllerId)
             // Distinct owners of the cards still in the source's linked-exile pile. Resolve to
             // exactly those owners (empty when the pile is empty) — never the activePlayers
             // fallback below, so "the exiled card's owner does X" does nothing when nothing was
@@ -349,59 +381,13 @@ class ForEachExecutor(
     }
 
     /**
-     * Resolve a group filter to the battlefield entities it matches, honoring a
-     * chosen-subtype key and the filter's excludeSelf flag.
-     */
-    private fun resolveGroup(
-        state: GameState,
-        space: IterationSpace.Group,
-        context: EffectContext
-    ): List<EntityId> {
-        val filter = space.filter
-
-        // If the filter references a chosen subtype, resolve it from context
-        val chosenSubtype = filter.chosenSubtypeKey?.let { key ->
-            context.pipeline.chosenValues[key]
-        }
-        // If a chosen subtype key is specified but no value was chosen, return empty
-        if (filter.chosenSubtypeKey != null && chosenSubtype == null) {
-            return emptyList()
-        }
-
-        val excludeSelfId = if (filter.excludeSelf) context.sourceId else null
-        // excludeTarget removes the spell/ability's first chosen target — used for "each other X
-        // with the same controller" relative to a targeted permanent (Fear, Fire, Foes!).
-        val excludeTargetId = if (filter.excludeTarget) {
-            when (val first = context.targets.firstOrNull()) {
-                is ChosenTarget.Permanent -> first.entityId
-                is ChosenTarget.Card -> first.cardId
-                else -> null
-            }
-        } else null
-        val matched = BattlefieldFilterUtils.findMatchingOnBattlefield(state, filter.baseFilter, context, excludeSelfId, predicateEvaluator = predicateEvaluator)
-            .filter { excludeTargetId == null || it != excludeTargetId }
-            .filter { !filter.excludeTriggeringEntity || it != context.triggeringEntityId }
-
-        // Additionally filter by chosen subtype if specified
-        return if (chosenSubtype != null) {
-            val projected = state.projectedState
-            matched.filter { projected.hasSubtype(it, chosenSubtype) }
-        } else {
-            matched
-        }
-    }
-
-    /**
      * Colors of the entity for [IterationSpace.ColorsOf]: projection is authoritative
      * on the battlefield (Devoid / Layer-5 changes honored, including an authoritative
      * empty set); off battlefield, printed colors as last-known information.
      */
     private fun readSourceColors(state: GameState, entityId: EntityId): Set<String> {
-        if (state.getBattlefield().contains(entityId)) {
-            return state.projectedState.getColors(entityId)
-        }
-        val card = state.getEntity(entityId)?.get<CardComponent>() ?: return emptySet()
-        return card.colors.map { it.name }.toSet()
+        if (state.getEntity(entityId)?.get<CardComponent>() == null) return emptySet()
+        return state.projectedState.colorsOf(entityId)
     }
 
     private fun addCantBeRegenerated(

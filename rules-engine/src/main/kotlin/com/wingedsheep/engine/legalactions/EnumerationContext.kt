@@ -19,7 +19,7 @@ import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.forcedPlayFor
 import com.wingedsheep.engine.state.components.player.CantActivateLoyaltyAbilitiesComponent
-import com.wingedsheep.engine.state.components.player.CantCastSpellsComponent
+import com.wingedsheep.engine.state.components.player.bindingCastBans
 import com.wingedsheep.engine.state.components.player.CantCastFromNonHandZonesComponent
 import com.wingedsheep.engine.state.components.player.PlayerCantPlayFromHandComponent
 import com.wingedsheep.sdk.core.ManaCost
@@ -69,12 +69,9 @@ class EnumerationContext(
     val castPermissionUtils by lazy { CastPermissionUtils(cardRegistry, predicateEvaluator, conditionEvaluator) }
     // The one legality kernel the handlers' `validate` also asks, so what is offered is what is accepted.
     val legality by lazy { LegalityKernel(cardRegistry, conditionEvaluator) }
-    // Plot (CR 718) cost reduction — Doc Aurlock-style "plotting cards costs {N} less".
-    val plotCostReducer by lazy { com.wingedsheep.engine.mechanics.mana.PlotCostReducer(cardRegistry) }
-
-    // Door-unlock (CR 709.5e) cost reduction — Inquisitive-Glimmer-style "Unlock costs you pay
-    // cost {N} less". Kept in lockstep with UnlockRoomDoorHandler's own reducer.
-    val unlockCostReducer by lazy { com.wingedsheep.engine.mechanics.mana.UnlockCostReducer(cardRegistry) }
+    // Special-action (CR 116.2) cost modification — plot, unlock, foretell ("plotting cards costs
+    // {N} less"). Kept in lockstep with each action handler's own reducer.
+    val specialActionCostReducer by lazy { com.wingedsheep.engine.mechanics.mana.SpecialActionCostReducer(cardRegistry) }
 
     // Projected state
     val projected: ProjectedState by lazy { state.projectedState }
@@ -97,7 +94,7 @@ class EnumerationContext(
 
     // Mana-relevant battlefield statics (aura color overrides, mana-ability grants, tap bonuses).
     // Built once per pass instead of once per permanent being labelled — see ManaStaticsIndex.
-    val manaStatics: ManaStaticsIndex by lazy { ManaStaticsIndex.build(state, cardRegistry) }
+    val manaStatics: ManaStaticsIndex by lazy { ManaStaticsIndex.build(state, cardRegistry, conditionEvaluator) }
 
     // Timing flags. CR 805.5a — on a shared team turn either teammate may take sorcery-speed
     // actions, so this is gated on the active *team*, not the single active player.
@@ -144,8 +141,8 @@ class EnumerationContext(
     // Cast restrictions — blanket, spell-independent locks (a Silence-style CantCastSpellsComponent
     // or a RestrictSpellsCastPerTurn per-turn limit). Cached once per enumeration pass.
     val cantCastSpells: Boolean by lazy {
-        state.getEntity(playerId)?.get<CantCastSpellsComponent>()?.restrictions
-            ?.any { it.spellFilter == com.wingedsheep.sdk.scripting.GameObjectFilter.Any } == true ||
+        state.bindingCastBans(playerId)
+            .any { it.spellFilter == com.wingedsheep.sdk.scripting.GameObjectFilter.Any } ||
             castPermissionUtils.hasReachedSpellCastLimit(state, playerId)
     }
 
@@ -226,8 +223,9 @@ class EnumerationContext(
     fun freeCastCost(
         cardDef: com.wingedsheep.sdk.model.CardDefinition?,
         fromZone: com.wingedsheep.sdk.core.Zone,
+        spellId: EntityId? = null,
     ): com.wingedsheep.sdk.core.ManaCost =
-        cardDef?.let { costCalculator.calculateFreeCastCost(state, it, playerId, fromZone = fromZone) }
+        cardDef?.let { costCalculator.calculateFreeCastCost(state, it, playerId, fromZone = fromZone, spellId = spellId) }
             ?: com.wingedsheep.sdk.core.ManaCost.ZERO
 
     /** Whether the player can pay [cost] from their available sources — trivially true for {0}. */

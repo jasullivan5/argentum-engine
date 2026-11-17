@@ -60,7 +60,17 @@ data class DealDamageEffect(
      * nothing was dealt. "You gain life equal to the damage dealt this way" (Creeping Bloodsucker,
      * Syphon Soul).
      */
-    val damageDealtVariable: String? = null
+    val damageDealtVariable: String? = null,
+    /**
+     * When set, the permanents and players this effect actually dealt damage to — every recipient
+     * of at least 1 damage after prevention and replacement, including one a replacement redirected
+     * the damage to — are stored as a pipeline collection under this key. The same axis, with the
+     * same meaning, as [DividedDamageEffect.storeDamagedAs]. Against [Player.EachOpponent] (or any
+     * multi-recipient target) the damage is still one simultaneous event; the collection then reads
+     * "each player dealt damage this way" (Chandra, Roaring Flame's −7: each such player gets an
+     * emblem). A recipient whose damage was wholly prevented is not in it.
+     */
+    val storeDamagedAs: String? = null
 ) : Effect {
     /** Convenience constructor for fixed amounts */
     constructor(amount: Int, target: EffectTarget, cantBePrevented: Boolean = false, damageSource: EffectTarget? = null)
@@ -95,7 +105,8 @@ data class DealDamageEffect(
 /**
  * Install a turn-duration (until end of turn) replacement effect that adds [bonus] to every damage
  * instance matching [appliesTo] for the rest of the turn (CR 616 — a damage-amount replacement:
- * "it deals that much damage plus N instead").
+ * "it deals that much damage plus N instead"), or — with [multiplier] above 1 and a zero [bonus] —
+ * multiplies it ("it deals double that damage instead": Insult // Injury).
  *
  * [appliesTo] carries the whole scope — `source`, `recipient`, `damageType` and `amount` — matched by
  * the same shared matchers as [com.wingedsheep.sdk.scripting.ModifyDamageAmount], with the effect's
@@ -110,22 +121,45 @@ data class DealDamageEffect(
  * - Rankle and Torbran: "If a source would deal damage to a player or battle this turn, it deals that
  *   much damage plus 2 instead." — `appliesTo = DamageEvent(recipient = Recipient.AnyPlayerOrBattle)`.
  *
- * A floating effect rather than the permanent-hosted [com.wingedsheep.sdk.scripting.ModifyDamageAmount]
- * because it is turn-duration and bakes its bonus at resolution.
+ * - Insult // Injury (Insult): "If a source you control would deal damage this turn, it deals double
+ *   that damage instead." — `multiplier = 2`, `bonus = 0`,
+ *   `appliesTo = DamageEvent(source = Any.youControl())`. Each install doubles once, so two Insults
+ *   quadruple (CR 616.1).
+ *
+ * The damage becomes `amount * multiplier + bonus`; a card uses one of the two. A floating effect
+ * rather than the permanent-hosted [com.wingedsheep.sdk.scripting.ModifyDamageAmount] /
+ * [com.wingedsheep.sdk.scripting.DoubleDamage] because it is turn-duration, outlives the spell or
+ * ability that created it, and bakes its bonus at resolution.
  */
 @SerialName("AmplifyDamageThisTurn")
 @Serializable
 data class AmplifyDamageThisTurnEffect(
     val bonus: DynamicAmount,
     val appliesTo: EventPattern.DamageEvent,
+    val multiplier: Int = 1,
 ) : Effect {
+    init {
+        require(multiplier >= 1) { "AmplifyDamageThisTurnEffect.multiplier must be at least 1" }
+        require(multiplier == 1 || bonus == DynamicAmount.Fixed(0)) {
+            "AmplifyDamageThisTurnEffect multiplies or adds, never both"
+        }
+    }
+
     override val description: String = describe(bonus.description)
 
     override fun runtimeDescription(resolver: (DynamicAmount) -> Int?): String =
         describe(resolver(bonus)?.toString() ?: bonus.description)
 
-    private fun describe(amount: String): String =
-        "Until end of turn, if ${appliesTo.description}, it's that much damage plus $amount instead"
+    private fun describe(amount: String): String {
+        val scaled = when (multiplier) {
+            1 -> "that much damage"
+            2 -> "double that damage"
+            3 -> "triple that damage"
+            else -> "$multiplier times that damage"
+        }
+        val plus = if (multiplier > 1) "" else " plus $amount"
+        return "Until end of turn, if ${appliesTo.description}, it's $scaled$plus instead"
+    }
 
     override fun applyTextReplacement(replacer: TextReplacer): Effect {
         val newBonus = bonus.applyTextReplacement(replacer)
@@ -224,6 +258,11 @@ data class DamageToTargetCantBePreventedThisTurnEffect(
  * "deals 4 damage divided as you choose among any number of targets. Tap two target permanents." —
  * the 4 damage is divided among the first requirement's targets only, never the tapped permanents.
  * Null divides among every target of the effect, the historical reading.
+ *
+ * [storeDamagedAs], when set, stores the permanents and players this effect actually dealt damage
+ * to (a share of at least 1 left after prevention and replacement) as a pipeline collection under
+ * that key — "creatures dealt damage this way" (Huatli, Warrior Poet: "… can't block this turn").
+ * A target whose share was wholly prevented, or that became illegal, is not in it.
  */
 @SerialName("DividedDamage")
 @Serializable
@@ -232,7 +271,8 @@ data class DividedDamageEffect(
     val minTargets: Int = 1,
     val maxTargets: Int = 3,
     val dynamicTotal: com.wingedsheep.sdk.scripting.values.DynamicAmount? = null,
-    val among: String? = null
+    val among: String? = null,
+    val storeDamagedAs: String? = null
 ) : Effect {
     override val description: String =
         if (dynamicTotal != null)
@@ -293,6 +333,31 @@ data class FightEffect(
     val excessDamageVariable: String? = null
 ) : Effect {
     override val description: String = "${target1.description} fights ${target2.description}"
+}
+
+/**
+ * Each of two creatures deals damage equal to its [stat] to the other, simultaneously — "Each of
+ * those creatures deals damage equal to its toughness to the other" (Grim Contest). The damage is
+ * announced from both creatures' current values before either is dealt, then dealt as one event
+ * (so wither or infect on one side can't shrink the other's number first). If either creature is no
+ * longer a creature on the battlefield as it resolves, neither deals or is dealt damage — the same
+ * all-or-nothing as a fight (Grim Contest's ruling).
+ *
+ * Closest types: [FightEffect] is the fight keyword action (CR 701.14), always power, and emits the
+ * fought events "whenever a creature fights" payoffs watch — this is not a fight, so widening Fight
+ * with a stat axis would hand those payoffs a fight that never happened. [DealDamageEffect] has one
+ * source and one recipient; two of them in sequence aren't simultaneous and the second would read a
+ * toughness the first already moved.
+ */
+@SerialName("MutualDamage")
+@Serializable
+data class MutualDamageEffect(
+    val target1: EffectTarget,
+    val target2: EffectTarget,
+    val stat: CreatureStat
+) : Effect {
+    override val description: String =
+        "each of ${target1.description} and ${target2.description} deals damage equal to its ${stat.displayName} to the other"
 }
 
 /**

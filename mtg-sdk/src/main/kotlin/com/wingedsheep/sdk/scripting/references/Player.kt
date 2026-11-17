@@ -47,9 +47,11 @@ sealed interface Player {
     }
 
     /**
-     * The defending player, per CR 802.2a: the specific player the ability's source is
-     * attacking, determined per attacking creature — never "the opponent" via turn order.
-     * Resolves through the source's attack assignment (a creature attacking a planeswalker
+     * The defending player, per CR 802.2a: one specific player, determined per attacking
+     * creature — never "the opponent" via turn order. The triggering attacker's defender in an
+     * attack trigger (CR 508.5: "whenever a creature you control attacks" names that creature's
+     * defender), else the player the ability's source is attacking. Resolves through the attack
+     * assignment (a creature attacking a planeswalker
      * defends against that planeswalker's controller); for "deals combat damage to a
      * player" triggers whose source has left combat before resolution, the damaged player
      * is read from the trigger context as last-known information.
@@ -72,6 +74,25 @@ sealed interface Player {
         override val description: String = "each defending player"
     }
 
+    /**
+     * Every player **being attacked** in the current combat, in APNAP order: each player with at
+     * least one attacking creature attacking that player directly. Narrower than
+     * [EachDefendingPlayer] — the rules tell "a player being attacked" apart from one who only
+     * controls a planeswalker or protects a battle that's being attacked (CR 802.4), so neither of
+     * those makes its player "being attacked", and an opponent no creature attacks isn't either.
+     * Read live: a player stops being attacked once the last creature attacking them leaves combat.
+     * Outside combat, or before attackers are declared, this names nobody.
+     *
+     * "If one or more players being attacked are poisoned" (Norn's Decree) is
+     * `GreatestAmongPlayers(EachAttackedPlayer, PlayerCounterCount(POISON, You)) >= 1`. List-only
+     * like [EachDefendingPlayer]: the single-player resolver returns null for it.
+     */
+    @SerialName("EachAttackedPlayer")
+    @Serializable
+    data object EachAttackedPlayer : Player {
+        override val description: String = "each player being attacked"
+    }
+
     /** All opponents */
     @SerialName("EachOpponent")
     @Serializable
@@ -79,11 +100,45 @@ sealed interface Player {
         override val description: String = "each opponent"
     }
 
+    /**
+     * Every player other than you, in turn order — "each other player" (Grave Pact).
+     *
+     * Not [EachOpponent]: CR 102.3 makes a player's opponents everyone *not on their team*, so in a
+     * team game (Two-Headed Giant, CR 810) "each opponent" skips your teammate while "each other
+     * player" includes them. Outside team play the two name the same players. Not [Each] either,
+     * which includes you. Like [EachOpponent] this is a plural reference — it fans out in effect and
+     * counting slots (`PlayerRef`, `ForEachPlayer`, player-scoped amounts) and has no single-player
+     * resolution.
+     */
+    @SerialName("EachOtherPlayer")
+    @Serializable
+    data object EachOtherPlayer : Player {
+        override val description: String = "each other player"
+    }
+
     /** All players */
     @SerialName("Each")
     @Serializable
     data object Each : Player {
         override val description: String = "each player"
+    }
+
+    /**
+     * The active player — the player whose turn it is (CR 102.1), read when the effect resolves.
+     * Since only the active player declares attackers (CR 508.1), this is also "that attacking
+     * player" on an attack trigger that binds someone else as the triggering player: Breena, the
+     * Demagogue's per-attacked-player trigger binds the *attacked* player as `TriggeringPlayer`,
+     * so "that attacking player draws a card" is `PlayerRef(ActivePlayer)`. Under shared team turns
+     * (CR 805.10a) every player on the active team attacks, and this names only the active player.
+     *
+     * The closest neighbours don't take the axis: [ActivePlayerFirst] is every player, ordered;
+     * [TriggeringPlayer] is the one player the trigger event names, which on these triggers is
+     * the defender.
+     */
+    @SerialName("ActivePlayer")
+    @Serializable
+    data object ActivePlayer : Player {
+        override val description: String = "the active player"
     }
 
     /** All players in APNAP order (active player first, then turn order) */
@@ -106,6 +161,19 @@ sealed interface Player {
     @Serializable
     data object EachStartingWithYou : Player {
         override val description: String = "each player, starting with you"
+    }
+
+    /**
+     * All players in turn order **starting with the next opponent** after you (the ability's
+     * controller) and ending with you — "Starting with the next opponent in turn order, each player
+     * …" (Sadistic Shell Game). The rotation [EachStartingWithYou] gives, moved on to the first
+     * opponent after you, so you act after every opponent; in a team game a teammate seated before
+     * that opponent acts after you. Like its sibling, anchored to the controller when the loop starts.
+     */
+    @SerialName("EachStartingWithNextOpponent")
+    @Serializable
+    data object EachStartingWithNextOpponent : Player {
+        override val description: String = "each player, starting with the next opponent in turn order"
     }
 
     /** Any player (for matching/filtering) */
@@ -211,6 +279,12 @@ sealed interface Player {
      * inside that restriction-evaluation context (where `EffectContext.candidatePlayerId`
      * is set) — at effect-execution time there is no candidate, so it resolves to nothing.
      * Reach it through the `Conditions.candidate*` facade rather than constructing it by hand.
+     *
+     * Inside an object filter's dynamic cap (`manaValueAtMostDynamic`, `powerAtMostDynamic`, …)
+     * the candidate is an object, and this is **that object's controller** — "target spell with
+     * mana value less than or equal to the number of cards in its controller's graveyard" (Drown in
+     * the Loch) is `manaValueAtMostDynamic(DynamicAmounts.cardsInYourGraveyard(Player.Candidate))`,
+     * measured per candidate: a spell's caster, a permanent's controller.
      */
     @SerialName("Candidate")
     @Serializable
@@ -288,13 +362,30 @@ sealed interface Player {
      * each attacking red creature, … unless **its controller** pays {2}{R}" (Heroism, Tidal Flats).
      *
      * Distinct from [ControllerOfSource], which stays the enchantment's controller inside such a
-     * loop, and from [ControllerOf], which reads the effect's first *chosen target*. Null outside a
-     * ForEach-over-entities.
+     * loop, and from [ControllerOf], which reads the effect's first *chosen target*. A
+     * `CantAttackUnless` condition binds the creature being checked, so there it is the player
+     * attacking with it (Angelic Arbiter). Null outside a ForEach-over-entities or that check.
      */
     @SerialName("ControllerOfIterationEntity")
     @Serializable
     data object ControllerOfIterationEntity : Player {
         override val description: String = "its controller"
+    }
+
+    /**
+     * Owner of the entity the enclosing ForEach-over-entities is currently iterating over — "each
+     * player who owns a spell you cast this way loses life equal to its mana value" (Kefka, Dancing
+     * Mad), read as a `ForEachInCollection` over the cast spells whose body names **its owner**.
+     *
+     * Distinct from [ControllerOfIterationEntity] exactly when ownership and control diverge — a
+     * spell you cast from an opponent's graveyard is controlled by you and owned by them — and from
+     * [OwnerOfSource] / [OwnerOf], which read the effect's source and first chosen target. Null
+     * outside a ForEach-over-entities.
+     */
+    @SerialName("OwnerOfIterationEntity")
+    @Serializable
+    data object OwnerOfIterationEntity : Player {
+        override val description: String = "its owner"
     }
 
     /**
@@ -480,16 +571,21 @@ sealed interface Player {
             AnOpponent -> "an opponent's"
             DefendingPlayer -> "defending player's"
             EachDefendingPlayer -> "each defending player's"
+            EachAttackedPlayer -> "each attacked player's"
             TargetOpponent -> "target opponent's"
             TargetPlayer -> "target player's"
             ControllerOfIterationEntity -> "its controller's"
+            OwnerOfIterationEntity -> "its owner's"
             ControllerOfAffectedEntity -> "its controller's"
             EachTargetedPlayer -> "those players'"
             is InCollection -> "those players'"
             Each -> "each player's"
+            ActivePlayer -> "the active player's"
             ActivePlayerFirst -> "each player's"
             EachStartingWithYou -> "each player's"
+            EachStartingWithNextOpponent -> "each player's"
             EachOpponent -> "each opponent's"
+            EachOtherPlayer -> "each other player's"
             Any -> "a player's"
             is ContextPlayer -> "that player's"
             is BoundVariable -> "$description's"

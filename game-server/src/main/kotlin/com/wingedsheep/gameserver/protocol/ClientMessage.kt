@@ -334,6 +334,8 @@ sealed interface ClientMessage {
         val boosterDistribution: Map<String, Int>? = null,  // Per-set booster counts
         val maxPlayers: Int? = null,
         val gamesPerMatch: Int? = null,
+        /** Games per tournament match: 1 or 3. Null = unchanged. */
+        val bestOf: Int? = null,
         val pickTimeSeconds: Int? = null,     // Draft only
         val picksPerRound: Int? = null,       // Draft only: 1 or 2
         val isPublic: Boolean? = null,
@@ -352,6 +354,8 @@ sealed interface ClientMessage {
         val deckSizeMin: Int? = null,
         /** Commander Draft/Sealed only — singleton toggle (default true = duplicates allowed). */
         val allowDuplicates: Boolean? = null,
+        /** Limited pools only — cap decks at 4 copies of any non-basic card (default false). */
+        val limitedCopyLimit: Boolean? = null,
         /** Commander Draft/Sealed only — "BRAWL" or "COMMANDER". */
         val commanderPreset: String? = null,
         /** Toggle Chaos boosters: each pack pulls from the union of selected sets. */
@@ -422,6 +426,23 @@ sealed interface ClientMessage {
     @Serializable
     @SerialName("readyForNextRound")
     data object ReadyForNextRound : ClientMessage
+
+    /**
+     * Between the games of a best-of-three: play [deck] for the rest of the match and mark this seat
+     * ready for the next game. [playFirst] is read only from the seat that chooses who takes the
+     * first turn (the loser of the last game, CR 103.1); null from them means "play".
+     */
+    @Serializable
+    @SerialName("submitMatchDeck")
+    data class SubmitMatchDeck(
+        val deck: Map<String, Int>,
+        val playFirst: Boolean? = null,
+    ) : ClientMessage
+
+    /** Between games: take back a ready, to keep sideboarding. */
+    @Serializable
+    @SerialName("editMatchDeck")
+    data object EditMatchDeck : ClientMessage
 
     /**
      * Host adds extra rounds to a completed tournament.
@@ -700,6 +721,13 @@ sealed interface ClientMessage {
          * it isn't listed there. The deck validator checks its condition.
          */
         val companion: String? = null,
+        /**
+         * The format the deck was built for — a saved deck's or an example's — as a
+         * [com.wingedsheep.sdk.core.DeckFormat] name. A client claim: kept only when the deck is
+         * legal there, and then what an AI seat on Auto builds its own deck for. A string rather
+         * than the enum so a saved deck's stale or free-form value is dropped, not a decode error.
+         */
+        val deckFormat: String? = null,
     ) : ClientMessage
 
     /** Toggle this player's ready flag. The server starts the game when both players are ready. */

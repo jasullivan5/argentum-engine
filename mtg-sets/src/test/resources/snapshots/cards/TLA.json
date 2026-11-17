@@ -3498,7 +3498,7 @@
                             }
                         ]
                     },
-                    "perAttackedPlayer": true
+                    "attackedPlayer": "Each"
                 },
                 "binding": "ANY",
                 "effect": {
@@ -7326,7 +7326,8 @@
                         "placement": "Tapped"
                     }
                 },
-                "ShuffleLibrary"
+                "ShuffleLibrary",
+                "EmitLibrarySearchedEvent"
             ]
         }
     },
@@ -7561,43 +7562,6 @@
     },
     "colorIdentityOverride": [
         "WHITE"
-    ]
-}
-
-// Epic Downfall
-{
-    "name": "Epic Downfall",
-    "manaCost": "{1}{B}",
-    "typeLine": "Sorcery",
-    "oracleText": "Exile target creature with mana value 3 or greater.",
-    "script": {
-        "spellEffect": {
-            "type": "MoveToZone",
-            "target": {
-                "type": "BoundVariable",
-                "name": "t0"
-            },
-            "destination": "Exile"
-        },
-        "targetRequirements": [
-            {
-                "type": "TargetObject",
-                "filter": {
-                    "baseFilter": "creature mv>=3"
-                },
-                "id": "t0"
-            }
-        ]
-    },
-    "metadata": {
-        "collectorNumber": "96",
-        "rarity": "UNCOMMON",
-        "artist": "Hristo D. Chukov",
-        "flavorText": "With Azula's defeat, all of her nobility, grace, and confidence shattered into harrowing screams from the would-be Fire Lord.",
-        "imageUri": "https://cards.scryfall.io/normal/front/3/b/3b4a6804-04f5-4467-bb1c-9466a47bc55f.jpg?1764120663"
-    },
-    "colorIdentityOverride": [
-        "BLACK"
     ]
 }
 
@@ -10259,85 +10223,6 @@
     ]
 }
 
-// Heartless Act
-{
-    "name": "Heartless Act",
-    "manaCost": "{1}{B}",
-    "typeLine": "Instant",
-    "oracleText": "Choose one —\n• Destroy target creature with no counters on it.\n• Remove up to three counters from target creature.",
-    "script": {
-        "spellEffect": {
-            "type": "Modal",
-            "modes": [
-                {
-                    "effect": {
-                        "type": "MoveToZone",
-                        "target": {
-                            "type": "BoundVariable",
-                            "name": "t0"
-                        },
-                        "destination": "Graveyard",
-                        "byDestruction": true
-                    },
-                    "targetRequirements": [
-                        {
-                            "type": "TargetObject",
-                            "filter": {
-                                "baseFilter": {
-                                    "cardPredicates": [
-                                        "IsCreature"
-                                    ],
-                                    "statePredicates": [
-                                        {
-                                            "type": "StateNot",
-                                            "predicate": "HasAnyCounter"
-                                        }
-                                    ]
-                                }
-                            },
-                            "id": "t0"
-                        }
-                    ],
-                    "description": "Destroy target creature with no counters on it"
-                },
-                {
-                    "effect": {
-                        "type": "RemoveAnyNumberOfCounters",
-                        "target": {
-                            "type": "BoundVariable",
-                            "name": "t1"
-                        },
-                        "maxTotal": {
-                            "type": "Fixed",
-                            "amount": 3
-                        }
-                    },
-                    "targetRequirements": [
-                        {
-                            "type": "TargetObject",
-                            "filter": {
-                                "baseFilter": "creature"
-                            },
-                            "id": "t1"
-                        }
-                    ],
-                    "description": "Remove up to three counters from target creature"
-                }
-            ]
-        }
-    },
-    "metadata": {
-        "collectorNumber": "103",
-        "rarity": "UNCOMMON",
-        "artist": "Sylvain Sarrailh",
-        "flavorText": "\"Put a muzzle on him!\"\n—Si Wong Sandbender",
-        "imageUri": "https://cards.scryfall.io/normal/front/b/5/b57c57a8-d72b-4c6c-a2db-a7ef61190f42.jpg?1764120715"
-    },
-    "colorIdentityOverride": [
-        "BLACK"
-    ]
-}
-
 // Hei Bai, Spirit of Balance
 {
     "name": "Hei Bai, Spirit of Balance",
@@ -10607,10 +10492,7 @@
         "staticAbilities": [
             {
                 "type": "TransformPermanent",
-                "setCardTypes": [
-                    "CREATURE"
-                ],
-                "setSubtypes": [
+                "setCreatureSubtypes": [
                     "Citizen"
                 ]
             },
@@ -11102,7 +10984,8 @@
         ],
         "staticAbilities": [
             {
-                "type": "GraveyardCardsHaveFlashback",
+                "type": "GraveyardCardsHaveCastKeyword",
+                "keyword": "Flashback",
                 "filter": {
                     "cardPredicates": [
                         {
@@ -11121,7 +11004,8 @@
                 "duringYourTurnOnly": true
             },
             {
-                "type": "GraveyardCardsHaveFlashback",
+                "type": "GraveyardCardsHaveCastKeyword",
+                "keyword": "Flashback",
                 "filter": "instant|sorcery Lesson",
                 "cost": "{1}",
                 "duringYourTurnOnly": true
@@ -13939,11 +13823,7 @@
                         {
                             "type": "AddDynamicCounters",
                             "counterType": "PLUS_ONE_PLUS_ONE",
-                            "amount": {
-                                "type": "TurnTracking",
-                                "player": "You",
-                                "tracker": "PERMANENTS_SACRIFICED"
-                            },
+                            "amount": "PermanentsSacrificedThisTurn",
                             "target": {
                                 "type": "BoundVariable",
                                 "name": "t0"
@@ -13955,11 +13835,7 @@
                                 "type": "Gate.WhenCondition",
                                 "condition": {
                                     "type": "Compare",
-                                    "left": {
-                                        "type": "TurnTracking",
-                                        "player": "You",
-                                        "tracker": "PERMANENTS_SACRIFICED"
-                                    },
+                                    "left": "PermanentsSacrificedThisTurn",
                                     "operator": "GTE",
                                     "right": {
                                         "type": "Fixed",
@@ -14675,11 +14551,7 @@
                 "effect": "CreateTokenCopyOfSource",
                 "interveningIf": {
                     "type": "Compare",
-                    "left": {
-                        "type": "TurnTracking",
-                        "player": "You",
-                        "tracker": "PERMANENTS_SACRIFICED"
-                    },
+                    "left": "PermanentsSacrificedThisTurn",
                     "operator": "GTE",
                     "right": {
                         "type": "Fixed",
@@ -15054,7 +14926,11 @@
                                     "filter": "basicland"
                                 },
                                 "storeAs": "gathered0",
-                                "search": true
+                                "search": true,
+                                "searcher": {
+                                    "type": "ControllerOf",
+                                    "targetDescription": "target"
+                                }
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -15085,7 +14961,8 @@
                             {
                                 "type": "ShuffleLibrary",
                                 "target": "TargetController"
-                            }
+                            },
+                            "EmitLibrarySearchedEvent"
                         ]
                     },
                     "decisionMaker": "TargetController"
@@ -15910,6 +15787,9 @@
                             "type": "TargetObject",
                             "filter": {
                                 "baseFilter": {
+                                    "statePredicates": [
+                                        "HasSingleTarget"
+                                    ],
                                     "anyOf": [
                                         {},
                                         {
@@ -15944,6 +15824,9 @@
                             "type": "TargetObject",
                             "filter": {
                                 "baseFilter": {
+                                    "statePredicates": [
+                                        "HasSingleTarget"
+                                    ],
                                     "anyOf": [
                                         {},
                                         {
@@ -20145,7 +20028,10 @@
                                         "baseFilter": "creature own:triggering-player",
                                         "zone": "Graveyard"
                                     },
-                                    "totalManaValueAtMost": "XValue"
+                                    "totalAtMost": {
+                                        "property": "MANA_VALUE",
+                                        "amount": "XValue"
+                                    }
                                 }
                             ],
                             "descriptionOverride": "put any number of target creature cards with total mana value X or less from that player's graveyard onto the battlefield under your control"

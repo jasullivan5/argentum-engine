@@ -2,6 +2,12 @@ package com.wingedsheep.ai.engine
 
 import com.wingedsheep.ai.ActionResponse
 import com.wingedsheep.ai.AiPlayerController
+import com.wingedsheep.ai.draftsim.DraftsimData
+import com.wingedsheep.ai.draftsim.DraftsimScorer
+import com.wingedsheep.ai.draftsim.ScorerCard
+import com.wingedsheep.ai.draftsim.toScorerCard
+import com.wingedsheep.ai.draftsim.withFallbackRatings
+import com.wingedsheep.ai.draftsim.withSynergyAxes
 import com.wingedsheep.ai.insight.AiInsightSink
 import com.wingedsheep.ai.llm.BottomCardsInfo
 import com.wingedsheep.ai.llm.CardSummary
@@ -56,12 +62,16 @@ class EngineAiPlayerController(
      * can browse what the AI weighed. Null in normal play.
      */
     insightSink: AiInsightSink? = null,
+    /** The profile this seat plays — [AiProfile.LIVE] in production; tests pass variants. */
+    private val profile: AiProfile = AiProfile.LIVE,
 ) : AiPlayerController {
 
     private val aiPlayer =
         AIPlayer.create(
-            cardRegistry, playerId, AiProfile.LIVE, insightSink = insightSink,
+            cardRegistry, playerId, profile, insightSink = insightSink,
         )
+
+    override fun wantsPriority(state: GameState): Boolean = aiPlayer.wantsWindowItWouldAutoPass(state)
 
     override fun chooseAction(
         state: ClientGameState,
@@ -74,6 +84,7 @@ class EngineAiPlayerController(
             logger.warn("Engine AI: no game state available, passing priority")
             return ActionResponse.SubmitAction(PassPriority(playerId))
         }
+        learnOpponentDecklists(gameState)
 
         // Handle pending decisions using the engine AI's responder
         if (pendingDecision != null && pendingDecision.playerId == playerId) {
@@ -96,10 +107,37 @@ class EngineAiPlayerController(
             }
         }
 
+        // A combat declaration the server routed to us from another seat (Master Warcraft, Brutal
+        // Hordechief): it is still that seat's declaration, validated against that seat's creatures
+        // and requirements, so it must be built for that seat — our own enumeration never offers it.
+        val routed = legalActions.map { it.action }.firstOrNull {
+            (it is DeclareBlockers && it.playerId != playerId) || (it is DeclareAttackers && it.playerId != playerId)
+        }
+        if (routed != null) {
+            val action = declarationFor(routed, gameState)
+            logger.info("Engine AI made {}'s routed declaration: {}", routed.playerId, action::class.simpleName)
+            return ActionResponse.SubmitAction(action)
+        }
+
         // Use the engine AI to choose the best action from the real game state
         val action = aiPlayer.chooseAction(gameState)
         logger.info("Engine AI chose: {}", action::class.simpleName)
         return ActionResponse.SubmitAction(action)
+    }
+
+    private val seatPlayers = mutableMapOf<EntityId, AIPlayer>()
+
+    /**
+     * The [offered] declaration's seat owes, chosen by an engine AI playing that seat. It doesn't
+     * exploit the choice for us, but it honours the seat's own must-block / must-attack
+     * requirements, where a declaration under our own id is rejected outright. Falls back to the
+     * offered (empty) declaration if that AI picks anything else.
+     */
+    private fun declarationFor(offered: GameAction, gameState: GameState): GameAction {
+        val seat = offered.playerId
+        val chosen = seatPlayers.getOrPut(seat) { AIPlayer.create(cardRegistry, seat, AiProfile.LIVE) }
+            .chooseAction(gameState)
+        return if (chosen::class == offered::class && chosen.playerId == seat) chosen else offered
     }
 
     override fun decideMulligan(mulliganMessage: MulliganInfo): Boolean {
@@ -120,7 +158,14 @@ class EngineAiPlayerController(
             cards[entityId]?.typeLine?.contains("Land", ignoreCase = true) == true
         }
 
-        val keep = landCount in 2..5
+        // A 2–5-lander that can't cast its spells early — wrong colours for all of them, or two
+        // lands and nothing to do on them — goes back. Only a seven-card keep is read this way.
+        val keep = landCount in 2..5 && !(
+            profile.curveAwareMulligan && mulliganMessage.cardsToPutOnBottom == 0 &&
+                OpeningHandReader.shouldMulligan(
+                    mulliganMessage.hand.mapNotNull { cards[it] }, mulliganMessage.isOnThePlay,
+                )
+            )
         logger.info("Engine AI mulligan: hand={} cards, {} lands → {}", handSize, landCount, if (keep) "KEEP" else "MULLIGAN")
         return keep
     }
@@ -169,19 +214,59 @@ class EngineAiPlayerController(
         // Engine AI evaluates board state directly — deck knowledge isn't needed
     }
 
+    @Volatile
+    private var opponentDeckLists: ((EntityId) -> Map<String, Int>?)? = null
+
+    /**
+     * Read each opponent's registered decklist as the game goes — the engine AI may know them in
+     * full, by design ([com.wingedsheep.ai.engine.hidden.OpponentKnowledge]). Lists are pulled on
+     * the AI's own turn to act ([learnOpponentDecklists]) rather than pushed now, because a seat is
+     * wired before every opponent has registered a deck.
+     */
+    override fun setOpponentDeckListSource(source: (EntityId) -> Map<String, Int>?) {
+        opponentDeckLists = source
+    }
+
+    /** What this seat knows of its opponents' decks; tests read it. */
+    internal val opponentKnowledge get() = aiPlayer.opponentKnowledge
+
+    /** Teach the AI every opponent's decklist it does not know yet. Cheap once all are known. */
+    private fun learnOpponentDecklists(state: GameState) {
+        val source = opponentDeckLists ?: return
+        val knowledge = aiPlayer.opponentKnowledge ?: return
+        for (seat in state.turnOrder) {
+            if (!state.isOpponentTo(seat, playerId) || knowledge.knowsDecklistOf(seat)) continue
+            val list = source(seat)?.takeIf { it.isNotEmpty() } ?: continue
+            aiPlayer.learnOpponentDecklist(seat, list)
+        }
+    }
+
     // =========================================================================
-    // Draft Picking (Heuristic)
+    // Draft Picking (Draftsim)
     // =========================================================================
     //
-    // The color-aware per-card scoring lives in the shared [LimitedPickScorer] so the bot and the
-    // human-facing "Suggest Pick" advisor stay in lockstep. This controller only orchestrates which
-    // cards to take.
+    // Picks use the same Draftsim scorer and set tables that build the AI's deck from the drafted
+    // pool (DraftsimDeckBuildAdvisor), so the bot drafts toward the deck it will actually build.
+    // Cards the set's table leaves unrated — every card of a set we ship no ratings file for — are
+    // rated by [LimitedCardRater] off their definitions rather than by rarity alone, and every card
+    // carries its structural synergy reading, so a pick feeds the payoffs already taken.
 
-    private fun inferColors(pickedSoFar: List<CardSummary>): Map<Char, Int> =
-        LimitedPickScorer.inferColors(pickedSoFar)
+    /**
+     * Pick value of each card in [cards] given what the bot has already taken. A non-null
+     * [podSize] turns on hate drafting (a booster pick passes the rest of the pack to the next
+     * drafter). Winston piles leave it off.
+     */
+    private fun scoreCards(cards: List<CardSummary>, pickedSoFar: List<CardSummary>, podSize: Int? = null): Map<String, Double> {
+        val setCodes = (cards + pickedSoFar).mapNotNull { it.setCode?.takeIf(String::isNotBlank) }.distinct()
+        val definitions = (cards + pickedSoFar).mapNotNull { cardRegistry.getCard(it.name) }
+        val tables = DraftsimData.tablesFor(setCodes).withFallbackRatings(definitions).withSynergyAxes(definitions)
+        val scores = DraftsimScorer(tables).scoreBoosterAuto(cards.map(::scorerCard), pickedSoFar.map(::scorerCard), podSize)
+        return cards.associate { it.name to (scores[it.name]?.total ?: 0.0) }
+    }
 
-    private fun rateCard(card: CardSummary, colorCommitment: Map<Char, Int>, pickedSoFar: List<CardSummary>): Double =
-        LimitedPickScorer.score(card, colorCommitment, pickedSoFar)
+    /** The full definition where the registry has it (declared colors, color identity), else the summary. */
+    private fun scorerCard(card: CardSummary): ScorerCard =
+        cardRegistry.getCard(card.name)?.toScorerCard() ?: card.toScorerCard()
 
     override fun chooseDraftPick(
         pack: List<CardSummary>,
@@ -189,14 +274,13 @@ class EngineAiPlayerController(
         packNumber: Int,
         pickNumber: Int,
         picksRequired: Int,
-        passDirection: String
+        passDirection: String,
+        podSize: Int?,
     ): List<String> {
-        val colorCommitment = inferColors(pickedSoFar)
-        val ranked = pack.sortedByDescending { rateCard(it, colorCommitment, pickedSoFar) }
-        val picks = ranked.take(picksRequired).map { it.name }
-        logger.info("Engine AI draft pick P{}p{}: {} (from {} cards, committed colors: {})",
-            packNumber, pickNumber, picks.joinToString(", "), pack.size,
-            colorCommitment.entries.sortedByDescending { it.value }.take(2).joinToString("") { "${it.key}" })
+        // Unknown pod size still hate-drafts, at the cautious full-pod rate (0 = unknown).
+        val scores = scoreCards(pack, pickedSoFar, podSize ?: 0)
+        val picks = pack.sortedByDescending { scores[it.name] ?: 0.0 }.take(picksRequired).map { it.name }
+        logger.info("Engine AI draft pick P{}p{}: {} (from {} cards)", packNumber, pickNumber, picks.joinToString(", "), pack.size)
         return picks
     }
 
@@ -206,22 +290,18 @@ class EngineAiPlayerController(
         pileSizes: List<Int>,
         pickedSoFar: List<CardSummary>
     ): Boolean {
-        val colorCommitment = inferColors(pickedSoFar)
-        val totalRating = pileCards.sumOf { rateCard(it, colorCommitment, pickedSoFar) }
-        // Take pile if average card quality is decent, or if there's a standout card
-        val avgRating = totalRating / pileCards.size.coerceAtLeast(1)
-        val bestCard = pileCards.maxByOrNull { rateCard(it, colorCommitment, pickedSoFar) }
-        val bestRating = if (bestCard != null) rateCard(bestCard, colorCommitment, pickedSoFar) else 0.0
-
-        // More willing to take larger piles (more cards = more value even if some are weak)
-        val sizeBonus = (pileCards.size - 1) * 1.0
-        val take = avgRating + sizeBonus >= 5.0 || bestRating >= 8.0
+        val scores = scoreCards(pileCards, pickedSoFar).values
+        val best = scores.maxOrNull() ?: 0.0
+        // What the pile adds over the filler a skipped pile still yields: take a standout card, or
+        // enough above-filler cards together.
+        val surplus = scores.sumOf { (it - WINSTON_FILLER).coerceAtLeast(0.0) }
+        val take = best >= WINSTON_STANDOUT || surplus >= WINSTON_PILE_SURPLUS
 
         // On the last pile, always take (forced by Winston rules, but just in case)
         val isLastPile = pileIndex == pileSizes.size - 1
 
-        logger.info("Engine AI Winston pile {}: {} cards, avg={}, best={} → {}",
-            pileIndex, pileCards.size, "%.1f".format(avgRating), "%.1f".format(bestRating),
+        logger.info("Engine AI Winston pile {}: {} cards, best={}, surplus={} → {}",
+            pileIndex, pileCards.size, "%.1f".format(best), "%.1f".format(surplus),
             if (take || isLastPile) "TAKE" else "SKIP")
         return take || isLastPile
     }
@@ -231,12 +311,10 @@ class EngineAiPlayerController(
         availableSelections: List<String>,
         pickedSoFar: List<CardSummary>
     ): String {
-        val colorCommitment = inferColors(pickedSoFar)
-
-        // Rate each available selection by sum of card ratings in that row/column
+        // Rate each available selection by the sum of its cards' pick values
+        val scores = scoreCards(grid.filterNotNull(), pickedSoFar)
         val best = availableSelections.maxByOrNull { selection ->
-            val cards = getGridCards(grid, selection)
-            cards.sumOf { rateCard(it, colorCommitment, pickedSoFar) }
+            getGridCards(grid, selection).sumOf { scores[it.name] ?: 0.0 }
         } ?: availableSelections.first()
 
         val cards = getGridCards(grid, best)
@@ -260,4 +338,12 @@ class EngineAiPlayerController(
         return indices.mapNotNull { if (it < grid.size) grid[it] else null }
     }
 
+    private companion object {
+        /** A Winston pile holding a card this good (Draftsim pick value) is worth taking for it alone. */
+        const val WINSTON_STANDOUT = 4.0
+        /** Pick value of replacement-level filler: what a skipped pile still hands you. */
+        const val WINSTON_FILLER = 2.0
+        /** Summed value above filler at which a pile of lesser cards is worth taking. */
+        const val WINSTON_PILE_SURPLUS = 3.0
+    }
 }

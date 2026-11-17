@@ -688,7 +688,9 @@
     "OATHBREAKER",
     "VINTAGE"
   ],
-  "Balance": [],
+  "Balance": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Balance of Power": [
     "COMMANDER",
     "DUEL",
@@ -9277,7 +9279,9 @@
     "TLR",
     "VINTAGE"
   ],
-  "Black Lotus": [],
+  "Black Lotus": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Black Lotus Lounge": [],
   "Black Mage's Rod": [
     "ALCHEMY",
@@ -18940,7 +18944,8 @@
     "PAUPERCOMMANDER",
     "PREDH",
     "TIMELESS",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Brainstorm // Brainstorm": [],
   "Brainsurge": [

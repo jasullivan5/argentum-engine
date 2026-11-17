@@ -1,3 +1,182 @@
+// Angelic Guardian
+{
+    "name": "Angelic Guardian",
+    "manaCost": "{4}{W}{W}",
+    "typeLine": "Creature — Angel",
+    "oracleText": "Flying\nWhenever one or more creatures you control attack, they gain indestructible until end of turn.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Angelic Guardian:1",
+                "trigger": "YouAttackEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": {
+                                "cardPredicates": [
+                                    "IsCreature"
+                                ],
+                                "statePredicates": [
+                                    "AttackedThisCombat"
+                                ]
+                            }
+                        }
+                    },
+                    "body": {
+                        "type": "GrantKeyword",
+                        "keyword": "INDESTRUCTIBLE",
+                        "target": "IterationEntity"
+                    }
+                },
+                "descriptionOverride": "Whenever one or more creatures you control attack, they gain indestructible until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "70767",
+        "rarity": "RARE",
+        "artist": "Sara Winters",
+        "flavorText": "\"No single arrow can pierce an entire flock.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/6/c6cb2bba-a745-492c-948f-9f8af05a68a4.jpg?1783933919"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Goblin Goliath
+{
+    "name": "Goblin Goliath",
+    "manaCost": "{4}{R}{R}",
+    "typeLine": "Creature — Goblin Mutant",
+    "oracleText": "When this creature enters, create a number of 1/1 red Goblin creature tokens equal to the number of opponents you have.\n{3}{R}, {T}: If a source you control would deal damage to an opponent this turn, it deals double that damage to that player instead.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Goblin Goliath:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "count": "PlayerCount",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "RED"
+                    ],
+                    "creatureTypes": [
+                        "Goblin"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/7/0/70f8a1de-cd4c-4afa-bf03-0245d375d42e.jpg?1783908589"
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Goblin Goliath:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{3}{R}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "AmplifyDamageThisTurn",
+                    "bonus": {
+                        "type": "Fixed",
+                        "amount": 0
+                    },
+                    "appliesTo": {
+                        "recipient": {
+                            "type": "RecipientPlayer",
+                            "player": "EachOpponent"
+                        },
+                        "source": {
+                            "controllerPredicate": "ControlledByYou"
+                        }
+                    },
+                    "multiplier": 2
+                },
+                "descriptionOverride": "Double the damage sources you control deal to opponents this turn"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "70783",
+        "rarity": "MYTHIC",
+        "artist": "Slawomir Maniak",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/c/fcaf7d1e-9ebf-497e-9d0e-bd23d3bf2b12.jpg?1783933914"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Immortal Phoenix
+{
+    "name": "Immortal Phoenix",
+    "manaCost": "{4}{R}{R}",
+    "typeLine": "Creature — Phoenix",
+    "oracleText": "Flying (This creature can't be blocked except by creatures with flying or reach.)\nWhen this creature dies, return it to its owner's hand.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 3
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Immortal Phoenix:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": "Self",
+                    "destination": "Hand"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "70773",
+        "rarity": "RARE",
+        "artist": "Daarken",
+        "flavorText": "Their fires burn quietly, allowing the phoenixes to glide silently through the canyon.",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/8/3836560e-a64b-42af-93fa-3cf830c15845.jpg"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Path of Ancestry
 {
     "name": "Path of Ancestry",

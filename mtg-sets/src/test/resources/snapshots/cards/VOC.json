@@ -75,6 +75,289 @@
     ]
 }
 
+// Hollowhenge Overlord
+{
+    "name": "Hollowhenge Overlord",
+    "manaCost": "{4}{G}{G}",
+    "typeLine": "Creature — Wolf",
+    "oracleText": "Flash\nAt the beginning of your upkeep, for each creature you control that's a Wolf or a Werewolf, create a 2/2 green Wolf creature token.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Hollowhenge Overlord:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsCreature",
+                                {
+                                    "type": "HasAnyOfSubtypes",
+                                    "subtypes": [
+                                        "Wolf",
+                                        "Werewolf"
+                                    ]
+                                }
+                            ]
+                        }
+                    },
+                    "power": 2,
+                    "toughness": 2,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Wolf"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/d/5/d5f1e139-3054-4273-8a4d-faaaa9c383a8.jpg?1783924694"
+                },
+                "descriptionOverride": "At the beginning of your upkeep, for each creature you control that's a Wolf or a Werewolf, create a 2/2 green Wolf creature token."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "36",
+        "rarity": "RARE",
+        "artist": "Milivoj Ćeran",
+        "flavorText": "The ruins of the town were a notable upgrade from the wolves' forest den.",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/a/dac9c33c-bff1-491a-b369-ad92395283a5.jpg?1783924994",
+        "rulings": [
+            {
+                "date": "2021-11-19",
+                "text": "If you control a creature that is both a Wolf and a Werewolf, it's only counted once for Hollowhenge Overlord's triggered ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Markov Enforcer
+{
+    "name": "Markov Enforcer",
+    "manaCost": "{4}{R}{R}",
+    "typeLine": "Creature — Vampire Soldier",
+    "oracleText": "Whenever this creature or another Vampire you control enters, this creature fights up to one target creature an opponent controls.\nWhenever a creature dealt damage by this creature this turn dies, create a Blood token. (It's an artifact with \"{1}, {T}, Discard a card, Sacrifice this token: Draw a card.\")",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Markov Enforcer:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "permanent Vampire ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Fight",
+                    "target1": "Self",
+                    "target2": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "creature ctrl:opponent"
+                    },
+                    "id": "t0"
+                }
+            },
+            {
+                "id": "Markov Enforcer:2",
+                "trigger": "CreatureDealtDamageBySourceDiesEvent",
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Blood"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "26",
+        "rarity": "RARE",
+        "artist": "Wisnu Tan",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/9/597bc4ae-335d-4d1d-8a57-530291abc540.jpg?1783924998"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Olivia's Wrath
+{
+    "name": "Olivia's Wrath",
+    "manaCost": "{4}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Each non-Vampire creature gets -X/-X until end of turn, where X is the number of Vampires you control.",
+    "script": {
+        "spellEffect": {
+            "type": "ForEach",
+            "space": {
+                "type": "IterationSpace.Group",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "NotSubtype",
+                                "subtype": "Vampire"
+                            }
+                        ]
+                    }
+                }
+            },
+            "body": {
+                "type": "ModifyStats",
+                "powerModifier": {
+                    "type": "Multiply",
+                    "amount": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "permanent Vampire"
+                    },
+                    "multiplier": -1
+                },
+                "toughnessModifier": {
+                    "type": "Multiply",
+                    "amount": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "permanent Vampire"
+                    },
+                    "multiplier": -1
+                },
+                "target": "IterationEntity"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "20",
+        "rarity": "RARE",
+        "artist": "Néstor Ossandón Leal",
+        "flavorText": "\"These worthless cattle think they can sneak unnoticed into my wedding? Dispose of them.\"\n—Olivia Voldaren",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/8/98893cc1-f502-4ca6-b6c1-e09fa1f4ef7a.jpg?1783925002"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Scion of Opulence
+{
+    "name": "Scion of Opulence",
+    "manaCost": "{2}{R}",
+    "typeLine": "Creature — Vampire Noble",
+    "oracleText": "Whenever this creature or another nontoken Vampire you control dies, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\n{R}, Sacrifice two artifacts: Exile the top card of your library. You may play that card this turn.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Scion of Opulence:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "permanent Vampire nontoken ctrl:you",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure"
+                },
+                "descriptionOverride": "Whenever this creature or another nontoken Vampire you control dies, create a Treasure token."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Scion of Opulence:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{R}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomSacrifice",
+                                "filter": "artifact",
+                                "count": 2
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeAs": "impulseExiled"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "impulseExiled",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Exile"
+                            }
+                        },
+                        {
+                            "type": "GrantMayPlayFromExile",
+                            "from": "impulseExiled"
+                        }
+                    ]
+                },
+                "descriptionOverride": "{R}, Sacrifice two artifacts: Exile the top card of your library. You may play that card this turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "28",
+        "rarity": "RARE",
+        "artist": "Chris Rallis",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/c/dc0296ec-0401-49c6-82c3-9d7e8aa5ee25.jpg?1783924998"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Storm of Souls
 {
     "name": "Storm of Souls",
@@ -148,6 +431,116 @@
         "artist": "Liiga Smilshkalne",
         "flavorText": "Devotion does not end with death.",
         "imageUri": "https://cards.scryfall.io/normal/front/3/0/30cb1c3f-19d4-47d3-960e-f2de828e6feb.jpg?1783925007"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Wedding Ring
+{
+    "name": "Wedding Ring",
+    "manaCost": "{2}{W}{W}",
+    "typeLine": "Artifact",
+    "oracleText": "When this artifact enters, if it was cast, target opponent creates a token that's a copy of it.\nWhenever an opponent who controls an artifact named Wedding Ring draws a card during their turn, you draw a card.\nWhenever an opponent who controls an artifact named Wedding Ring gains life during their turn, you gain that much life.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Wedding Ring:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateTokenCopyOfTarget",
+                    "target": "Self",
+                    "controller": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetOpponent",
+                    "id": "t0"
+                },
+                "interveningIf": "WasCast",
+                "descriptionOverride": "When this artifact enters, if it was cast, target opponent creates a token that's a copy of it."
+            },
+            {
+                "id": "Wedding Ring:2",
+                "trigger": {
+                    "type": "DrawEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "triggerRestriction": {
+                    "type": "All",
+                    "conditions": [
+                        {
+                            "type": "Exists",
+                            "player": "TriggeringPlayer",
+                            "zone": "Battlefield",
+                            "filter": "artifact name:Wedding Ring"
+                        },
+                        {
+                            "type": "IsPlayersTurn",
+                            "player": "TriggeringPlayer"
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever an opponent who controls an artifact named Wedding Ring draws a card during their turn, you draw a card."
+            },
+            {
+                "id": "Wedding Ring:3",
+                "trigger": {
+                    "type": "LifeGainEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGER_LIFE_GAINED"
+                    }
+                },
+                "triggerRestriction": {
+                    "type": "All",
+                    "conditions": [
+                        {
+                            "type": "Exists",
+                            "player": "TriggeringPlayer",
+                            "zone": "Battlefield",
+                            "filter": "artifact name:Wedding Ring"
+                        },
+                        {
+                            "type": "IsPlayersTurn",
+                            "player": "TriggeringPlayer"
+                        }
+                    ]
+                },
+                "descriptionOverride": "Whenever an opponent who controls an artifact named Wedding Ring gains life during their turn, you gain that much life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "32",
+        "rarity": "MYTHIC",
+        "artist": "Olena Richards",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/f/7f0b1400-0608-47fd-9c73-b7730bcf6b7f.jpg?1783924997",
+        "rulings": [
+            {
+                "date": "2021-11-19",
+                "text": "The trigger conditions of Wedding Ring's second and third abilities care about opponents who control any artifact named Wedding Ring, not just the token copy created by its first ability."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "WHITE"

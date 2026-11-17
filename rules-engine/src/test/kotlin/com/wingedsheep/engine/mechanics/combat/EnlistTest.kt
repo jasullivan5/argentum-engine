@@ -324,7 +324,7 @@ class EnlistTest : FunSpec({
         val checkpoint = d.state.attackDeclarationCheckpoint()!!
         val json = kotlinx.serialization.json.Json { serializersModule = engineSerializersModule; allowStructuredMapKeys = true }
         val encoded = json.encodeToString(AttackDeclarationCheckpoint.serializer(), checkpoint)
-        encoded.contains(secret.value.toString()) shouldBe false
+        encoded.contains(secret.value) shouldBe false
         checkpoint.changes.flatMap { it.before.components.values + it.after.components.values }
             .any { it is com.wingedsheep.engine.state.components.identity.CardComponent } shouldBe false
     }

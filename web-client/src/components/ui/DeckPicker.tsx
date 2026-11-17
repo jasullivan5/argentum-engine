@@ -33,6 +33,7 @@ import { type UnifiedDeck, useUnifiedDecks } from '@/store/useUnifiedDecks'
 import { useSaveDeck } from '@/store/useSaveDeck'
 import { useCardIndex } from '@/store/useCardIndex'
 import {
+  autoBuiltDeckSize,
   labelForFormat,
   useDeckLegalFormats,
 } from '@/utils/deckLegality'
@@ -70,6 +71,12 @@ export interface DeckPickerProps {
     secondCommander?: string | null,
     /** The deck's companion (CR 702.139) — a card on `sideboard` — or null. */
     companion?: string | null,
+    /**
+     * The format the chosen deck was built for — a saved deck's or an example's — or null for a
+     * pasted list or a random pool. A hint the server checks, never trusts: the AI on Auto builds
+     * a deck for it.
+     */
+    deckFormat?: string | null,
   ) => void
   onValidityChange?: (isValid: boolean) => void
   /** Set selection for quick-game Random decks. Empty means the server chooses a set. */
@@ -184,6 +191,7 @@ export function DeckPicker({
   // `randomDescription`).
   const randomIsConstructed = format !== null && !COMMANDER_SHAPES.includes(format.toUpperCase())
   const formatLabel = format?.replace('_', ' ').toLowerCase() ?? ''
+  const constructedSize = autoBuiltDeckSize(format)
 
   // Default tab: wherever a deck the caller named lives; else saved if available, else the starter
   // decks, else random, else paste. Starters before Random because landing there submits nothing:
@@ -268,9 +276,9 @@ export function DeckPicker({
     .join(', ')
   const randomDescription = randomIsConstructed
     ? pinnedSets
-      ? `A 60-card ${formatLabel}-legal deck, auto-built the moment the game starts from the
+      ? `A ${constructedSize}-card ${formatLabel}-legal deck, auto-built the moment the game starts from the
          ${formatLabel}-legal cards in ${setsPhrase}. Nothing to submit — just ready up.`
-      : `A 60-card ${formatLabel}-legal deck, auto-built from the whole legal card pool the moment
+      : `A ${constructedSize}-card ${formatLabel}-legal deck, auto-built from the whole legal card pool the moment
          the game starts. Pick sets below to build it out of those instead.`
     : format !== null
       ? pinnedSets
@@ -463,6 +471,14 @@ export function DeckPicker({
     return named && (currentSideboard[named] ?? 0) > 0 ? named : null
   }, [tab, decks, selectedSavedId, parsedPaste, currentSideboard])
 
+  // The format the chosen deck was built for: a saved deck's, else an example's. A pasted list
+  // carries none — the server infers one from its legality.
+  const currentFormat: string | null = useMemo(() => {
+    if (tab === 'saved') return decks.find((d) => d.id === selectedSavedId)?.format ?? null
+    if (tab === 'examples') return examples.find((ex) => ex.id === selectedExampleId)?.format ?? null
+    return null
+  }, [tab, decks, selectedSavedId, examples, selectedExampleId])
+
   // Strip the commander out of `currentDeck` before crossing the network boundary. `currentDeck`
   // keeps the commander baked in so the totalCards display reads "100 cards" for a Commander
   // deck, but the server's `Deck.cards` is documented as the library only (CR 903.6a) — the
@@ -480,10 +496,12 @@ export function DeckPicker({
   // On the Random tab `{}` *is* the chosen deck (server generates a random pool), so emit it.
   useEffect(() => {
     if (tab !== 'random' && Object.keys(currentDeck).length === 0) return
-    onDeckChange(deckListForServer, currentCommander, currentSideboard, currentSecondCommander, currentCompanion)
+    onDeckChange(
+      deckListForServer, currentCommander, currentSideboard, currentSecondCommander, currentCompanion, currentFormat,
+    )
   }, [
     tab, currentDeck, deckListForServer, currentCommander, currentSecondCommander, currentSideboard, currentCompanion,
-    onDeckChange,
+    currentFormat, onDeckChange,
   ])
 
   // Server-side validation when the deck is non-empty.

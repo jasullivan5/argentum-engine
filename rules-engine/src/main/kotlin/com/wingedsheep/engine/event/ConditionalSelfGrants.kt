@@ -7,6 +7,7 @@ import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.ClassLevelComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.FaceDownComponent
+import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.AbilityId
 import com.wingedsheep.sdk.scripting.ConditionalStaticAbility
 import com.wingedsheep.sdk.scripting.GrantTriggeredAbility
@@ -32,7 +33,7 @@ internal object ConditionalSelfGrants {
     /** The conditional self-granted triggered abilities of [entityId] whose condition holds in [state]. */
     fun active(
         state: GameState,
-        entityId: com.wingedsheep.sdk.model.EntityId,
+        entityId: EntityId,
         cardRegistry: CardRegistry,
         conditionEvaluator: ConditionEvaluator,
     ): List<TriggeredAbility> {
@@ -54,7 +55,7 @@ internal object ConditionalSelfGrants {
     /** [active], reduced to the ability ids a snapshot can carry. */
     fun activeIds(
         state: GameState,
-        entityId: com.wingedsheep.sdk.model.EntityId,
+        entityId: EntityId,
         cardRegistry: CardRegistry,
         conditionEvaluator: ConditionEvaluator,
     ): List<AbilityId> = active(state, entityId, cardRegistry, conditionEvaluator).map { it.id }
@@ -68,5 +69,60 @@ internal object ConditionalSelfGrants {
             val grant = (ability as? ConditionalStaticAbility)?.ability as? GrantTriggeredAbility
             grant?.ability?.takeIf { it.id in ids }
         }
+    }
+
+    /**
+     * The conditional self-granted leaves-the-battlefield abilities ([battlefieldExitAtoms]) every
+     * permanent on the battlefield had in [state], keyed by permanent — including the permanents
+     * that have such a grant but whose condition doesn't hold (an empty list). Frozen onto a
+     * departure's snapshot as [LookBackGrants.observerSelfGrantIds] so a source that *stays* on
+     * the battlefield is judged by the state before the event too (CR 603.10a): Relic Vial still
+     * sees the death of the only Cleric that switched its ability on, and a grant whose condition
+     * only the departure itself makes true (a card hitting the graveyard) doesn't see it.
+     */
+    fun observers(
+        state: GameState,
+        cardRegistry: CardRegistry,
+        conditionEvaluator: ConditionEvaluator,
+    ): Map<EntityId, List<AbilityId>> = buildMap {
+        for (entityId in state.getBattlefield()) {
+            val container = state.getEntity(entityId) ?: continue
+            // A face-down permanent, or one that lost all its abilities, has no grant to look back to.
+            if (container.has<FaceDownComponent>() || state.projectedState.hasLostAllAbilities(entityId)) continue
+            val card = container.get<CardComponent>() ?: continue
+            val cardDef = cardRegistry.getCard(card.cardDefinitionId) ?: continue
+            val classLevel = container.get<ClassLevelComponent>()?.currentLevel
+            var active: MutableList<AbilityId>? = null
+            for (ability in cardDef.script.effectiveStaticAbilities(classLevel)) {
+                val conditional = ability as? ConditionalStaticAbility ?: continue
+                val grant = conditional.ability as? GrantTriggeredAbility ?: continue
+                if (grant.filter.scope !is Scope.Self || battlefieldExitAtoms(grant.ability.trigger).isEmpty()) continue
+                if (active == null) active = mutableListOf()
+                val controllerId = state.projectedState.getController(entityId) ?: continue
+                val context = EffectContext(sourceId = entityId, controllerId = controllerId)
+                if (conditionEvaluator.evaluate(state, conditional.condition, context)) active.add(grant.ability.id)
+            }
+            if (active != null) put(entityId, active)
+        }
+    }
+
+    /**
+     * [abilities] — the triggered abilities a permanent still on the battlefield has now — with its
+     * conditional self-granted leaves-the-battlefield abilities replaced by the ones it had before
+     * the departure ([frozenIds], from [observers]).
+     */
+    fun lookBack(
+        abilities: List<TriggeredAbility>,
+        cardDefinitionId: String,
+        frozenIds: List<AbilityId>,
+        cardRegistry: CardRegistry,
+    ): List<TriggeredAbility> {
+        val cardDef = cardRegistry.getCard(cardDefinitionId) ?: return abilities
+        val exitGrants = cardDef.script.effectiveStaticAbilities(Int.MAX_VALUE).mapNotNull { ability ->
+            val grant = (ability as? ConditionalStaticAbility)?.ability as? GrantTriggeredAbility
+            grant?.ability?.takeIf { grant.filter.scope is Scope.Self && battlefieldExitAtoms(it.trigger).isNotEmpty() }
+        }
+        val exitIds = exitGrants.mapTo(HashSet()) { it.id }
+        return abilities.filter { it.id !in exitIds } + exitGrants.filter { it.id in frozenIds }
     }
 }

@@ -4,57 +4,36 @@ import type { EntityId, FlipOntoBattlefieldDecision } from '@/types'
 import { getCardImageUrl } from '@/utils/cardImages.ts'
 import { FlipTableStage, type CardMark, type StagePointerKind } from './FlipTableStage'
 import { FlipOrb } from './FlipOrb'
-import { carryDrift, carryPoint, driftLabel, makeFlipView, swayPull, previewTouches, releaseQuality, scatterSigma, type Point } from './flipGeometry'
+import { makeFlipView, previewTouches, spinQuality, type Point } from './flipGeometry'
 import decisionStyles from '../decisions/DecisionUI.module.css'
 import styles from './Flip.module.css'
 
-/** The first full swing of the release meter, up and back down; every swing after it is quicker. */
-const FIRST_SWING_MS = 1700
-/** The quickest the swing gets, and how fast it gets there (ms of period lost per ms held). */
-const FASTEST_SWING_MS = 850
-const SWING_SPEEDUP = 0.28
-/** One sway of the hand, left and back; out of step with the meter so the two rarely line up. */
-const SWAY_MS = 1150
-/** How far the hand sways at first (fraction of a full sway), and how fast that widens per ms. */
-const SWAY_START = 0.4
-const SWAY_GROWTH = 0.00035
-/** How long the hand stays steady before it starts to shake. */
-const STEADY_MS = 900
+/** Spin (turns/s) one full circle of the pointer winds into the card. */
+const SPIN_PER_CIRCLE = 2
+/** How fast wound-up spin bleeds away (seconds for it to fall to 1/e) once you stop circling. */
+const SPIN_DECAY_S = 0.9
+/** Pointer steps shorter than this (mm) are too small to read a direction from. */
+const MIN_STEP_MM = 1.5
+/** A turn sharper than this between two steps is a reversal, not circling, and winds nothing. */
+const MAX_TURN_RAD = 2.4
+/** The release velocity is read over the last this-many ms of the swipe. */
+const VELOCITY_WINDOW_MS = 70
+/** A release slower than this (mm/s) isn't a flick: the card stays in your hand. */
+const MIN_FLICK_SPEED = 350
+/** How much of the swipe the trail shows. */
+const TRAIL_MS = 380
+/** The spin the gauge runs up to (turns/s). */
+const GAUGE_MAX_SPIN = 7
 const GAUGE_HEIGHT = 220
 
-/** The meter's swing phase (radians) [elapsed] ms in: the period shrinks steadily to its floor. */
-function phaseAt(elapsed: number): number {
-  const rampEnd = (FIRST_SWING_MS - FASTEST_SWING_MS) / SWING_SPEEDUP
-  const ramp = Math.min(elapsed, rampEnd)
-  const phase = ((2 * Math.PI) / SWING_SPEEDUP) * Math.log(FIRST_SWING_MS / (FIRST_SWING_MS - SWING_SPEEDUP * ramp))
-  return phase + (elapsed > rampEnd ? (2 * Math.PI * (elapsed - rampEnd)) / FASTEST_SWING_MS : 0)
-}
-
-/** The meter's strength at [elapsed] ms into the swing: a 0 → 1 → 0 ping-pong that keeps speeding up. */
-function meterAt(elapsed: number): number {
-  return (1 - Math.cos(phaseAt(elapsed))) / 2
-}
-
-/** The hand's sideways sway (-1 left .. 1 right) [elapsed] ms into a swing that began at [phase]. */
-function swayAt(elapsed: number, phase: number): number {
-  const amp = Math.min(1, SWAY_START + elapsed * SWAY_GROWTH)
-  return amp * Math.sin((2 * Math.PI * elapsed) / SWAY_MS + phase)
-}
-
-/** The hand's drift (mm) at [elapsed] ms: nearly steady at first, then a growing tremble. */
-function tremorAt(elapsed: number): Point {
-  const t = elapsed / 1000
-  const amp = Math.min(30, 0.8 + Math.max(0, elapsed - STEADY_MS) * 0.016)
-  return {
-    x: amp * (0.7 * Math.sin(5.1 * t + 0.3) + 0.3 * Math.sin(11.3 * t)),
-    y: amp * (0.7 * Math.cos(3.7 * t) + 0.3 * Math.sin(9.1 * t + 1.2)),
-  }
-}
+interface Sample { t: number; x: number; y: number }
 
 /**
- * The dexterity-flip mini-game (Chaos Orb, Falling Star), thrower's side: aim over the engine's table, press and hold to swing,
- * let go with the meter in the gold. The table is the server's; the throw is the player's; where
- * it lands is rolled by the server when it receives the throw.
+ * The dexterity-flip mini-game (Chaos Orb, Falling Star), thrower's side: press and circle to spin
+ * the card up, then flick it towards what you want to hit and let go mid-swipe. The swipe's speed
+ * is how far it carries, its direction the line it flies, the spin whether it turns over (too
+ * little) or wobbles and skids (too much). Nothing shows where a flick will land: the table is the
+ * server's, the flick is the player's, and the server rolls the landing when it receives it.
  */
 export function FlipDecisionOverlay({ decision }: { decision: FlipOntoBattlefieldDecision }) {
   const submitFlipThrow = useGameStore((s) => s.submitFlipThrow)
@@ -69,23 +48,25 @@ export function FlipDecisionOverlay({ decision }: { decision: FlipOntoBattlefiel
     'If it turns over completely, it affects what it lands on — yours too.'
   const orbImage = getCardImageUrl(sourceName, decision.flippedImageUri)
 
-  const [aim, setAim] = useState<Point | null>(null)
-  const [swinging, setSwinging] = useState(false)
+  const [hover, setHover] = useState<Point | null>(null)
+  const [holding, setHolding] = useState(false)
   const [hidden, setHidden] = useState(false)
-  /** What the ghost covers mid-swing, where the release would carry it right now. */
-  const [swingCovered, setSwingCovered] = useState<readonly EntityId[]>([])
-  const swingStart = useRef(0)
-  /** Where in its sway the hand starts each swing — different every time. */
-  const swayPhase = useRef(0)
-  const aimRef = useRef<Point | null>(null)
+  /** Why the last release didn't throw, shown until the next press. */
+  const [hint, setHint] = useState<string | null>(null)
+
+  /** The swipe so far (table mm), for its release velocity and its trail. */
+  const samples = useRef<Sample[]>([])
+  /** Spin wound into the card (turns/s). */
+  const spin = useRef(0)
+  /** The last point a direction was read from, and that direction. */
+  const anchor = useRef<Point | null>(null)
+  const heading = useRef<number | null>(null)
   const submitted = useRef(false)
 
-  const ghostRef = useRef<HTMLDivElement>(null)
-  const ringRef = useRef<HTMLDivElement>(null)
   const crossRef = useRef<HTMLDivElement>(null)
   const needleRef = useRef<HTMLDivElement>(null)
   const readoutRef = useRef<HTMLDivElement>(null)
-  const swayDotRef = useRef<HTMLDivElement>(null)
+  const trailRef = useRef<SVGPolylineElement>(null)
   const orbRef = useRef<HTMLDivElement>(null)
 
   const playerName = useCallback(
@@ -93,168 +74,156 @@ export function FlipDecisionOverlay({ decision }: { decision: FlipOntoBattlefiel
     [gameState],
   )
 
-  // Place the crosshair at the aim [p] (table mm), and the ghost and scatter ring where a release
-  // of [strength] would carry to — on the aim at the sweet spot, short or long of it otherwise.
-  const placeAim = useCallback(
-    (p: Point, strength: number, locked: boolean, sway = 0) => {
-      const c = view.toStage(p)
-      const landsAt = carryPoint(table, release, p, strength, sway)
-      const s = view.toStage(landsAt)
-      const sigma = scatterSigma(table, release, p, strength)
-      const r = 2 * sigma + 31.5
-      const quality = releaseQuality(release, strength)
-      if (crossRef.current) { crossRef.current.style.left = `${c.x}px`; crossRef.current.style.top = `${c.y}px` }
-      if (ghostRef.current) { ghostRef.current.style.left = `${s.x}px`; ghostRef.current.style.top = `${s.y}px` }
-      ghostRef.current?.classList.toggle(styles.ghostLocked!, locked)
-      const ring = ringRef.current
-      if (ring) {
-        ring.style.left = `${s.x - r}px`
-        ring.style.top = `${s.y - r}px`
-        ring.style.width = `${2 * r}px`
-        ring.style.height = `${2 * r}px`
-        ring.classList.toggle(styles.ringClean!, locked && quality >= 0.999)
-        ring.classList.toggle(styles.ringSloppy!, locked && quality < 0.6)
-      }
-      return landsAt
-    },
-    [view, table, release],
-  )
-
-  // While swinging: run the meter, the trembling hand and the ghost sliding short and long per
-  // frame. What the ghost covers only re-renders when it changes.
+  // While holding: bleed the spin away, spin the card in the hand, draw the gauge and the trail.
   useEffect(() => {
-    if (!swinging) return
+    if (!holding) return
     let frame = 0
-    let coveredKey = ''
-    const tick = () => {
-      const elapsed = performance.now() - swingStart.current
-      const v = meterAt(elapsed)
-      const sway = swayAt(elapsed, swayPhase.current)
-      const base = aimRef.current
-      if (base) {
-        const d = tremorAt(elapsed)
-        const landsAt = placeAim({ x: base.x + d.x, y: base.y + d.y }, v, true, sway)
-        const now = table.cards.filter((c) => previewTouches(landsAt, c)).map((c) => c.entityId)
-        const key = now.join(',')
-        if (key !== coveredKey) {
-          coveredKey = key
-          setSwingCovered(now)
-        }
-      }
-      if (needleRef.current) needleRef.current.style.top = `${(1 - v) * GAUGE_HEIGHT}px`
-      if (readoutRef.current) {
-        const drift = carryDrift(release, v)
-        const pull = swayPull(release, sway)
-        readoutRef.current.textContent = driftLabel(drift, pull)
-        readoutRef.current.dataset.tone = Math.hypot(drift, pull) < 20 ? 'good' : 'off'
-      }
-      const dot = swayDotRef.current
-      if (dot) {
-        dot.style.left = `${50 + 50 * sway}%`
-        dot.dataset.tone = Math.abs(sway) < 0.18 ? 'good' : 'off'
-      }
+    let last = performance.now()
+    let angle = 0
+    const tick = (now: number) => {
+      const dt = Math.max(0, now - last) / 1000
+      last = now
+      spin.current *= Math.exp(-dt / SPIN_DECAY_S)
+      const w = spin.current
+      angle = (angle + w * 360 * dt) % 360
       if (orbRef.current) {
-        orbRef.current.style.transform = `translateY(${-v * 26}px) rotateX(${v * 38}deg) rotateZ(-6deg) scale(${1 + v * 0.08})`
+        orbRef.current.style.transform = `translateY(-14px) rotateZ(-6deg) scale(1.05) rotateX(${angle}deg)`
+      }
+      if (needleRef.current) {
+        needleRef.current.style.top = `${(1 - Math.min(1, w / GAUGE_MAX_SPIN)) * GAUGE_HEIGHT}px`
+      }
+      if (readoutRef.current) {
+        readoutRef.current.textContent = `${w.toFixed(1)} turns/s`
+        readoutRef.current.dataset.tone = spinQuality(release, w) >= 0.999 ? 'good' : 'off'
+      }
+      const trail = trailRef.current
+      if (trail) {
+        const recent = samples.current.filter((s) => now - s.t <= TRAIL_MS)
+        trail.setAttribute('points', recent.map((s) => { const p = view.toStage(s); return `${p.x},${p.y}` }).join(' '))
       }
       frame = requestAnimationFrame(tick)
     }
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-  }, [swinging, placeAim, table, release])
+  }, [holding, view, release])
 
-  useEffect(() => {
+  const resetHand = useCallback(() => {
+    samples.current = []
+    spin.current = 0
+    anchor.current = null
+    heading.current = null
     if (orbRef.current) orbRef.current.style.transform = 'rotateZ(-6deg)'
+    if (needleRef.current) needleRef.current.style.top = `${GAUGE_HEIGHT}px`
+    if (readoutRef.current) { readoutRef.current.textContent = 'spin'; delete readoutRef.current.dataset.tone }
+    trailRef.current?.setAttribute('points', '')
   }, [])
 
-  // Idle aim: show where a perfect release would land.
-  useEffect(() => {
-    if (!swinging && aim) placeAim(aim, release.sweetSpot, false)
-  }, [aim, swinging, placeAim, release])
+  useEffect(() => { resetHand() }, [resetHand])
 
-  const startSwing = useCallback((p: Point) => {
+  const cancel = useCallback(() => {
+    setHolding(false)
+    resetHand()
+  }, [resetHand])
+
+  /** Record a pointer step; turning the pointer round winds spin into the card. */
+  const record = (p: Point) => {
+    const now = performance.now()
+    samples.current.push({ t: now, x: p.x, y: p.y })
+    while (samples.current.length > 0 && now - samples.current[0]!.t > 1000) samples.current.shift()
+    const from = anchor.current
+    if (!from) { anchor.current = p; return }
+    if (Math.hypot(p.x - from.x, p.y - from.y) < MIN_STEP_MM) return
+    const a = Math.atan2(p.y - from.y, p.x - from.x)
+    if (heading.current !== null) {
+      let turn = a - heading.current
+      while (turn > Math.PI) turn -= 2 * Math.PI
+      while (turn < -Math.PI) turn += 2 * Math.PI
+      if (Math.abs(turn) < MAX_TURN_RAD) {
+        spin.current = Math.min(release.maxSpin, spin.current + (Math.abs(turn) / (2 * Math.PI)) * SPIN_PER_CIRCLE)
+      }
+    }
+    anchor.current = p
+    heading.current = a
+  }
+
+  /** Let go: read the swipe's velocity over its last few frames and throw — or keep the card. */
+  const letGo = (p: Point) => {
     if (submitted.current) return
-    aimRef.current = p
-    setAim(p)
-    swayPhase.current = Math.random() * 2 * Math.PI
-    swingStart.current = performance.now()
-    setSwinging(true)
-  }, [])
-
-  const cancelSwing = useCallback(() => {
-    setSwinging(false)
-    if (orbRef.current) orbRef.current.style.transform = 'rotateZ(-6deg)'
-  }, [])
-
-  const releaseSwing = useCallback(() => {
-    if (submitted.current || !aimRef.current) return
-    const elapsed = performance.now() - swingStart.current
-    const strength = meterAt(elapsed)
-    const sway = swayAt(elapsed, swayPhase.current)
-    const d = tremorAt(elapsed)
+    const now = performance.now()
+    samples.current.push({ t: now, x: p.x, y: p.y })
+    const recent = samples.current.filter((s) => now - s.t <= VELOCITY_WINDOW_MS)
+    const first = recent[0]
+    const lastSample = recent[recent.length - 1]
+    const dt = first && lastSample ? (lastSample.t - first.t) / 1000 : 0
+    const vx = first && lastSample && dt > 0.008 ? (lastSample.x - first.x) / dt : 0
+    const vy = first && lastSample && dt > 0.008 ? (lastSample.y - first.y) / dt : 0
+    const speed = Math.hypot(vx, vy)
+    const w = spin.current
+    setHolding(false)
+    if (speed < MIN_FLICK_SPEED) {
+      setHint('It stayed in your hand — let go while you’re still swiping')
+      resetHand()
+      return
+    }
+    // The table's y grows towards the thrower: a forward flick has a negative vy.
+    if (vy > -0.25 * speed) {
+      setHint('Flick it forward, towards the table')
+      resetHand()
+      return
+    }
     submitted.current = true
-    setSwinging(false)
-    submitFlipThrow(decision.id, aimRef.current.x + d.x, aimRef.current.y + d.y, strength, sway)
-  }, [decision.id, submitFlipThrow])
+    submitFlipThrow(decision.id, vx, vy, w)
+  }
 
   const onPointer = (kind: StagePointerKind, p: Point, e: ReactPointerEvent<HTMLDivElement>) => {
     if (submitted.current) return
     switch (kind) {
       case 'move':
-        if (swinging) aimRef.current = p
-        else setAim(p)
+        if (holding) record(p)
+        else setHover(p)
         break
       case 'down':
-        if (e.button === 2) { cancelSwing(); break }
+        if (e.button === 2) { cancel(); break }
         if (e.button !== 0) break
         e.currentTarget.setPointerCapture(e.pointerId)
-        startSwing(p)
+        resetHand()
+        setHint(null)
+        record(p)
+        setHolding(true)
         break
       case 'up':
-        if (swinging) releaseSwing()
+        if (holding) letGo(p)
         break
       case 'cancel':
-        cancelSwing()
+        cancel()
         break
       case 'leave':
-        if (!swinging) setAim(null)
+        if (!holding) setHover(null)
         break
     }
   }
 
-  // Keyboard: Space/Enter swings at the current aim (the table's middle by default), Esc stops.
   useEffect(() => {
-    const down = (e: KeyboardEvent) => {
-      if (e.repeat) return
-      if ((e.key === ' ' || e.key === 'Enter') && !swinging && !hidden) {
-        e.preventDefault()
-        startSwing(aimRef.current ?? aim ?? { x: table.width / 2, y: table.bands[0]!.top + table.bands[0]!.height / 2 })
-      } else if (e.key === 'Escape' && swinging) {
-        e.preventDefault()
-        cancelSwing()
-      }
+    const key = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && holding) { e.preventDefault(); cancel() }
     }
-    const up = (e: KeyboardEvent) => {
-      if ((e.key === ' ' || e.key === 'Enter') && swinging) {
-        e.preventDefault()
-        releaseSwing()
-      }
-    }
-    window.addEventListener('keydown', down)
-    window.addEventListener('keyup', up)
-    return () => {
-      window.removeEventListener('keydown', down)
-      window.removeEventListener('keyup', up)
-    }
-  }, [swinging, hidden, aim, table, startSwing, cancelSwing, releaseSwing])
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [holding, cancel])
 
-  // What the ghost currently covers, for the highlight and the label under it.
-  const covered = useMemo(() => {
-    if (swinging) {
-      const ids = new Set(swingCovered)
-      return table.cards.filter((c) => ids.has(c.entityId))
-    }
-    return aim ? table.cards.filter((c) => previewTouches(aim, c)) : []
-  }, [aim, table, swinging, swingCovered])
+  useEffect(() => {
+    const cross = crossRef.current
+    if (!cross || !hover) return
+    const c = view.toStage(hover)
+    cross.style.left = `${c.x}px`
+    cross.style.top = `${c.y}px`
+  }, [hover, view])
+
+  // Reading the table before the throw: what a card resting under the pointer would cover.
+  const covered = useMemo(
+    () => (hover && !holding ? table.cards.filter((c) => previewTouches(hover, c)) : []),
+    [hover, holding, table],
+  )
   const marks = useMemo(() => {
     const m = new Map<EntityId, CardMark>()
     for (const c of covered) m.set(c.entityId, !c.eligible ? 'immune' : c.controllerId === viewerId ? 'own' : 'target')
@@ -269,10 +238,10 @@ export function FlipDecisionOverlay({ decision }: { decision: FlipOntoBattlefiel
     return m
   }, [covered, viewerId])
 
-  const aimLabel = (() => {
-    if (!aim || swinging) return null
+  const hoverLabel = (() => {
+    if (!hover || holding) return null
     const hits = covered.filter((c) => c.eligible)
-    if (hits.length === 0) return covered.length > 0 ? `Nothing ${sourceName} affects here` : 'Bare felt'
+    if (hits.length === 0) return covered.length > 0 ? `Nothing ${sourceName} affects here` : null
     return hits.map((c) => (c.name ?? 'Face-down permanent') + (c.controllerId === viewerId ? ' (yours)' : '')).join(' · ')
   })()
 
@@ -285,10 +254,10 @@ export function FlipDecisionOverlay({ decision }: { decision: FlipOntoBattlefiel
   }
 
   const hand = view.toStage({ x: table.handX, y: table.handY })
-  // The gauge stands just off the table's right-hand edge, level with the hand.
+  // The spin gauge stands just off the table's right-hand edge, level with the hand.
   const gaugeX = view.toStage({ x: table.width, y: 0 }).x + 26
-  const soft = release.tooSoftBelow
-  const stageAim = aim ? view.toStage(aim) : null
+  const gaugeY = (turns: number) => (1 - Math.min(1, turns / GAUGE_MAX_SPIN)) * GAUGE_HEIGHT
+  const stageHover = hover ? view.toStage(hover) : null
 
   return (
     <div className={styles.overlay} role="dialog" aria-label={`Flip ${sourceName}`}>
@@ -299,7 +268,7 @@ export function FlipDecisionOverlay({ decision }: { decision: FlipOntoBattlefiel
           <div className={styles.subtitle}>{rulesText}</div>
         </div>
         <div className={styles.headerSpacer} />
-        <button className={styles.ghostButton} onClick={() => setHidden(true)} disabled={swinging}>
+        <button className={styles.ghostButton} onClick={() => setHidden(true)} disabled={holding}>
           View battlefield
         </button>
       </div>
@@ -311,16 +280,16 @@ export function FlipDecisionOverlay({ decision }: { decision: FlipOntoBattlefiel
         playerName={playerName}
         marks={marks}
         chips={chips}
-        className={styles.aiming}
+        className={holding ? styles.flicking : styles.aiming}
         onPointer={onPointer}
       >
-        <div ref={ringRef} className={styles.ring} style={{ display: aim ? undefined : 'none' }} />
-        <div ref={ghostRef} className={styles.ghost} style={{ display: aim ? undefined : 'none' }} />
-        <div ref={crossRef} className={styles.crosshair} style={{ display: aim ? undefined : 'none' }} />
-        {stageAim && aimLabel && (
-          <div className={styles.aimLabel} style={{ left: stageAim.x, top: stageAim.y }}>
-            {aimLabel}
-            <span className={styles.aimHint}>Pressing starts the swing</span>
+        <svg className={styles.trail} width={view.stageWidth} height={view.stageHeight} aria-hidden>
+          <polyline ref={trailRef} points="" />
+        </svg>
+        <div ref={crossRef} className={styles.crosshair} style={{ display: hover && !holding ? undefined : 'none' }} />
+        {stageHover && hoverLabel && (
+          <div className={styles.aimLabel} style={{ left: stageHover.x, top: stageHover.y }}>
+            {hoverLabel}
           </div>
         )}
 
@@ -328,51 +297,44 @@ export function FlipDecisionOverlay({ decision }: { decision: FlipOntoBattlefiel
           <FlipOrb ref={orbRef} imageUrl={orbImage} className={styles.orbInHand} faceClassName={styles.orbGlow} />
         </div>
 
-        <div className={styles.sway} style={{ left: hand.x, top: hand.y + 54, opacity: swinging ? 1 : 0.35 }} aria-hidden>
-          <span className={styles.swayEnd}>left</span>
-          <div className={styles.swayTrack}>
-            <div className={styles.swayCentre} />
-            <div ref={swayDotRef} className={styles.swayDot} style={{ left: '50%' }} />
-          </div>
-          <span className={styles.swayEnd}>right</span>
-        </div>
-
         <div className={styles.gauge} style={{ left: gaugeX, top: hand.y + 44 - GAUGE_HEIGHT, height: GAUGE_HEIGHT }}>
           <div className={styles.gaugeTrack}>
-            <div className={`${styles.gaugeZone} ${styles.zoneSoft}`} style={{ top: (1 - soft) * GAUGE_HEIGHT, bottom: 5 }} />
+            <div
+              className={`${styles.gaugeZone} ${styles.zoneWild}`}
+              style={{ top: 5, height: gaugeY(release.cleanSpinTo + release.spinSlop / 2) - 5 }}
+            />
             <div
               className={`${styles.gaugeZone} ${styles.zoneClean}`}
-              style={{ top: (1 - release.cleanTo) * GAUGE_HEIGHT, height: (release.cleanTo - release.cleanFrom) * GAUGE_HEIGHT }}
+              style={{ top: gaugeY(release.cleanSpinTo), height: gaugeY(release.cleanSpinFrom) - gaugeY(release.cleanSpinTo) }}
             />
+            <div className={`${styles.gaugeZone} ${styles.zoneSoft}`} style={{ top: gaugeY(release.tooLittleSpinBelow), bottom: 5 }} />
           </div>
-          <div ref={needleRef} className={styles.gaugeNeedle} style={{ top: GAUGE_HEIGHT, opacity: swinging ? 1 : 0.35 }} />
-          <div className={styles.gaugeSweet} style={{ top: (1 - release.sweetSpot) * GAUGE_HEIGHT }} />
-          <div className={styles.gaugeTick} style={{ top: 6 }}>long</div>
-          <div className={styles.gaugeTick} style={{ top: (1 - release.sweetSpot) * GAUGE_HEIGHT, color: '#ffe9a8' }}>
-            on target
+          <div ref={needleRef} className={styles.gaugeNeedle} style={{ top: GAUGE_HEIGHT, opacity: holding ? 1 : 0.35 }} />
+          <div className={styles.gaugeTick} style={{ top: 12 }}>wobbles</div>
+          <div
+            className={styles.gaugeTick}
+            style={{ top: (gaugeY(release.cleanSpinFrom) + gaugeY(release.cleanSpinTo)) / 2, color: '#ffe9a8' }}
+          >
+            clean
           </div>
-          <div className={styles.gaugeTick} style={{ top: (1 - (release.sweetSpot + soft) / 2) * GAUGE_HEIGHT }}>short</div>
-          <div className={styles.gaugeTick} style={{ top: GAUGE_HEIGHT - 4 }}>no turn</div>
-          <div ref={readoutRef} className={styles.gaugeReadout}>{swinging ? '' : 'carry'}</div>
+          <div className={styles.gaugeTick} style={{ top: GAUGE_HEIGHT - 12 }}>no turn</div>
+          <div ref={readoutRef} className={styles.gaugeReadout}>spin</div>
         </div>
       </FlipTableStage>
 
       <div className={styles.footer}>
         <div className={styles.steps} aria-live="polite">
-          <span className={`${styles.step} ${!swinging && !aim ? styles.stepActive : ''}`}>
-            <span className={styles.stepNum}>1</span>Aim over the table
+          <span className={`${styles.step} ${!holding ? styles.stepActive : ''}`}>
+            <span className={styles.stepNum}>1</span>Press and circle to spin it up to the gold
           </span>
-          <span className={`${styles.step} ${!swinging && aim ? styles.stepActive : ''}`}>
-            <span className={styles.stepNum}>2</span>Press and hold — the swing starts at once
-          </span>
-          <span className={`${styles.step} ${swinging ? styles.stepActive : ''}`}>
-            <span className={styles.stepNum}>3</span>Let go on the gold line, hand centred
+          <span className={`${styles.step} ${holding ? styles.stepActive : ''}`}>
+            <span className={styles.stepNum}>2</span>Flick it at your target and let go mid-swipe
           </span>
         </div>
-        <span className={styles.subtitle}>
-          {swinging
-            ? 'Early falls short, late sails long · your hand sways left and right too · Esc to stop'
-            : 'Aim first — your first click starts the swing · Space works too'}
+        <span className={`${styles.subtitle} ${hint ? styles.hintWarn : ''}`}>
+          {hint ?? (holding
+            ? 'Faster flicks fly further · too little spin won’t turn over, too much wobbles · Esc to stop'
+            : 'Swipe speed is distance, swipe direction is the line')}
         </span>
       </div>
     </div>

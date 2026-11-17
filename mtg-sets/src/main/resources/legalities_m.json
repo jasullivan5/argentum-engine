@@ -3272,7 +3272,9 @@
     "TLR",
     "VINTAGE"
   ],
-  "Mana Crypt": [],
+  "Mana Crypt": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Mana Cylix": [
     "COMMANDER",
     "DUEL",
@@ -3506,7 +3508,8 @@
   ],
   "Mana Vault": [
     "COMMANDER",
-    "PREDH"
+    "PREDH",
+    "VINTAGE_RESTRICTED"
   ],
   "Mana Vortex": [
     "COMMANDER",
@@ -9241,7 +9244,8 @@
     "HISTORIC",
     "OATHBREAKER",
     "PREDH",
-    "TIMELESS"
+    "TIMELESS",
+    "VINTAGE_RESTRICTED"
   ],
   "Memory Lapse": [
     "BRAWL",
@@ -9499,7 +9503,8 @@
     "DUEL",
     "OATHBREAKER",
     "PREDH",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Mental Modulation": [
     "ALCHEMY",
@@ -9747,7 +9752,8 @@
     "PAUPERCOMMANDER",
     "PREDH",
     "PREMODERN",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Merchant Ship": [
     "COMMANDER",
@@ -13329,7 +13335,8 @@
     "LEGACY",
     "OATHBREAKER",
     "PREDH",
-    "TIMELESS"
+    "TIMELESS",
+    "VINTAGE_RESTRICTED"
   ],
   "Mind's Dilation": [
     "BRAWL",
@@ -18790,7 +18797,8 @@
     "OATHBREAKER",
     "PIONEER",
     "TIMELESS",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Monastery Messenger": [
     "ALCHEMY",
@@ -21709,7 +21717,9 @@
     "PREMODERN",
     "VINTAGE"
   ],
-  "Mox Emerald": [],
+  "Mox Emerald": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Mox Jasper": [
     "ALCHEMY",
     "BRAWL",
@@ -21729,7 +21739,9 @@
     "VINTAGE"
   ],
   "Mox Jasper // Mox Jasper": [],
-  "Mox Jet": [],
+  "Mox Jet": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Mox Lotus": [],
   "Mox Opal": [
     "BRAWL",
@@ -21742,10 +21754,16 @@
     "TIMELESS",
     "VINTAGE"
   ],
-  "Mox Pearl": [],
+  "Mox Pearl": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Mox Poison": [],
-  "Mox Ruby": [],
-  "Mox Sapphire": [],
+  "Mox Ruby": [
+    "VINTAGE_RESTRICTED"
+  ],
+  "Mox Sapphire": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Mox Tantalite": [
     "COMMANDER",
     "DUEL",
@@ -24136,7 +24154,8 @@
     "OATHBREAKER",
     "PENNY",
     "PIONEER",
-    "TIMELESS"
+    "TIMELESS",
+    "VINTAGE_RESTRICTED"
   ],
   "Mystic Forge // Mystic Forge": [],
   "Mystic Gate": [
@@ -24510,7 +24529,8 @@
     "GLADIATOR",
     "OATHBREAKER",
     "PREDH",
-    "TIMELESS"
+    "TIMELESS",
+    "VINTAGE_RESTRICTED"
   ],
   "Mystifying Maze": [
     "BRAWL",

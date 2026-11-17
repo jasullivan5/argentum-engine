@@ -7591,7 +7591,8 @@
     "OATHBREAKER",
     "PAUPERCOMMANDER",
     "PREDH",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Gitaxian Raptor": [
     "BRAWL",
@@ -14342,7 +14343,8 @@
     "LEGACY",
     "OATHBREAKER",
     "PENNY",
-    "PREDH"
+    "PREDH",
+    "VINTAGE_RESTRICTED"
   ],
   "Golgari Guildgate": [
     "ALCHEMY",
@@ -21955,7 +21957,8 @@
     "OATHBREAKER",
     "PAUPERCOMMANDER",
     "PREDH",
-    "PREMODERN"
+    "PREMODERN",
+    "VINTAGE_RESTRICTED"
   ],
   "Gust Walker": [
     "BRAWL",

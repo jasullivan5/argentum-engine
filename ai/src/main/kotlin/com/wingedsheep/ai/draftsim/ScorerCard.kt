@@ -1,5 +1,7 @@
 package com.wingedsheep.ai.draftsim
 
+import com.wingedsheep.ai.engine.ActivationMana
+import com.wingedsheep.ai.engine.deck.ManaFixing
 import com.wingedsheep.ai.llm.CardSummary
 import com.wingedsheep.sdk.model.CardDefinition
 
@@ -30,14 +32,38 @@ interface ScorerCard {
     /** `"mythic"|"rare"|"uncommon"|"common"`, or null when unknown. */
     val rarity: String?
 
-    /** USD price (hate-draft signal); null when unavailable — that branch then stays inert. */
-    val priceUsd: Double?
-
     /** Declared colors (WUBRG letters). Empty ⇒ scorer parses [manaCost]. */
     val colors: List<String>
 
     /** Declared color identity (WUBRG letters); fallback color source for lands/fixing. */
     val colorIdentity: List<String>
+
+    /**
+     * The mana parts of the card's activated abilities, as brace cost strings (`"{3}{W}{U}{B}{R}{G}"`).
+     * The deck builder holds a card to the colours these need too ([DraftsimMana.activationPayable]).
+     * Empty when the adapter doesn't know them (the draft path's [CardSummary]).
+     */
+    val activationCosts: List<String> get() = emptyList()
+
+    /**
+     * The colours (WUBRG letters) this card can turn toward a coloured cost beyond the basics — a
+     * dual land's two, Evolving Wilds' or a Treasure maker's five ([ManaFixing.colors]). The
+     * fallback for sets whose archetype table carries no curated `fixing` list. Empty when the
+     * adapter doesn't know ([CardSummary]).
+     */
+    val fixing: List<String> get() = emptyList()
+
+    /** A land that fixes by fetching a basic ([ManaFixing.fetchesBasic]): it finds only the basics the deck runs. */
+    val fetchesBasic: Boolean get() = false
+
+    /**
+     * The card makes colorless mana a `{C}` pip can take ([ManaFixing.makesColorless]): Wastes, a
+     * colorless utility land, a mana rock. The draft path reads it off the Oracle text.
+     */
+    val makesColorless: Boolean get() = false
+
+    /** The card scales with how many colours its deck plays — Vivid, domain, converge ([ManaFixing.rewardsColors]). */
+    val rewardsColors: Boolean get() = false
 }
 
 /** Adapt a resolved [CardDefinition] (deckbuild path — full metadata available). */
@@ -55,9 +81,13 @@ private class CardDefinitionScorerCard(private val def: CardDefinition) : Scorer
     // bonus, …) lowercases to a key the ladder lacks and falls to the common floor. Acceptable —
     // those rarities don't appear in normal limited packs — but rate via the name table, not this.
     override val rarity: String = def.metadata.rarity.name.lowercase()
-    override val priceUsd: Double? = null
     override val colors: List<String> = def.colors.map { it.symbol.toString() }
     override val colorIdentity: List<String> = def.colorIdentity.map { it.symbol.toString() }
+    override val activationCosts: List<String> = ActivationMana.costs(def).map { it.toString() }
+    override val fixing: List<String> by lazy { ManaFixing.colors(def).map { it.symbol.toString() } }
+    override val rewardsColors: Boolean by lazy { ManaFixing.rewardsColors(def) }
+    override val fetchesBasic: Boolean by lazy { ManaFixing.fetchesBasic(def) }
+    override val makesColorless: Boolean by lazy { ManaFixing.makesColorless(def) }
 }
 
 private class CardSummaryScorerCard(private val summary: CardSummary) : ScorerCard {
@@ -66,7 +96,10 @@ private class CardSummaryScorerCard(private val summary: CardSummary) : ScorerCa
     override val typeLine: String = summary.typeLine ?: ""
     override val cmc: Double = DraftsimMana.cmc(summary.manaCost ?: "")
     override val rarity: String? = summary.rarity?.lowercase()
-    override val priceUsd: Double? = null
     override val colors: List<String> = emptyList()
     override val colorIdentity: List<String> = emptyList()
+    override val makesColorless: Boolean = summary.oracleText?.contains(COLORLESS_MANA_ABILITY) == true
 }
+
+/** "{T}: Add {C}." and its kin ("Add {C}{C}") — the summary's only trace of a colorless mana ability. */
+private val COLORLESS_MANA_ABILITY = Regex("""\bAdd \{C}""")

@@ -257,7 +257,7 @@ class RandomizedBlockerPilesTest : ScenarioTestBase() {
             val question = game.state.pendingDecision as SplitPilesDecision
             question.requiredAssignments shouldBe 20
             question.suggestedPiles!!.map { it.size } shouldBe List(20) { 1 }
-            submit(game, question.suggestedPiles!!).error shouldBe null
+            submit(game, question.suggestedPiles).error shouldBe null
             attackers.forEach { name ->
                 game.state.getEntity(game.findPermanent(name)!!)?.get<BlockedComponent>()?.blockerIds?.size shouldBe 1
             }

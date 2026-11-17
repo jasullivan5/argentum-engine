@@ -2,15 +2,14 @@
  * Display geometry for dexterity flips (Chaos Orb).
  *
  * The server owns the table layout and decides where a flip lands; these helpers only turn its
- * millimetre table into screen space and draw previews from the numbers it sends (the release
- * profile carries the engine's own scatter terms, so the aim ring shows what the engine scores).
+ * millimetre table into screen space and read the spin gauge from the numbers it sends.
  */
 import type { FlipReleaseProfile, FlipTable, FlipTableCard } from '@/types'
 
 export const CARD_W = 63
 export const CARD_H = 88
 
-/** Room either side of the table — the release gauge stands in the right-hand one. */
+/** Room either side of the table — the spin gauge stands in the right-hand one. */
 const SIDE_MARGIN = 96
 const FAR_MARGIN = 34
 const HAND_MARGIN = 64
@@ -56,57 +55,11 @@ export function makeFlipView(table: FlipTable, fromFarSide: boolean): FlipView {
   }
 }
 
-/** 1 for a clean release, falling to 0 as it strays outside the clean zone (mirrors the engine). */
-export function releaseQuality(profile: FlipReleaseProfile, strength: number): number {
-  const s = Math.min(1, Math.max(0, strength))
-  const miss = s < profile.cleanFrom ? profile.cleanFrom - s : s > profile.cleanTo ? s - profile.cleanTo : 0
-  return 1 - Math.min(1, miss / profile.slopRange)
-}
-
-/** Signed carry error (mm) of a release: negative falls short of the aim, positive sails past it. */
-export function carryDrift(profile: FlipReleaseProfile, strength: number): number {
-  return (Math.min(1, Math.max(0, strength)) - profile.sweetSpot) * profile.depthPerStrength
-}
-
-/** Sideways carry error (mm) of a release at hand sway [sway] (-1..1): positive pulls to the thrower's right. */
-export function swayPull(profile: FlipReleaseProfile, sway: number): number {
-  return Math.min(1, Math.max(-1, sway)) * profile.sidePerSway
-}
-
-/**
- * Where a release of [strength] at hand sway [sway] aimed at [aim] carries to before scatter —
- * along the line from the hand, and across it (mirrors the engine's carry).
- */
-export function carryPoint(table: FlipTable, profile: FlipReleaseProfile, aim: Point, strength: number, sway = 0): Point {
-  const dx = aim.x - table.handX
-  const dy = aim.y - table.handY
-  const length = Math.hypot(dx, dy)
-  const [ux, uy] = length < 1 ? [0, -1] : [dx / length, dy / length]
-  const drift = carryDrift(profile, strength)
-  // The thrower faces along (ux, uy); their right-hand side is (-uy, ux).
-  const pull = swayPull(profile, sway)
-  return { x: aim.x + ux * drift - uy * pull, y: aim.y + uy * drift + ux * pull }
-}
-
-/** A carry error as the player reads it: "on target", "6 cm short · 3 cm left", "4 cm long". */
-export function driftLabel(drift: number, pull = 0): string {
-  const depth = Math.round(Math.abs(drift) / 10)
-  const side = Math.round(Math.abs(pull) / 10)
-  const parts = [
-    ...(depth === 0 ? [] : [`${depth} cm ${drift < 0 ? 'short' : 'long'}`]),
-    ...(side === 0 ? [] : [`${side} cm ${pull < 0 ? 'left' : 'right'}`]),
-  ]
-  return parts.length === 0 ? 'on target' : parts.join(' · ')
-}
-
-/** One standard deviation of scatter (mm) for a throw at [aim] — the engine's formula, its numbers. */
-export function scatterSigma(table: FlipTable, profile: FlipReleaseProfile, aim: Point, strength: number): number {
-  const distance = Math.hypot(aim.x - table.handX, aim.y - table.handY)
-  return (
-    profile.baseScatter +
-    profile.scatterPerMm * distance +
-    profile.sloppyScatter * Math.pow(1 - releaseQuality(profile, strength), 1.6)
-  )
+/** 1 for a spin in the clean band, falling to 0 as it strays outside it (mirrors the engine). */
+export function spinQuality(profile: FlipReleaseProfile, spin: number): number {
+  const w = Math.min(profile.maxSpin, Math.abs(spin))
+  const miss = w < profile.cleanSpinFrom ? profile.cleanSpinFrom - w : w > profile.cleanSpinTo ? w - profile.cleanSpinTo : 0
+  return 1 - Math.min(1, miss / profile.spinSlop)
 }
 
 /** Whether an unrotated card resting at [p] would overlap [card]'s touchable area (aim preview). */

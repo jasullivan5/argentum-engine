@@ -6,15 +6,25 @@ import com.wingedsheep.ai.engine.knowledge.TargetPolarity
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.core.ActivateAbility
+import com.wingedsheep.engine.core.ActivationModalTargetContinuation
 import com.wingedsheep.engine.core.AlternativeCostType
 import com.wingedsheep.engine.core.CastSpell
 import com.wingedsheep.engine.core.ChooseTargetsDecision
+import com.wingedsheep.engine.core.StormCopyTargetContinuation
 import com.wingedsheep.engine.core.Suspension
+import com.wingedsheep.sdk.scripting.targets.TargetRequirement
+import com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComponent
+import com.wingedsheep.engine.state.components.stack.ActivatedAbilityOnStackComponent
+import com.wingedsheep.engine.core.CopyTriggeredAbilityTargetContinuation
+import com.wingedsheep.engine.core.CopyActivatedAbilityTargetContinuation
+import com.wingedsheep.engine.core.CopyAbilityTargetContinuation
+import com.wingedsheep.engine.state.components.stack.TargetsComponent
 import com.wingedsheep.engine.core.TriggerModalTargetSelectionContinuation
 import com.wingedsheep.engine.core.TriggeredAbilityContinuation
 import com.wingedsheep.engine.core.GameAction
 import com.wingedsheep.engine.legalactions.LegalAction
 import com.wingedsheep.engine.legalactions.ModalLegalEnumeration
+import com.wingedsheep.engine.legalactions.ModalEnumerationMode
 import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils.toEntityId
 import com.wingedsheep.engine.legalactions.TargetInfo
 import com.wingedsheep.engine.state.GameState
@@ -58,11 +68,13 @@ object TargetSelection {
         intents: IntentCatalog = IntentCatalog.NONE,
     ): Double {
         val projected = state.projectedState
-        val controller = projected.getController(entityId)
+        val isPlayer = state.getEntity(entityId)?.get<PlayerComponent>() != null
+        // A player is its own side: it has no controller, so reading one off the projection
+        // scored every player as ours and left "target player" to list order.
+        val controller = if (isPlayer) entityId else projected.getController(entityId)
         // CR 810 — a teammate's permanent is not an opponent's, so removal must not rank it as
         // one. In a game without teams this is exactly the old `controller != playerId`.
         val isOpponent = controller != null && state.isOpponentTo(controller, playerId)
-        val isPlayer = state.getEntity(entityId)?.get<PlayerComponent>() != null
 
         val card = state.getEntity(entityId)?.get<CardComponent>()
 
@@ -76,6 +88,13 @@ object TargetSelection {
             // Opponent creatures: higher value = better target for removal
             // Friendly creatures rank below opponents in this removal-oriented fallback.
             if (isOpponent) value + 10.0 else -value
+        } else if (card != null && intents.isEnabled && entityId !in state.getBattlefield()) {
+            // A card off the battlefield — in a graveyard, a recursion's or a graveyard hate
+            // spell's target — has no board presence to read, and [BoardPresence.permanentValue]
+            // priced a creature card there below a land. It is worth what it would be once it
+            // lands: [BoardPresence.spellValue]'s printed-stats reading, a land a flat little. It is
+            // nobody's permanent, so it keeps the sign of one of ours.
+            -(BoardPresence.spellValue(projected, card, playerId, intents) ?: if (card.isLand) OFF_BATTLEFIELD_LAND else 0.0)
         } else if (card != null && intents.isEnabled) {
             // Phase 6. This branch used to be a flat `0.0`, which meant an opponent's Oblivion
             // Ring ranked exactly as high as an untapped Forest and *equally* as high as nothing —
@@ -108,16 +127,21 @@ object TargetSelection {
         polarityFromEffect: Boolean = false,
     ): (EntityId) -> Double {
         if (polarityFromEffect) {
-            // One polarity per action, not per slot: the ranker is shared by every requirement of
-            // the action. A multi-slot action whose slots disagree ("target creature you control
-            // fights target creature you don't") reads UNKNOWN and keeps the removal ranking —
-            // which is what it got before, and its filters already split the sides.
+            // An Aura that helps one kind of host and hurts the rest (Sea Legs): each candidate is
+            // ranked on its own side — our Pirates as gifts, their non-Pirates as curses — and
+            // every candidate on its wrong side behind all of those.
+            hostSplitPolarity(state, action, intents)?.let { polarityOf ->
+                return { entityId -> sidedRank(state, entityId, playerId, intents, polarityOf(entityId)) }
+            }
+            // One polarity per action: a multi-slot action whose slots disagree ("target creature
+            // you control fights target creature you don't") reads UNKNOWN here and keeps the
+            // removal ranking; [slotRanker] then gives a slot read as beneficial its own order.
             val polarity = polarities(state, action, intents).distinct().singleOrNull()
             if (polarity == TargetPolarity.BENEFICIAL) {
                 // Our best permanent first, theirs last; ourselves ahead of an opponent.
                 return { entityId -> -rank(state, entityId, playerId, intents) }
             }
-            if (polarity == TargetPolarity.HARMFUL) return { entityId -> rank(state, entityId, playerId, intents) }
+            if (polarity == TargetPolarity.HARMFUL) return { entityId -> harmfulRank(state, entityId, playerId, intents) }
         }
         val activation = action.action as? ActivateAbility
         val name = activation?.let { state.getEntity(it.sourceId)?.get<CardComponent>()?.name }
@@ -140,6 +164,73 @@ object TargetSelection {
     }
 
     /**
+     * The polarity of each candidate for [action]'s enchant slot, when it casts an Aura whose effect
+     * turns on the host's creature type ([HostSplit]) — read off the candidate's projected subtypes,
+     * so a changeling or a granted type counts. Null for any other action.
+     */
+    fun hostSplitPolarity(state: GameState, action: LegalAction, intents: IntentCatalog): ((EntityId) -> TargetPolarity)? {
+        if (!intents.isEnabled) return null
+        val cast = action.action as? CastSpell ?: return null
+        if (cast.castFaceDown || cast.faceIndex != null || cast.castFused) return null
+        val name = state.getEntity(cast.cardId)?.get<CardComponent>()?.name ?: return null
+        val split = intents.spellHostSplit(name) ?: return null
+        val projected = state.projectedState
+        return { entityId -> split.polarityFor(projected.hasSubtype(entityId, split.subtype.value)) }
+    }
+
+    /** [rank] read for a candidate of one-sided [polarity], [RIGHT_SIDE] ahead when it sits on that side. */
+    private fun sidedRank(
+        state: GameState,
+        entityId: EntityId,
+        playerId: EntityId,
+        intents: IntentCatalog,
+        polarity: TargetPolarity,
+    ): Double {
+        val value = rank(state, entityId, playerId, intents)
+        return if (polarity == TargetPolarity.BENEFICIAL) {
+            -value + if (isTheirs(state, entityId, playerId)) 0.0 else RIGHT_SIDE
+        } else {
+            value + if (isOurs(state, entityId, playerId)) 0.0 else RIGHT_SIDE
+        }
+    }
+
+    /**
+     * [rank] for a harmful slot. A card in a graveyard is nobody's permanent, so [rank] orders every
+     * one of them least valuable first, whoever owns it — right for our own card, but graveyard hate
+     * ("exile target card from a graveyard", Scavenging Ooze; Junktroller's tuck) wants the
+     * opponent's best card. An opponent's graveyard card ranks by its value, ahead of all of ours.
+     */
+    private fun harmfulRank(state: GameState, entityId: EntityId, playerId: EntityId, intents: IntentCatalog): Double {
+        val value = rank(state, entityId, playerId, intents)
+        val owner = state.getEntity(entityId)?.get<OwnerComponent>()?.playerId ?: return value
+        if (entityId !in state.getZone(owner, Zone.GRAVEYARD) || !state.isOpponentTo(owner, playerId)) return value
+        return -value + OPPONENT_GRAVEYARD_CARD
+    }
+
+    /** Puts an opponent's graveyard card ahead of ours in [harmfulRank], as [rank]'s +10 does for permanents. */
+    private const val OPPONENT_GRAVEYARD_CARD = 10.0
+
+    /** Puts every right-side candidate of a [hostSplitPolarity] slot ahead of every wrong-side one. */
+    private const val RIGHT_SIDE = 1_000.0
+
+    /**
+     * The ranking for one slot of a multi-slot action. [ranker] reads one polarity per action, so
+     * a slot whose own reading is [TargetPolarity.BENEFICIAL] beside a harmful one ("target creature
+     * you control deals damage equal to its power to target creature you don't control") would
+     * keep the removal ranking, which orders our own creatures worst first. That slot ranks our
+     * best first instead; every other slot keeps [actionRanker].
+     */
+    fun slotRanker(
+        state: GameState,
+        playerId: EntityId,
+        intents: IntentCatalog,
+        actionRanker: (EntityId) -> Double,
+        slotPolarity: TargetPolarity?,
+    ): (EntityId) -> Double =
+        if (slotPolarity == TargetPolarity.BENEFICIAL) { entityId -> -rank(state, entityId, playerId, intents) }
+        else actionRanker
+
+    /**
      * [TargetPolarity] of each of [action]'s target slots, in [targetInfosFor] order — or empty
      * when it cannot be read: no card knowledge, a choose-N modal spell whose modes are not yet
      * chosen, a face-down cast, or a definition whose requirements do not line up one-to-one with the slots
@@ -158,12 +249,18 @@ object TargetSelection {
                     } else {
                         intents.spellTargetPolarities(name, transformed, base.faceIndex, base.castFused)
                     }
-                }.orEmpty()
+                }.orEmpty().let { printed ->
+                    // Awaken (CR 702.113b) appends "target land you control" after the printed
+                    // slots, and puts +1/+1 counters on it — a slot that helps its target.
+                    if (base.useAlternativeCost && base.alternativeCostType == AlternativeCostType.AWAKEN) {
+                        printed + TargetPolarity.BENEFICIAL
+                    } else printed
+                }
             is ActivateAbility -> state.getEntity(base.sourceId)?.get<CardComponent>()?.name
                 ?.let { intents.abilityTargetPolarities(it, base.abilityId) }.orEmpty()
             else -> emptyList()
         }
-        val slots = targetInfosFor(action)?.size ?: return emptyList()
+        val slots = (targetInfosFor(action) ?: autoSelectedPlayerSlot(action))?.size ?: return emptyList()
         return if (read.size == slots) read else emptyList()
     }
 
@@ -206,16 +303,46 @@ object TargetSelection {
         intents: IntentCatalog,
     ): Boolean {
         if (actsOnTheWrongSideOfItsHost(state, action, playerId, intents)) return true
-        val polarities = polarities(state, action, intents)
-        if (polarities.isEmpty()) return false
-        val infos = targetInfosFor(action) ?: return false
-        return infos.zip(polarities).any { (info, polarity) ->
-            info.minTargets > 0 && info.validTargets.isNotEmpty() && when (polarity) {
-                TargetPolarity.HARMFUL -> info.validTargets.all { sideOf(state, it, playerId) == Side.OURS }
-                TargetPolarity.BENEFICIAL -> info.validTargets.all { sideOf(state, it, playerId) == Side.THEIRS }
-                TargetPolarity.UNKNOWN -> false
+        // Sea Legs with only our non-Pirates and their Pirates to enchant helps nobody we want helped.
+        hostSplitPolarity(state, action, intents)?.let { polarityOf ->
+            val info = targetInfosFor(action)?.singleOrNull() ?: return false
+            return info.minTargets > 0 && info.validTargets.isNotEmpty() && info.validTargets.all { id ->
+                when (polarityOf(id)) {
+                    TargetPolarity.HARMFUL -> sideOf(state, id, playerId) == Side.OURS
+                    TargetPolarity.BENEFICIAL -> sideOf(state, id, playerId) == Side.THEIRS
+                    TargetPolarity.FLEXIBLE, TargetPolarity.UNKNOWN -> false
+                }
             }
         }
+        val polarities = polarities(state, action, intents)
+        if (polarities.isEmpty()) return false
+        val infos = targetInfosFor(action) ?: autoSelectedPlayerSlot(action) ?: return false
+        val taken by lazy(LazyThreadSafetyMode.NONE) { takenSlots(state, action, intents) }
+        return infos.zip(polarities).withIndex().any { (index, slot) ->
+            val (info, polarity) = slot
+            info.minTargets > 0 && info.validTargets.isNotEmpty() && when (polarity) {
+                TargetPolarity.HARMFUL -> info.validTargets.all { sideOf(state, it, playerId) == Side.OURS }
+                TargetPolarity.BENEFICIAL -> info.validTargets.all { sideOf(state, it, playerId, index in taken) == Side.THEIRS }
+                TargetPolarity.FLEXIBLE, TargetPolarity.UNKNOWN -> false
+            }
+        }
+    }
+
+    /**
+     * The one slot of an action the enumerator already aimed: a single player requirement with a
+     * single legal player is offered with that player chosen and no target info at all. That player
+     * is the slot's only legal target, so the wrong-side check still applies — Psychic Transfer with
+     * the opponent behind Leyline of Sanctity is offered pre-aimed at ourselves.
+     */
+    private fun autoSelectedPlayerSlot(action: LegalAction): List<TargetInfo>? {
+        if (action.targetRequirements != null || action.validTargets != null) return null
+        val targets = when (val base = action.action) {
+            is CastSpell -> base.targets
+            is ActivateAbility -> base.targets
+            else -> return null
+        }
+        val player = (targets.singleOrNull() as? ChosenTarget.Player)?.playerId ?: return null
+        return listOf(TargetInfo(index = 0, description = "", minTargets = 1, maxTargets = 1, validTargets = listOf(player), targetZone = null))
     }
 
     private fun actsOnTheWrongSideOfItsHost(
@@ -232,7 +359,7 @@ object TargetSelection {
         return when (intents.abilityHostPolarity(name, activation.abilityId)) {
             TargetPolarity.HARMFUL -> sideOf(state, host, playerId) == Side.OURS
             TargetPolarity.BENEFICIAL -> sideOf(state, host, playerId) == Side.THEIRS
-            TargetPolarity.UNKNOWN -> false
+            TargetPolarity.FLEXIBLE, TargetPolarity.UNKNOWN -> false
         }
     }
 
@@ -242,7 +369,11 @@ object TargetSelection {
      * asked it, when that continuation carries the effect the targets are for: a triggered ability
      * being put on the stack ([TriggeredAbilityContinuation]), or one mode of a modal triggered
      * ability ([TriggerModalTargetSelectionContinuation] — Proud Pack-Rhino's "put a shield counter
-     * on target permanent"). Empty — UNKNOWN everywhere — for any other question, and for a
+     * on target permanent"), or one mode of a modal activated ability
+     * ([ActivationModalTargetContinuation] — Kargan Intimidator's "target creature becomes a Coward",
+     * read against the source card so its own "Cowards can't block Warriors" names the side), or a
+     * copy's new targets ([StormCopyTargetContinuation] — Fork, a
+     * storm copy; the ability-copy continuations — Lithoform Engine, Echo). Empty — UNKNOWN everywhere — for any other question, and for a
      * trigger whose dependent targets are asked one slot at a time.
      */
     fun decisionPolarities(
@@ -256,13 +387,29 @@ object TargetSelection {
         val read = when (val answer = suspension.answer) {
             is TriggeredAbilityContinuation ->
                 if (answer.sequentialTargets != null) emptyList()
-                else intents.effectTargetPolarities(answer.effect, answer.targetRequirements)
+                else intents.effectTargetPolarities(answer.effect, answer.targetRequirements, answer.sourceName)
             is TriggerModalTargetSelectionContinuation -> {
                 val mode = answer.chosenModeIndices.getOrNull(answer.currentOrdinal)
                     ?.let(answer.modes::getOrNull)
                 if (mode == null) emptyList()
                 else intents.effectTargetPolarities(mode.effect, mode.targetRequirements)
             }
+            is ActivationModalTargetContinuation -> {
+                val mode = answer.selectedIndices.getOrNull(answer.ordinal)?.let(answer.modal.modes::getOrNull)
+                val name = state.getEntity(answer.action.sourceId)?.get<CardComponent>()?.name
+                if (mode == null) emptyList()
+                else intents.effectTargetPolarities(mode.effect, mode.targetRequirements, name)
+            }
+            // "Choose new targets for the copy" (Fork, Double Major, a storm copy; Lithoform Engine,
+            // Echo copying an ability): the copy is ours, so each slot wants what the copied effect
+            // does to it — the copy of their Shock at their creature, of their Giant Growth on ours.
+            is StormCopyTargetContinuation -> answer.spellEffect?.let {
+                copySlots(intents.effectTargetPolarities(it, answer.spellTargetRequirements, answer.spellName),
+                    answer.spellTargetRequirements, decision.targetRequirements.size)
+            } ?: emptyList()
+            is CopyAbilityTargetContinuation -> abilityCopySlots(state, answer.abilityEntityId, answer.targetRequirements, decision, intents)
+            is CopyActivatedAbilityTargetContinuation -> abilityCopySlots(state, answer.abilityEntityId, answer.targetRequirements, decision, intents)
+            is CopyTriggeredAbilityTargetContinuation -> abilityCopySlots(state, answer.abilityEntityId, answer.targetRequirements, decision, intents)
             else -> emptyList()
         }
         return decision.targetRequirements.mapNotNull { req ->
@@ -270,16 +417,95 @@ object TargetSelection {
         }.toMap()
     }
 
+    private fun abilityCopySlots(
+        state: GameState,
+        abilityId: EntityId,
+        requirements: List<TargetRequirement>,
+        decision: ChooseTargetsDecision,
+        intents: IntentCatalog,
+    ): List<TargetPolarity> {
+        val ability = state.getEntity(abilityId) ?: return emptyList()
+        val effect = ability.get<ActivatedAbilityOnStackComponent>()?.effect
+            ?: ability.get<TriggeredAbilityOnStackComponent>()?.effect
+            ?: return emptyList()
+        return copySlots(intents.effectTargetPolarities(effect, requirements), requirements, decision.targetRequirements.size)
+    }
+
+    /**
+     * Per-requirement [polarities] spread over a copy prompt's [slots]: the prompt asks one slot
+     * per original target, so a requirement for two targets covers two slots, the last requirement
+     * whatever is left — the alignment the engine's copy prompt uses. Unread when they don't line up.
+     */
+    private fun copySlots(polarities: List<TargetPolarity>, requirements: List<TargetRequirement>, slots: Int): List<TargetPolarity> {
+        if (polarities.size != requirements.size) return emptyList()
+        if (slots == requirements.size) return polarities
+        var left = slots
+        return requirements.indices.flatMap { group ->
+            val covered = if (group == requirements.lastIndex) left else minOf(requirements[group].count, left)
+            left -= covered
+            List(covered.coerceAtLeast(0)) { polarities[group] }
+        }.takeIf { it.size == slots } ?: emptyList()
+    }
+
+    /**
+     * What slot [index] of a spell copy's "choose new targets" question keeps when left empty: the
+     * original spell's target in that slot (CR 707.10c). Null for any other question, or when the
+     * original is gone.
+     */
+    fun keptCopyTarget(state: GameState, decision: ChooseTargetsDecision, index: Int): EntityId? {
+        val suspension = state.peekContinuation() as? Suspension ?: return null
+        if (suspension.question.id != decision.id) return null
+        val copy = suspension.answer as? StormCopyTargetContinuation ?: return null
+        return when (val kept = state.getEntity(copy.sourceId)?.get<TargetsComponent>()?.targets?.getOrNull(index)) {
+            is ChosenTarget.Player -> kept.playerId
+            is ChosenTarget.Permanent -> kept.entityId
+            is ChosenTarget.Card -> kept.cardId
+            is ChosenTarget.Spell -> kept.spellEntityId
+            null -> null
+        }
+    }
+
+    /**
+     * The first [limit] of [ranked] worth simulating for a slot of [polarity] — except that a slot
+     * whose effect can work on either side ([TargetPolarity.FLEXIBLE], [TargetPolarity.UNKNOWN], or no reading) takes
+     * the sides in turn, best of each first, so the simulation always gets to compare our best
+     * candidate with theirs.
+     *
+     * [ranked] is ordered by a removal-oriented ranking that puts every opposing permanent ahead
+     * of every one of ours. Cut straight to the top few, an unread slot would never be *tried* on
+     * our side: the simulation that could tell a gift from a curse only ever saw curses' targets.
+     * One candidate per side is kept even when [limit] is smaller, since a single candidate is no
+     * comparison at all. A slot with a read polarity keeps the plain cut — its pool is already the
+     * right side.
+     */
+    fun simulationCandidates(
+        state: GameState,
+        ranked: List<EntityId>,
+        limit: Int,
+        playerId: EntityId,
+        polarity: TargetPolarity?,
+    ): List<EntityId> {
+        if (polarity == TargetPolarity.BENEFICIAL || polarity == TargetPolarity.HARMFUL) return ranked.take(limit)
+        // groupBy keeps first-appearance order, so the top-ranked candidate's side leads.
+        val sides = ranked.groupBy { sideOf(state, it, playerId) }.values.map { ArrayDeque(it) }
+        if (sides.size < 2) return ranked.take(limit)
+        val interleaved = ArrayList<EntityId>(ranked.size)
+        while (interleaved.size < ranked.size) {
+            for (side in sides) side.removeFirstOrNull()?.let(interleaved::add)
+        }
+        return interleaved.take(maxOf(limit, sides.size))
+    }
+
     /**
      * Whether [entityId] sits on our side of the table for [playerId] — the side a
      * [TargetPolarity.BENEFICIAL] slot wants. A teammate's permanent is ours (CR 810).
      */
-    fun isOurs(state: GameState, entityId: EntityId, playerId: EntityId): Boolean =
-        sideOf(state, entityId, playerId) == Side.OURS
+    fun isOurs(state: GameState, entityId: EntityId, playerId: EntityId, taken: Boolean = false): Boolean =
+        sideOf(state, entityId, playerId, taken) == Side.OURS
 
     /** Whether [entityId] sits on an opponent's side for [playerId]. */
-    fun isTheirs(state: GameState, entityId: EntityId, playerId: EntityId): Boolean =
-        sideOf(state, entityId, playerId) == Side.THEIRS
+    fun isTheirs(state: GameState, entityId: EntityId, playerId: EntityId, taken: Boolean = false): Boolean =
+        sideOf(state, entityId, playerId, taken) == Side.THEIRS
 
     private enum class Side { OURS, THEIRS, NEITHER }
 
@@ -288,8 +514,12 @@ object TargetSelection {
      * permanent its projected controller's, and a spell on the stack its caster's (the projection
      * covers the battlefield only, so the stack falls back to [ControllerComponent]). A teammate
      * is ours (CR 810).
+     *
+     * [taken]: the slot's effect puts its graveyard card under our control whoever owns it
+     * ([takenSlots]), so a card in any graveyard is ours to take.
      */
-    private fun sideOf(state: GameState, entityId: EntityId, playerId: EntityId): Side {
+    private fun sideOf(state: GameState, entityId: EntityId, playerId: EntityId, taken: Boolean = false): Side {
+        if (taken && inAGraveyard(state, entityId)) return Side.OURS
         val controller = when {
             state.getEntity(entityId)?.get<PlayerComponent>() != null -> entityId
             else -> state.projectedState.getController(entityId)
@@ -299,6 +529,53 @@ object TargetSelection {
             controller == playerId || controller in state.teamOf(playerId) -> Side.OURS
             state.isOpponentTo(controller, playerId) -> Side.THEIRS
             else -> Side.NEITHER
+        }
+    }
+
+    private fun inAGraveyard(state: GameState, entityId: EntityId): Boolean {
+        val owner = state.getEntity(entityId)?.get<OwnerComponent>()?.playerId ?: return false
+        return entityId in state.getZone(owner, Zone.GRAVEYARD)
+    }
+
+    /**
+     * The target slots of [action], in [targetInfosFor] order, whose graveyard card comes under our
+     * control whoever owns it — Rise from the Grave, Boneyard Parley, or a cast out of an opponent's
+     * graveyard (Tinybones). Read for a plain cast and a
+     * printed activated ability; empty for anything else (a modal, face-down, split, fused or
+     * transformed cast), which keeps the owner-sided reading.
+     */
+    fun takenSlots(state: GameState, action: LegalAction, intents: IntentCatalog): Set<Int> {
+        if (!intents.isEnabled || action.modalEnumeration != null) return emptySet()
+        return when (val base = action.action) {
+            is CastSpell -> {
+                if (base.castFaceDown || base.faceIndex != null || base.castFused || base.chosenModes.isNotEmpty() ||
+                    castsTransformed(state, base)) return emptySet()
+                state.getEntity(base.cardId)?.get<CardComponent>()?.name?.let(intents::spellTakenSlots).orEmpty()
+            }
+            is ActivateAbility -> state.getEntity(base.sourceId)?.get<CardComponent>()?.name
+                ?.let { intents.abilityTakenSlots(it, base.abilityId) }.orEmpty()
+            else -> emptySet()
+        }
+    }
+
+    /**
+     * [takenSlots] for a triggered ability's target decision ("when this enters, put target creature
+     * card from a graveyard onto the battlefield under your control"), keyed by requirement index
+     * as [decisionPolarities] is.
+     */
+    fun decisionTakenSlots(state: GameState, decision: ChooseTargetsDecision, intents: IntentCatalog): Set<Int> {
+        if (!intents.isEnabled) return emptySet()
+        val suspension = state.peekContinuation() as? Suspension ?: return emptySet()
+        if (suspension.question.id != decision.id) return emptySet()
+        return when (val answer = suspension.answer) {
+            is TriggeredAbilityContinuation ->
+                if (answer.sequentialTargets != null) emptySet()
+                else intents.effectTakenSlots(answer.effect, answer.targetRequirements)
+            is TriggerModalTargetSelectionContinuation ->
+                answer.chosenModeIndices.getOrNull(answer.currentOrdinal)?.let(answer.modes::getOrNull)
+                    ?.let { intents.effectTakenSlots(it.effect, it.targetRequirements) }.orEmpty()
+            // A copy's slots are re-aligned by [copySlots]; a copied reanimation keeps the owner-sided reading.
+            else -> emptySet()
         }
     }
 
@@ -335,6 +612,7 @@ object TargetSelection {
 
         val rankTarget = ranker(state, action, playerId, intents, polarityFromEffect)
         val slotPolarities = if (polarityFromEffect) polarities(state, action, intents) else emptyList()
+        val taken = if (polarityFromEffect) takenSlots(state, action, intents) else emptySet()
         val chosenTargets = mutableListOf<ChosenTarget>()
         val chosenIds = mutableSetOf<EntityId>()
         // How many targets each slot took, kept so a slot left empty *by choice* ahead of a filled
@@ -362,13 +640,13 @@ object TargetSelection {
             // (or the engine) to reject. Either beats `first()` on an empty list, which is what this
             // used to do — an `?: available.first()` that could only ever run when `available` was
             // empty, and so could only ever throw.
-            val worth = worthTargeting(state, info, available, playerId, slotPolarities.getOrNull(index))
+            val worth = worthTargeting(state, info, available, playerId, slotPolarities.getOrNull(index), index in taken)
             if (worth.isEmpty() && available.isNotEmpty()) {
                 // An optional slot whose every candidate is on the wrong side: leave it empty.
                 counts += 0
                 continue
             }
-            val picks = pick(state, info, worth, rankTarget)
+            val picks = pick(state, info, worth, slotRanker(state, playerId, intents, rankTarget, slotPolarities.getOrNull(index)))
             if (picks.isEmpty()) {
                 return if (targetInfos.drop(index).all { it.minTargets == 0 }) {
                     finish()
@@ -400,12 +678,14 @@ object TargetSelection {
         candidates: List<EntityId>,
         playerId: EntityId,
         polarity: TargetPolarity?,
+        /** The slot's graveyard card comes under our control whoever owns it — see [takenSlots]. */
+        taken: Boolean = false,
     ): List<EntityId> {
         if (info.minTargets > 0) return candidates
         return when (polarity) {
-            TargetPolarity.BENEFICIAL -> candidates.filterNot { isTheirs(state, it, playerId) }
+            TargetPolarity.BENEFICIAL -> candidates.filterNot { isTheirs(state, it, playerId, taken) }
             TargetPolarity.HARMFUL -> candidates.filterNot { isOurs(state, it, playerId) }
-            TargetPolarity.UNKNOWN, null -> candidates
+            TargetPolarity.FLEXIBLE, TargetPolarity.UNKNOWN, null -> candidates
         }
     }
 
@@ -433,27 +713,103 @@ object TargetSelection {
         val modal = action.modalEnumeration ?: return cast
         val modes = modal.modes.filter { it.available }.take(modal.chooseCount)
         if (modes.size < modal.minChooseCount) return cast
-
-        val orderedTargets = mutableListOf<List<ChosenTarget>>()
-        for (mode in modes) {
-            val chosen = mutableListOf<ChosenTarget>()
-            val chosenIds = mutableSetOf<EntityId>()
-            for (info in mode.targetRequirements) {
-                val candidates = info.validTargetsByPrefix?.get(chosen.joinToString(",") { it.toEntityId().toString() })
-                    ?: if (info.validTargetsByPrefix == null) info.validTargets else emptyList()
-                val available = if (info.mustDifferFromEarlier) {
-                    candidates.filterNot(chosenIds::contains)
-                } else {
-                    candidates
-                }
-                if (available.isEmpty() && info.minTargets == 0) continue
-                val selectedId = available.maxByOrNull { rank(state, it, playerId, intents) }
-                    ?: return cast
-                chosen += toChosenTarget(state, info, selectedId, playerId)
-                chosenIds += selectedId
-            }
-            orderedTargets += chosen
+        val orderedTargets = modes.map { mode ->
+            modeTargetVariants(state, cast, mode, playerId, intents, perSide = false).firstOrNull() ?: return cast
         }
+        return castWithModes(state, cast, modal, modes, orderedTargets)
+    }
+
+    /**
+     * The mode selections a choose-N modal [modal] can be cast with, most modes first, at most
+     * [cap] of them: every combination of its available modes (a multiset when the same mode may
+     * be chosen more than once, CR 700.2d) of each size from `chooseCount` down to
+     * `minChooseCount`. Choose two of four is six selections; the cap only bites on a wide
+     * "choose one or more", whose smaller selections are dropped first.
+     */
+    fun modeSelections(modal: ModalLegalEnumeration, cap: Int): List<List<ModalEnumerationMode>> {
+        val available = modal.modes.filter { it.available }
+        val result = mutableListOf<List<ModalEnumerationMode>>()
+        fun extend(from: Int, size: Int, prefix: List<ModalEnumerationMode>) {
+            if (result.size >= cap) return
+            if (prefix.size == size) {
+                result += prefix
+                return
+            }
+            for (i in from until available.size) {
+                extend(if (modal.allowRepeat) i else i + 1, size, prefix + available[i])
+                if (result.size >= cap) return
+            }
+        }
+        for (size in modal.chooseCount downTo maxOf(1, modal.minChooseCount)) extend(0, size, emptyList())
+        return result
+    }
+
+    /**
+     * Target lists worth trying for one [mode] of [cast], best first. Each slot is ranked by the
+     * polarity the mode's own effect gives it — "target player draws two cards" wants us, "deals 2
+     * damage to each creature target player controls" wants them — so the first list is the
+     * heuristic pick. With [perSide], a slot whose polarity can't be read also offers the best
+     * candidate of the other side ([simulationCandidates]), for a simulation to tell apart.
+     * Empty when a mandatory slot has nothing to take.
+     */
+    fun modeTargetVariants(
+        state: GameState,
+        cast: CastSpell,
+        mode: ModalEnumerationMode,
+        playerId: EntityId,
+        intents: IntentCatalog,
+        perSide: Boolean,
+        limit: Int = MODE_TARGET_VARIANTS,
+    ): List<List<ChosenTarget>> {
+        val requirements = mode.targetRequirements
+        val read = if (!intents.isEnabled) emptyList() else state.getEntity(cast.cardId)?.get<CardComponent>()?.name
+            ?.let { intents.spellModeTargetPolarities(it, listOf(mode.index), castsTransformed(state, cast)) }
+            .orEmpty()
+        val polarities = read.takeIf { it.size == requirements.size }.orEmpty()
+        val variants = mutableListOf<List<ChosenTarget>>()
+        fun extend(index: Int, chosen: List<ChosenTarget>, chosenIds: List<EntityId>) {
+            if (variants.size >= limit) return
+            if (index == requirements.size) {
+                variants += chosen
+                return
+            }
+            val info = requirements[index]
+            val polarity = polarities.getOrNull(index)
+            val candidates = info.validTargetsByPrefix?.get(chosen.joinToString(",") { it.toEntityId().toString() })
+                ?: if (info.validTargetsByPrefix == null) info.validTargets else emptyList()
+            val available = if (info.mustDifferFromEarlier) candidates.filterNot(chosenIds::contains) else candidates
+            if (available.isEmpty() && info.minTargets == 0) {
+                extend(index + 1, chosen, chosenIds)
+                return
+            }
+            val sign = if (polarity == TargetPolarity.BENEFICIAL) -1.0 else 1.0
+            val ranked = worthTargeting(state, info, available, playerId, polarity)
+                .sortedByDescending { sign * rank(state, it, playerId, intents) }
+            if (ranked.isEmpty()) {
+                // An optional slot whose every candidate is on the wrong side: leave it empty.
+                if (info.minTargets == 0) extend(index + 1, chosen, chosenIds)
+                return
+            }
+            val tried = if (perSide) simulationCandidates(state, ranked, 1, playerId, polarity) else ranked.take(1)
+            for (target in tried) {
+                extend(index + 1, chosen + toChosenTarget(state, info, target, playerId), chosenIds + target)
+            }
+        }
+        extend(0, emptyList(), emptyList())
+        return variants
+    }
+
+    /**
+     * [cast] with [modes] chosen and [orderedTargets] (one list per mode, in mode order) as their
+     * targets, paying any non-mana escalate cost the extra modes owe.
+     */
+    fun castWithModes(
+        state: GameState,
+        cast: CastSpell,
+        modal: ModalLegalEnumeration,
+        modes: List<ModalEnumerationMode>,
+        orderedTargets: List<List<ChosenTarget>>,
+    ): CastSpell {
         val withModes = cast.copy(
             chosenModes = modes.map { it.index },
             modeTargetsOrdered = orderedTargets,
@@ -461,6 +817,12 @@ object TargetSelection {
         )
         return payEscalateCost(state, withModes, modal, modes.size)
     }
+
+    /** How many target lists [modeTargetVariants] offers for one mode at most. */
+    const val MODE_TARGET_VARIANTS = 4
+
+    /** A land card off the battlefield, for [rank]: worth having back, less than any spell. */
+    private const val OFF_BATTLEFIELD_LAND = 0.5
 
     /**
      * Pay a non-mana escalate cost (CR 702.120a) for the modes just chosen — one cost per mode
@@ -507,18 +869,19 @@ object TargetSelection {
     }
 
     /**
-     * Up to [count] of [ranked], best first, skipping any pick that would take the summed mana value
-     * over [cap] ("... with total mana value 6 or less", Kairi, the Swirling Sky).
+     * Up to [count] of [ranked], best first, skipping any pick that would take the summed value over
+     * [cap] ("... with total mana value 6 or less", Kairi, the Swirling Sky; "... with total power 10
+     * or less", Nethroi, Apex of Death). [values] are the decision's server-computed `targetValues`.
      */
-    fun underManaValueCap(state: GameState, ranked: List<EntityId>, cap: Int, count: Int): List<EntityId> {
+    fun underTotalCap(ranked: List<EntityId>, cap: Int, values: Map<EntityId, Int>?, count: Int): List<EntityId> {
         val picks = mutableListOf<EntityId>()
         var total = 0
         for (candidate in ranked) {
             if (picks.size == count) break
-            val manaValue = com.wingedsheep.engine.mechanics.ManaValues.of(state, candidate)
-            if (total + manaValue > cap) continue
+            val value = values?.get(candidate) ?: 0
+            if (total + value > cap) continue
             picks += candidate
-            total += manaValue
+            total += value
         }
         return picks
     }

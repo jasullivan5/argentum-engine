@@ -365,6 +365,134 @@
   }
 }
 
+/* "Remember my answer" under a may-prompt — sets an Always Yes / Always No yield on the ability. */
+.rememberAnswer {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-3);
+  max-width: 420px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--text-tertiary);
+  font-size: var(--font-sm);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.rememberAnswer:hover {
+  background: rgba(150, 100, 200, 0.1);
+}
+
+.rememberAnswerOn {
+  background: rgba(150, 100, 200, 0.14);
+  border-color: rgba(170, 130, 230, 0.45);
+  color: var(--text-secondary);
+}
+
+.rememberAnswer input {
+  margin-top: 3px;
+  accent-color: var(--color-highlight);
+}
+
+.rememberAnswerHint {
+  display: block;
+  color: var(--text-muted);
+  font-size: var(--font-xs);
+}
+
+/* Quick-select chips in a board-selection banner ("Recommended", "All", "Clear"): pill toggles in
+ * the targeting colour, quieter than Confirm so they read as shortcuts, not answers. */
+.quickSelectRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  width: 100%;
+}
+
+.quickSelectChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  padding: 4px 10px;
+  font-size: var(--font-sm);
+  color: var(--chrome-text);
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.quickSelectChip:hover:not(:disabled) {
+  border-color: var(--color-target);
+}
+
+.quickSelectChip:focus-visible,
+.quickSelectChipActive:focus-visible,
+.quickSelectClear:focus-visible {
+  outline: 2px solid var(--color-target-bright);
+  outline-offset: 2px;
+}
+
+.quickSelectChip:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.quickSelectChipActive {
+  composes: quickSelectChip;
+  color: var(--bg-surface-3);
+  background: var(--color-target);
+  border-color: var(--color-target);
+  font-weight: var(--font-weight-semibold);
+}
+
+.quickSelectStar {
+  color: var(--color-highlight, #fbbf24);
+  font-size: 0.95em;
+  line-height: 1;
+}
+
+.quickSelectChipActive .quickSelectStar {
+  color: inherit;
+}
+
+.quickSelectCount {
+  min-width: 1.4em;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 0.85em;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.quickSelectChipActive .quickSelectCount {
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.quickSelectClear {
+  padding: 0 2px;
+  font-size: inherit;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.quickSelectClear:hover {
+  color: var(--text-primary);
+}
+
 .buttonContainerSmall {
   display: flex;
   flex-wrap: wrap;
@@ -1320,4 +1448,176 @@
     padding: var(--space-2) var(--space-5);
     font-size: var(--font-md);
   }
+}
+
+/* A "yes" the server marked impossible: "no" is the only answer (#3340). */
+.yesButton:disabled,
+.peerOption:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.6);
+}
+
+/* =========================================================================
+ * Card Pool Browser — large selections (sideboard, "outside the game")
+ * ========================================================================= */
+.bannerCardImageSmall {
+  composes: bannerCardImage;
+  width: 72px;
+}
+
+/* Unlike the rest of the overlay this block takes the free space and shrinks into it, so the
+   grid scrolls inside the viewport, the title and confirm buttons never leave the screen, and
+   filtering down to a few cards doesn't make the whole modal jump. */
+.overlay > .poolBrowser {
+  flex: 1 1 0;
+  min-height: 0;
+}
+
+.poolBrowser {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  width: min(1180px, 100%);
+}
+
+.poolToolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+.poolSearch {
+  flex: 0 1 260px;
+  min-width: 160px;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-md);
+  color: var(--text-primary);
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
+  border-radius: var(--chrome-radius);
+  outline: none;
+}
+
+.poolSearch:focus {
+  border-color: var(--color-target);
+}
+
+.poolChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.poolChip {
+  padding: 5px var(--space-3);
+  font-size: var(--font-sm);
+  color: var(--chrome-text);
+  background: var(--chrome-bg);
+  border: 1px solid var(--chrome-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.poolChip:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.poolChipActive {
+  composes: poolChip;
+  color: var(--bg-surface-3);
+  background: var(--color-target);
+  border-color: var(--color-target);
+  font-weight: var(--font-weight-semibold);
+}
+
+.poolChipActive:hover {
+  border-color: var(--color-target);
+}
+
+.poolChipCount {
+  opacity: 0.65;
+  margin-left: 2px;
+}
+
+.poolGrid {
+  display: grid;
+  gap: var(--space-3);
+  justify-content: center;
+  align-content: start;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  min-height: 0;
+  /* Room for the selected card's lift and the hover nudge, which the scroll box would clip. */
+  padding: var(--space-3) var(--space-2);
+  border-radius: var(--radius-xl);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.poolTile {
+  position: relative;
+}
+
+.poolCopies {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  font-size: var(--font-sm);
+  font-weight: var(--font-weight-bold);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: var(--radius-md);
+  pointer-events: none;
+}
+
+.poolRemoveOne {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: var(--font-weight-bold);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.poolEmpty {
+  grid-column: 1 / -1;
+  margin: var(--space-6) 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-md);
+}
+
+.poolTray {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.poolTrayLabel {
+  margin-right: var(--space-1);
+  font-size: var(--font-sm);
+  color: var(--text-muted);
+}
+
+.poolTrayChip {
+  padding: 4px var(--space-2);
+  font-size: var(--font-sm);
+  color: var(--color-selected-bg);
+  background: var(--color-selected);
+  border: none;
+  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+  cursor: pointer;
 }

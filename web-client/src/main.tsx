@@ -6,6 +6,7 @@ import './styles/base.css'
 import './styles/responsive.css'
 import 'mana-font/css/mana.min.css'
 import 'keyrune/css/keyrune.min.css'
+import './styles/set-symbols.css'
 import { initAnalytics } from './utils/analytics'
 
 const App = lazy(() => import('./App'))
@@ -44,6 +45,9 @@ const CubeBuilderPage = lazy(() =>
 )
 const SharedCubePage = lazy(() =>
   import('./pages/SharedCubePage').then(({ SharedCubePage }) => ({ default: SharedCubePage }))
+)
+const SetGuidePage = lazy(() =>
+  import('./components/setGuide/SetGuidePage').then(({ SetGuidePage }) => ({ default: SetGuidePage }))
 )
 const SetCompletionPage = lazy(() =>
   import('./components/setCompletion/SetCompletionPage').then(({ SetCompletionPage }) => ({ default: SetCompletionPage }))
@@ -100,7 +104,7 @@ createRoot(rootElement).render(
           <Route path="/tournament/:lobbyId" element={<TournamentEntryPage />} />
           <Route path="/join/:lobbyId" element={<JoinLobbyPage />} />
           <Route path="/replay/:gameId" element={<ReplayPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin/*" element={<AdminPage />} />
           <Route path="/deckbuilder" element={<DeckbuilderPage />} />
           <Route path="/deckbuilder/:deckId" element={<DeckbuilderPage />} />
           <Route path="/library" element={<LibraryPage />} />
@@ -110,6 +114,7 @@ createRoot(rootElement).render(
           <Route path="/cubes/edit/:cubeId" element={<CubeBuilderPage />} />
           <Route path="/cubes/shared/:code" element={<SharedCubePage />} />
           <Route path="/scenario" element={<ScenarioBuilderPage />} />
+          <Route path="/sets" element={<SetGuidePage />} />
           <Route path="/set-completion" element={<SetCompletionPage />} />
           <Route path="/login/verify" element={<LoginVerifyPage />} />
           <Route path="/profile" element={<ProfilePage />} />

@@ -34,7 +34,7 @@ import com.wingedsheep.sdk.scripting.Duration
  * classic trick window). At each window the opponent is offered every non-mana activated ability
  * its permanents can afford right now — the engine's own legal actions, so mana, tap costs,
  * summoning sickness, sacrifice costs and once-per-turn limits are the rules' answer rather than a
- * model of them — narrowed to the ones whose effect can touch a fight ([CombatReach]), with their
+ * model of them, with a selection cost paid as the AI would pay its own ([SelectionCostPayment]) — narrowed to the ones whose effect can touch a fight ([CombatReach]), with their
  * targets drawn from the creatures in the fight and repeatable pumps tried at each affordable
  * count. Each is simulated through the rest of combat, and the opponent takes the one that leaves
  * the AI worst off, *if* it beats passing by [MIN_GAIN]: a trick that is possible but bad for them
@@ -260,7 +260,10 @@ internal class CombatResponses(
                     listOf(TargetSelection.fillHeuristically(state, bound, responder, fillPartialRequirements = true))
                 }
             }
-            for (action in targeted) {
+            for (target in targeted) {
+                // "Tap two untapped artifacts", "sacrifice a creature": the engine never picks a
+                // selection cost for the activator, so an unpaid one would be refused.
+                val action = SelectionCostPayment.withPlainCosts(state, offer, target)
                 out += action
                 // A repeatable pump is worth trying at every count the mana allows: one +1/+1 can
                 // change nothing where two win the fight, so stopping at the first would miss it.
@@ -295,22 +298,9 @@ internal class CombatResponses(
      * the simulation is the judge of whether it matters.
      */
     private fun reaches(state: GameState, activation: ActivateAbility, defending: Boolean, window: Window?): Boolean {
-        val reach = reachOf(state, activation) ?: return true
+        val reach = reachOf(state, activation, cardRegistry) ?: return true
         if (CombatReach.FIGHT in reach) return true
         return CombatReach.BLOCKER in reach && defending && window != Window.AFTER_BLOCKS
-    }
-
-    private fun reachOf(state: GameState, activation: ActivateAbility): Set<CombatReach>? {
-        val card = state.getEntity(activation.sourceId)?.get<CardComponent>()
-        val definition = card?.let { cardRegistry.getCard(it.cardDefinitionId) }
-        val ability = definition?.script?.activatedAbilities?.find { it.id == activation.abilityId }
-            ?: definition?.cardFaces?.firstNotNullOfOrNull { face ->
-                face.script.activatedAbilities.find { it.id == activation.abilityId }
-            }
-            ?: state.grantedActivatedAbilities
-                .firstOrNull { it.entityId == activation.sourceId && it.ability.id == activation.abilityId }?.ability
-            ?: return null
-        return CombatReach.of(ability)
     }
 
     /**
@@ -349,6 +339,23 @@ internal class CombatResponses(
     }
 
     companion object {
+        /**
+         * What [activation]'s ability can do to a fight, read off its definition (or the grant that
+         * gave it); null when the definition lookup does not reach it.
+         */
+        fun reachOf(state: GameState, activation: ActivateAbility, cardRegistry: CardRegistry): Set<CombatReach>? {
+            val card = state.getEntity(activation.sourceId)?.get<CardComponent>()
+            val definition = card?.let { cardRegistry.getCard(it.cardDefinitionId) }
+            val ability = definition?.script?.activatedAbilities?.find { it.id == activation.abilityId }
+                ?: definition?.cardFaces?.firstNotNullOfOrNull { face ->
+                    face.script.activatedAbilities.find { it.id == activation.abilityId }
+                }
+                ?: state.grantedActivatedAbilities
+                    .firstOrNull { it.entityId == activation.sourceId && it.ability.id == activation.abilityId }?.ability
+                ?: return null
+            return CombatReach.of(ability)
+        }
+
         /**
          * How much better than passing a response must leave the responder, in evaluator units,
          * before it is assumed. Below a fraction of the cheapest creature: a response that only

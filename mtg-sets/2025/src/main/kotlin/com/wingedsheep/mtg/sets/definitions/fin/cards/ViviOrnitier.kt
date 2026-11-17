@@ -12,7 +12,6 @@ import com.wingedsheep.sdk.scripting.ActivationRestriction
 import com.wingedsheep.sdk.scripting.TimingRule
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
-import com.wingedsheep.sdk.scripting.values.ManaColorSet
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 
 /**
@@ -26,7 +25,8 @@ import com.wingedsheep.sdk.scripting.GameObjectFilter
  * damage to each opponent.
  *
  * The mana ability is a once-per-turn, your-turn-only [ActivationRestriction] producing
- * [DynamicAmounts.sourcePower] mana split across {U}/{R} ([ManaColorSet.Specific]). The noncreature
+ * [DynamicAmounts.sourcePower] mana that the player splits freely between {U} and {R}
+ * ([Effects.AddDynamicMana] — not AddManaOfChoice, which would force all X into one color). The noncreature
  * trigger grows Vivi (its power feeds back into the mana ability) and pings each opponent — Vivi is
  * the damage source so "deals 1 damage" comes from it.
  */
@@ -43,10 +43,7 @@ val ViviOrnitier = card("Vivi Ornitier") {
 
     activatedAbility {
         cost = Costs.Mana("{0}")
-        effect = Effects.AddManaOfChoice(
-            ManaColorSet.Specific(setOf(Color.BLUE, Color.RED)),
-            DynamicAmounts.sourcePower(),
-        )
+        effect = Effects.AddDynamicMana(DynamicAmounts.sourcePower(), setOf(Color.BLUE, Color.RED))
         manaAbility = true
         timing = TimingRule.ManaAbility
         restrictions = listOf(

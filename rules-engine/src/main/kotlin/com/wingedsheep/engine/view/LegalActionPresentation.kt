@@ -117,6 +117,8 @@ data class LegalActionInfo(
     val xConstrainsTargetCountExactly: Boolean = false,
     val validAttackers: List<EntityId>? = null,
     val mandatoryAttackers: List<EntityId>? = null,
+    /** Valid attackers that can only attack alone (Master of Cruelties); null when none. */
+    val loneAttackers: List<EntityId>? = null,
     val validAttackTargets: List<EntityId>? = null,
     /**
      * Sparse per-attacker narrowing of [validAttackTargets]: an attacker listed here may attack
@@ -126,6 +128,7 @@ data class LegalActionInfo(
      */
     val attackTargetsByAttacker: Map<EntityId, List<EntityId>>? = null,
     val validBlockers: List<EntityId>? = null,
+    val blockableAttackers: List<EntityId>? = null,
     val hasXCost: Boolean = false,
     val maxAffordableX: Int? = null,
     /**
@@ -184,6 +187,8 @@ data class LegalActionInfo(
     val minimumManaCostString: String? = null,
     val requiresDamageDistribution: Boolean = false,
     val totalDamageToDistribute: Int? = null,
+    /** The division's total per announced X, when it reads a mana-paid {X} (see `LegalAction.totalDamageByX`). */
+    val totalDamageByX: Map<Int, Int>? = null,
     val minDamagePerTarget: Int? = null,
     /** What the division divides when it isn't damage — "+1/+1 counter". Null means damage. */
     val distributionUnit: String? = null,
@@ -223,6 +228,8 @@ data class LegalActionInfo(
      * [com.wingedsheep.engine.legalactions.LegalAction.castsTransformed].
      */
     val castsTransformed: Boolean = false,
+    /** Previously submitted teammate choices, displayed but not part of this player's input. */
+    val proposedBlockerAssignments: Map<EntityId, List<EntityId>>? = null,
     val blockerMaxBlockCounts: Map<EntityId, Int>? = null,
     val mandatoryBlockerAssignments: Map<EntityId, List<EntityId>>? = null,
     val maxRepeatableActivations: Int? = null,
@@ -317,6 +324,9 @@ data class AdditionalCostInfo(
     /** Casualty X: the sacrifice needs power at least the chosen X — see
      *  [com.wingedsheep.engine.legalactions.AdditionalCostData.sacrificeMinPowerIsX]. */
     val sacrificeMinPowerIsX: Boolean = false,
+    /** "Sacrifice X creatures": pick exactly the announced X — see
+     *  [com.wingedsheep.engine.legalactions.AdditionalCostData.countIsX]. */
+    val countIsX: Boolean = false,
     /** Emerge (CR 702.119): the mana cost left after sacrificing each candidate — see
      *  [com.wingedsheep.engine.legalactions.AdditionalCostData.costAfterSacrifice]. Empty otherwise. */
     val costAfterSacrifice: Map<EntityId, String> = emptyMap(),
@@ -327,6 +337,8 @@ data class AdditionalCostInfo(
     val tapBatchMaxActivations: Int = 1,
     val validDiscardTargets: List<EntityId> = emptyList(),
     val discardCount: Int = 0,
+    /** Upper bound of a variable discard ("discard X cards"); null means exactly [discardCount]. */
+    val discardMaxCount: Int? = null,
     val validBounceTargets: List<EntityId> = emptyList(),
     val bounceCount: Int = 0,
     val validExileTargets: List<EntityId> = emptyList(),
@@ -363,6 +375,8 @@ data class AdditionalCostInfo(
     val revealCount: Int = 0,
     val counterRemovalCreatures: List<CounterRemovalCreatureInfo> = emptyList(),
     val validBlightTargets: List<EntityId> = emptyList(),
+    /** For PutCounters: permanents a "put N counters on a permanent you control" spell cost may pick. */
+    val validCounterPlacementTargets: List<EntityId> = emptyList(),
     val blightAmount: Int = 0,
     /** For BlightVariable: cap on X (greatest toughness among creatures you control). */
     val blightVariableMaxX: Int = 0,

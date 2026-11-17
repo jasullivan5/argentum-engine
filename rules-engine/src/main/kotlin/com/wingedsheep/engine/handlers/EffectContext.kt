@@ -7,6 +7,7 @@ import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.stack.ChosenTarget
 import com.wingedsheep.engine.state.components.stack.EntitySnapshot
+import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
 import com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComponent
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.CounterType
@@ -58,12 +59,6 @@ data class EffectContext(
      */
     val abilityIdentity: com.wingedsheep.sdk.scripting.AbilityIdentity? = null,
     /**
-     * The resolving triggered ability's leading "you may" was answered yes when its target was
-     * chosen ([com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComponent.consentAnsweredAtTargeting]).
-     * Consumed by the first `Gate.MayDecide` the effect reaches, which clears it for its branch.
-     */
-    val consentAnsweredAtTargeting: Boolean = false,
-    /**
      * The concrete ability captured at activation. Resolution must not rediscover it from a
      * source or grant that can change before resolving (including "retain this ability" copies).
      * Null for spells, triggers, and synthesized activations without an ActivatedAbility.
@@ -86,6 +81,13 @@ data class EffectContext(
      * synthesized abilities that carry no such restriction.
      */
     val sourceFaceChanges: Int? = null,
+    /**
+     * The source's untap clock as the resolving activated ability went on the stack
+     * ([com.wingedsheep.engine.state.components.stack.ActivatedAbilityOnStackComponent.sourceUntapCount]),
+     * stamped onto every floating effect it creates with a source-tapped duration. Null for spells,
+     * triggers and synthesized abilities, whose source-tapped effects gate on the tapped state alone.
+     */
+    val sourceUntapCount: Int? = null,
     /** Battlefield visit of the resolving ability's source. */
     val sourceBattlefieldTimestamp: Long? = null,
     /**
@@ -207,7 +209,7 @@ data class EffectContext(
     val modeTargetRequirementsOrdered: List<List<TargetRequirement>> = emptyList(),
     val modeTargetsOrdered: List<List<ChosenTarget>> = emptyList(),
     val modeTargetRequirements: Map<Int, List<TargetRequirement>> = emptyMap(),
-    /** Number of cards exiled as an additional cost (for ExileVariableCards) */
+    /** Number of cards exiled as an additional cost (for an exiling AdditionalCost.VariableCards) */
     val exiledCardCount: Int = 0,
     /** X chosen for [com.wingedsheep.sdk.scripting.AdditionalCost.BlightVariable] */
     val additionalCostBlightAmount: Int = 0,
@@ -282,9 +284,11 @@ data class EffectContext(
     val chosenEntitySnapshots: List<EntitySnapshot> = emptyList(),
     /**
      * LKI snapshots (CR 608.2h) of the permanents an earlier instruction of *this* resolution
-     * moved off the battlefield — a `MoveCollectionEffect` exile, destroy, bounce or sacrifice —
-     * each the same capture its [com.wingedsheep.engine.core.ZoneChangeEvent.lastKnown] carries.
-     * Read by [EffectTarget.IterationEntity] (see
+     * moved off the battlefield — a `MoveCollectionEffect` or single-target `MoveToZoneEffect`
+     * exile, destroy, bounce or sacrifice — each the same capture its
+     * [com.wingedsheep.engine.core.ZoneChangeEvent.lastKnown] carries. Read by
+     * [EffectTarget.IterationEntity] and by a chosen target ([EffectTarget.ContextTarget] /
+     * [EffectTarget.BoundVariable] — "become copies of that creature" after bouncing it) (see
      * [com.wingedsheep.engine.handlers.effects.LkiPolicy.LIVE_THEN_OWN_MOVE_LKI]) so "for each
      * permanent exiled this way, … a card that shares a card type with it" compares against the
      * permanent as it last existed on the battlefield: a token's types, an animated land's
@@ -331,6 +335,13 @@ data class EffectContext(
     // --- Choice state ---
     /** Color chosen for "add one mana of any color" abilities */
     val manaColorChoice: Color? = null,
+    /**
+     * How many mana each unit of an "add X mana in any combination of …" split becomes, set by the
+     * mana-ability resolver when a `MultiplyManaOnSourceTap` (Nyxbloom Ancient) applies. The player
+     * splits the printed X first and each chosen unit is then multiplied, so two {R}/{G} under a
+     * tripler give six of one colour or three of each — never five and one. 1 everywhere else.
+     */
+    val manaUnitMultiplier: Int = 1,
     /**
      * Color chosen during a [com.wingedsheep.sdk.scripting.effects.ChooseColorThenEffect]
      * resolution. Set by the resumer before dispatching the inner effect; read by atomic
@@ -409,13 +420,32 @@ data class EffectContext(
     val entryChoices: Map<EntityId, com.wingedsheep.engine.handlers.effects.EntryChoiceAnswers> = emptyMap(),
     /** Answers belong to this one discard instruction, including explicit declines. */
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
-    val discardDestinations: Map<EntityId, com.wingedsheep.sdk.scripting.effects.CardDestination.ToZone?> = emptyMap(),
+    val discardDestinations: Map<EntityId, com.wingedsheep.engine.core.DiscardDestinationChoice?> = emptyMap(),
+    /**
+     * The mill / scry / surveil count each acting player chose for this one top-of-library gather,
+     * when the order of their [com.wingedsheep.sdk.scripting.ModifyKeywordActionAmount] replacements
+     * changed the result (CR 616.1). Filled one player at a time by
+     * [com.wingedsheep.engine.core.KeywordActionOrderContinuation], which re-runs only that gather —
+     * the frames beneath keep their own contexts, so a later mill in the same pipeline asks afresh.
+     */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val keywordActionCounts: Map<EntityId, Int> = emptyMap(),
     /** Top-to-bottom library order chosen before any card in the discard batch moves. */
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val discardLibraryOrder: List<EntityId>? = null,
     /** Internal pipelines used to pay ward discard costs must not pose as resolving effects. */
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val discardIsCost: Boolean = false,
+    /**
+     * For a [discardIsCost] discard that pays an "unless" demand — "counter it unless that player
+     * discards …" (ward), "… unless its controller discards their hand" (Perplex) — the controller
+     * of the spell or ability that demanded it. The discard is a cost, so "if an effect causes you
+     * to discard" replacements still skip it, but it is the discard that player's spell or ability
+     * caused, which "if a spell or ability an opponent controls causes you to discard" readers see
+     * (Nephalia Academy's ruling). Null for every other cost.
+     */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val discardCostCausedBy: EntityId? = null,
     /** Collection whose discard result is being committed by the current instruction. */
     @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
     val discardCollectionName: String? = null,
@@ -621,6 +651,57 @@ data class EffectContext(
         }
 
         /**
+         * The context a spell on the stack is judged in: the spell as its source, its controller as
+         * `You`, and every choice locked in as it was cast (CR 601.2) — X, the optional or
+         * alternative cost it was cast with, what it sacrificed, revealed, exiled or tapped to pay,
+         * the mana spent, its modes. Targets, program origin and pipeline are the caller's.
+         *
+         * Shared by everything that reads a spell's own text while it is still a stack object:
+         * [com.wingedsheep.engine.mechanics.stack.NonPermanentSpellResolver] as it resolves,
+         * `SpellCounterer` for its "this spell can't be countered if …" (Dragonlord's Prerogative's
+         * revealed Dragon), the stack-text renderer, and the would-destroy preview. One builder keeps them agreeing: a cast
+         * choice only one of them carried would read as never made to the others.
+         */
+        fun forSpellOnStack(spellId: EntityId, spell: SpellOnStackComponent): EffectContext = EffectContext(
+            sourceId = spellId,
+            controllerId = spell.casterId,
+            // A pay-X-life additional cost (AdditionalCost.PayXLife, e.g. Vicious Rivalry) feeds
+            // its declared X through the same X slot read by DynamicAmount.XValue and the
+            // ManaValue*X predicates. Such a card never also carries an {X} mana cost, so
+            // coalescing is unambiguous (CR 601.2b — the value is locked in as the spell is cast).
+            xValue = spell.xValue ?: spell.additionalCostPayXLifeAmount,
+            totalManaSpent = spell.manaSpentWhite + spell.manaSpentBlue + spell.manaSpentBlack +
+                spell.manaSpentRed + spell.manaSpentGreen + spell.manaSpentColorless,
+            manaSpentOnXByColor = spell.manaSpentOnXByColor,
+            manaSpent = com.wingedsheep.engine.mechanics.mana.SpentMana(
+                white = spell.manaSpentWhite, blue = spell.manaSpentBlue,
+                black = spell.manaSpentBlack, red = spell.manaSpentRed,
+                green = spell.manaSpentGreen, colorless = spell.manaSpentColorless,
+            ),
+            declaredCostSlot = spell.declaredCostSlot,
+            wasBlightPaid = spell.wasBlightPaid,
+            wasWaterbendPaid = spell.wasWaterbendPaid,
+            wasSneaked = spell.wasSneaked,
+            wasWebSlung = spell.wasWebSlung,
+            wasMayhem = spell.wasMayhem,
+            sacrificedPermanents = spell.sacrificedPermanents,
+            discardedAsCostCards = spell.discardedAsCostCards,
+            revealedAsCostSnapshots = spell.revealedAsCostSnapshots,
+            exiledAsCostCards = spell.exiledAsCostCards,
+            exiledAsCostSnapshots = spell.exiledAsCostSnapshots,
+            tappedPermanents = spell.tappedPermanents,
+            chosenEntitySnapshots = spell.chosenEntitySnapshots,
+            damageDistribution = spell.damageDistribution,
+            chosenModes = spell.chosenModes,
+            modeTargetsOrdered = spell.modeTargetsOrdered,
+            modeTargetRequirements = spell.modeTargetRequirements,
+            chosenCreatureType = spell.chosenCreatureType,
+            exiledCardCount = spell.exiledCardCount,
+            additionalCostBlightAmount = spell.additionalCostBlightAmount,
+            castFromZone = spell.castFromZone,
+        )
+
+        /**
          * Build the execution context for a triggered ability sitting on the stack.
          *
          * Shared by the two places that need to evaluate the ability's own text against the game
@@ -640,7 +721,6 @@ data class EffectContext(
             controllerId = ability.controllerId,
             granterId = ability.granterId,
             abilityIdentity = ability.abilityIdentity,
-            consentAnsweredAtTargeting = ability.consentAnsweredAtTargeting,
             sourceFaceChanges = ability.sourceFaceChanges,
             sourceBattlefieldTimestamp = ability.sourceBattlefieldTimestamp,
             objectReferences = ability.objectReferences,

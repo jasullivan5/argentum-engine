@@ -31,13 +31,13 @@ fun ComponentContainer.recordCopyLayer(
 ): ComponentContainer {
     // A later permanent layer can never expose any earlier identity; discard its shadowed history.
     if (duration !in setOf(Duration.EndOfTurn, Duration.UntilNextEndStep,
-            Duration.UntilYourNextTurn, Duration.WhileSourceAttachedToAffected)) {
+            Duration.UntilYourNextTurn, Duration.WhileSourceAttachedToAffected, Duration.WhileSourceAttached)) {
         return without<CopyHistoryComponent>().without<RevertCopyAtEndOfTurnComponent>()
             .without<RevertCopyAtNextEndStepComponent>().without<RevertCopyAtYourNextTurnComponent>()
             .without<CopyWhileAttachedComponent>()
     }
     val existing = get<CopyHistoryComponent>()
-    val current = get<FlippedComponent>()?.unflippedCard ?: get<CardComponent>() ?: return this
+    val current = ownCardUnderTextExchange() ?: get<FlippedComponent>()?.unflippedCard ?: get<CardComponent>() ?: return this
     val currentCopy = get<CopyOfComponent>()
     val history = existing ?: run {
         // Entry copies can already have an expiry marker before the first battlefield recopy.

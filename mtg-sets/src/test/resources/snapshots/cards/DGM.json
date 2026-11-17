@@ -161,6 +161,78 @@
     ]
 }
 
+// Master of Cruelties
+{
+    "name": "Master of Cruelties",
+    "manaCost": "{3}{B}{R}",
+    "typeLine": "Creature — Demon",
+    "oracleText": "First strike, deathtouch\nThis creature can only attack alone.\nWhenever this creature attacks a player and isn't blocked, that player's life total becomes 1. This creature assigns no combat damage this combat.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 4
+    },
+    "keywords": [
+        "FIRST_STRIKE",
+        "DEATHTOUCH"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Master of Cruelties:1",
+                "trigger": "BecomesUnblockedEvent",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "SetLifeTotal",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 1
+                            },
+                            "target": {
+                                "type": "PlayerRef",
+                                "player": "DefendingPlayer"
+                            }
+                        },
+                        {
+                            "type": "GrantKeyword",
+                            "keyword": "ASSIGNS_NO_COMBAT_DAMAGE",
+                            "target": "Self",
+                            "duration": "EndOfCombat"
+                        }
+                    ]
+                },
+                "triggerRestriction": {
+                    "type": "EntityMatches",
+                    "entity": "Self",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            "IsAttackingAnOpponent"
+                        ]
+                    }
+                },
+                "descriptionOverride": "Whenever this creature attacks a player and isn't blocked, that player's life total becomes 1. This creature assigns no combat damage this combat."
+            }
+        ],
+        "staticAbilities": [
+            "CanOnlyAttackAlone"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "82",
+        "rarity": "MYTHIC",
+        "artist": "Chase Stone",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/b/7b4d8ab5-252c-4727-817d-6f18cbaedd91.jpg?1783940026"
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
 // Maze's End
 {
     "name": "Maze's End",
@@ -311,6 +383,166 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Notion Thief
+{
+    "name": "Notion Thief",
+    "manaCost": "{2}{U}{B}",
+    "typeLine": "Creature — Human Rogue",
+    "oracleText": "Flash\nIf an opponent would draw a card except the first one they draw in each of their draw steps, instead that player skips that draw and you draw a card.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 1
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "replacementEffects": [
+            {
+                "type": "ReplaceDrawWith",
+                "replacementEffect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "ControllerOfSource"
+                    }
+                },
+                "appliesTo": {
+                    "type": "DrawEvent",
+                    "player": "EachOpponent",
+                    "firstInDrawStep": "EXCLUDED"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "88",
+        "rarity": "RARE",
+        "artist": "Clint Cearley",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/2/728e660b-ad8b-49d2-a7e5-6588e496519b.jpg?1783940024",
+        "rulings": [
+            {
+                "date": "2018-03-16",
+                "text": "If an opponent is instructed to draw a card then discard a card, and Notion Thief causes you to draw a card instead, that opponent still discards a card. The same is true of any other actions that opponent is instructed to do."
+            },
+            {
+                "date": "2018-03-16",
+                "text": "If two or more players each control a Notion Thief and a player would draw a card other than the first one in their draw step, that player chooses one of the applicable Notion Thief effects to apply. Then the player whose Notion Thief's effect was chosen repeats this process among the remaining Notion Thief effects, and so on, until there are no more possible such effects to apply. Each effect can be applied to the card draw only once this way."
+            },
+            {
+                "date": "2018-03-16",
+                "text": "The above procedure means that if each player in a two-player game controls a Notion Thief and one would draw a card, it really will be that player who draws a card."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "BLACK"
+    ]
+}
+
+// Pontiff of Blight
+{
+    "name": "Pontiff of Blight",
+    "manaCost": "{4}{B}{B}",
+    "typeLine": "Creature — Zombie Cleric",
+    "oracleText": "Extort (Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain that much life.)\nOther creatures you control have extort. (If a creature has multiple instances of extort, each triggers separately.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 7
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Pontiff of Blight:1",
+                "trigger": "SpellCastEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.MayPay",
+                        "cost": {
+                            "type": "PayManaCost",
+                            "cost": "{W/B}"
+                        }
+                    },
+                    "then": {
+                        "type": "DrainLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    }
+                },
+                "descriptionOverride": "Extort (Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain that much life.)"
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "GrantTriggeredAbility",
+                "ability": {
+                    "id": "Pontiff of Blight:2",
+                    "trigger": "SpellCastEvent",
+                    "binding": "ANY",
+                    "effect": {
+                        "type": "Gated",
+                        "gate": {
+                            "type": "Gate.MayPay",
+                            "cost": {
+                                "type": "PayManaCost",
+                                "cost": "{W/B}"
+                            }
+                        },
+                        "then": {
+                            "type": "DrainLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 1
+                            }
+                        }
+                    },
+                    "descriptionOverride": "Extort (Whenever you cast a spell, you may pay {W/B}. If you do, each opponent loses 1 life and you gain that much life.)"
+                },
+                "filter": {
+                    "baseFilter": "creature ctrl:you",
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "27",
+        "rarity": "RARE",
+        "artist": "Seb McKinnon",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/2/72e5291f-9281-4cb7-9158-54b7cb336b93.jpg?1783940039",
+        "rulings": [
+            {
+                "date": "2024-01-12",
+                "text": "You may pay {W/B} a maximum of one time for each extort triggered ability. You decide whether to pay when the ability resolves."
+            },
+            {
+                "date": "2024-01-12",
+                "text": "The amount of life you gain from extort is based on the total amount of life lost, not necessarily the number of opponents you have. For example, if your opponent's life total can't change (perhaps because that player controls Platinum Emperion), you won't gain any life."
+            },
+            {
+                "date": "2024-01-12",
+                "text": "The extort ability doesn't target any player."
+            },
+            {
+                "date": "2024-01-12",
+                "text": "The extort ability resolves before the spell that caused it to trigger. The ability resolves even if that spell is countered."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 

@@ -63,10 +63,13 @@ sealed interface ProcessorResult {
  * - CR 616.1: Player choice between competing same-group effects
  * - CR 616.1f: Repeated application until no more effects match
  *
- * This processor is fully domain-agnostic. Each [PendingGameEvent] subtype
+ * The processor is domain-agnostic. Each [PendingGameEvent] subtype
  * implements [PendingGameEvent.matches] (event-pattern matching) and
  * [PendingGameEvent.applyReplacement] (outcome production), so the processor
- * never needs to know about draw, damage, life, or any other domain.
+ * never needs to know about draw, damage, life, or any other domain — the one
+ * exception is a pattern's filter over [PendingGameEvent.referencedEntityId]
+ * (`DrawEvent.cyclingOf`), checked in [matchesEvent] because only the processor
+ * holds a predicate evaluator.
  *
  * ## Source scanning
  * [gatherReplacements] scans four sources:
@@ -247,6 +250,7 @@ class ReplacementEffectProcessor(
                 controllerId = if (event is PendingGameEvent.LifeGainPending && gathered.effect is com.wingedsheep.sdk.scripting.ReplaceLifeGainWith)
                     gathered.sourceControllerId else event.affectedPlayerId,
                 triggeringPlayerId = event.affectedPlayerId,
+                triggeringEntityId = event.referencedEntityId,
                 sourceId = gathered.sourceEntityId(state),
                 objectReferences = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(captured = true,
                     origin = gathered.sourceEntityId(state)?.let(state::objectRef),
@@ -429,8 +433,7 @@ class ReplacementEffectProcessor(
         // 1. Battlefield permanents with ReplacementEffectSourceComponent
         for (entityId in battlefieldSet) {
             val container = state.getEntity(entityId) ?: continue
-            val replacementSource = container.get<ReplacementEffectSourceComponent>() ?: continue
-            if (event is PendingGameEvent.LifeGainPending && (state.projectedState.hasLostAllAbilities(entityId) || state.projectedState.isFaceDown(entityId))) continue
+            val replacementSource = state.activeReplacementSource(entityId) ?: continue
             // Projected, not base: control change is a layer-2 effect (see EffectApplicator's
             // ChangeController branch), so a stolen permanent's ControllerComponent still names
             // its original controller. A `Player.You` replacement has to follow the permanent.
@@ -571,7 +574,8 @@ class ReplacementEffectProcessor(
      *
      * Delegates event-pattern matching to [PendingGameEvent.matches], then
      * evaluates the effect's [ReplacementEffect.restrictions] against the
-     * current state. This method is fully domain-agnostic.
+     * current state, plus a pattern's filter over the event's referenced object
+     * (`DrawEvent.cyclingOf`), which needs the predicate evaluator only this class holds.
      */
     private fun matchesEvent(
         effect: ReplacementEffect,
@@ -584,6 +588,18 @@ class ReplacementEffectProcessor(
         // Delegate to the polymorphic event match
         if (!event.matches(effect.appliesTo, sourceControllerId, state, context)) {
             return false
+        }
+
+        // "If a cycling ability of a <filter> card would cause you to draw" — the event matched the
+        // cause; the cycled card (now in a graveyard or exile) must also match the filter.
+        val cyclingOf = (effect.appliesTo as? com.wingedsheep.sdk.scripting.EventPattern.DrawEvent)?.cyclingOf
+        if (cyclingOf != null) {
+            val cycledCardId = event.referencedEntityId ?: return false
+            val matchesCycled = conditionEvaluator.predicates.matches(
+                state, state.projectedState, cycledCardId, cyclingOf,
+                com.wingedsheep.engine.handlers.PredicateContext(controllerId = sourceControllerId, sourceId = sourceId)
+            )
+            if (!matchesCycled) return false
         }
 
         // Evaluate the effect's restrictions (CR 614 — extra conditions).

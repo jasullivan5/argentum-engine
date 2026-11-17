@@ -5020,7 +5020,8 @@
   "Library of Alexandria": [
     "BRAWL",
     "GLADIATOR",
-    "TIMELESS"
+    "TIMELESS",
+    "VINTAGE_RESTRICTED"
   ],
   "Library of Lat-Nam": [
     "COMMANDER",
@@ -7548,7 +7549,8 @@
     "COMMANDER",
     "LEGACY",
     "PREDH",
-    "PREMODERN"
+    "PREMODERN",
+    "VINTAGE_RESTRICTED"
   ],
   "Lionheart Glimmer": [
     "ALCHEMY",
@@ -9126,7 +9128,8 @@
     "OATHBREAKER",
     "PENNY",
     "PREDH",
-    "TIMELESS"
+    "TIMELESS",
+    "VINTAGE_RESTRICTED"
   ],
   "Lodestone Myr": [
     "COMMANDER",
@@ -10867,7 +10870,8 @@
     "PAUPERCOMMANDER",
     "PREDH",
     "PREMODERN",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Lotus Ring": [
     "BRAWL",

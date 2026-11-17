@@ -7552,6 +7552,7 @@
                     }
                 },
                 "ShuffleLibrary",
+                "EmitLibrarySearchedEvent",
                 {
                     "type": "DrawCards",
                     "count": {
@@ -12097,6 +12098,7 @@
                     "from": "selected1"
                 },
                 "ShuffleLibrary",
+                "EmitLibrarySearchedEvent",
                 {
                     "type": "MoveCollection",
                     "from": "selected1",
@@ -15977,7 +15979,8 @@
             "type": "Protection",
             "scope": {
                 "type": "ProtectionScope.Supertype",
-                "supertype": "Legendary"
+                "supertype": "Legendary",
+                "cardType": "Creature"
             }
         }
     ],

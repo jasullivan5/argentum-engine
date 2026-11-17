@@ -40,11 +40,10 @@ val SnowCoveredWastes = card("Snow-Covered Wastes") {
         artist = "Mark Poole"
         imageUri = "https://cards.scryfall.io/normal/front/8/7/87870792-e429-4eba-8193-cdce5c7b6c55.jpg?1783911237"
 
-        // `CardDiscovery` files every basic land into `MtgSet.basicLands`, and
-        // `BoosterGenerator.getBasicLands` turns that list — filtered by `inBooster` — into the
-        // basics a limited player may add to their deck freely. A basic *snow* land must not be
-        // free (see the ruling below), so it opts out here. Nothing is lost on the pack side:
-        // `isBoosterEligible` already excludes every basic land from generated boosters.
+        // A snow basic is never a land-station basic (`TypeLine.isFreelyAddedBasicLand`; see the
+        // ruling below). A set's own pack-only basics join its booster pool, but this one opens
+        // only in Modern Horizons 3's land slot, which its booster strategy doesn't model, so it
+        // opts out rather than land on the uncommon sheet.
         inBooster = false
 
         ruling(

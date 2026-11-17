@@ -702,6 +702,13 @@ class QuickGameLobbyHandler(
             emptyMap()
         }
 
+        // The format the client says the deck was built for, kept only when the deck is legal there —
+        // an Auto AI builds its own deck for it, so a claim the deck doesn't back is dropped.
+        val declaredFormat = message.deckFormat
+            ?.takeIf { message.deckList.isNotEmpty() }
+            ?.let { name -> DeckFormat.entries.firstOrNull { it.name.equals(name.trim(), ignoreCase = true) } }
+            ?.takeIf { !it.isCommanderShape && deckValidator.validate(message.deckList, it).valid }
+
         lobbyRepository.withLock(lobby.lobbyId) { current ->
             if (current == null) return@withLock
             val player = current.findPlayer(playerSession.playerId) ?: return@withLock
@@ -714,7 +721,8 @@ class QuickGameLobbyHandler(
                 player.commander == message.commander &&
                 player.secondCommander == secondCommander &&
                 player.sideboard == sanitizedSideboard &&
-                player.companion == companion
+                player.companion == companion &&
+                player.deckFormat == declaredFormat
             ) {
                 return@withLock
             }
@@ -725,6 +733,7 @@ class QuickGameLobbyHandler(
             player.commander = if (message.deckList.isNotEmpty()) message.commander else null
             player.secondCommander = if (message.deckList.isNotEmpty()) secondCommander else null
             player.companion = companion
+            player.deckFormat = declaredFormat
             // Submitting a *new* deck un-readies the player so they have to confirm again.
             player.ready = false
             broadcastState(current)
@@ -877,6 +886,7 @@ class QuickGameLobbyHandler(
                 sharedRandomSet,
                 lobby.usesCommanderRules,
                 opponentDeck = lobby.submittedHumanDeck(),
+                opponentDeckFormat = lobby.submittedHumanDeckFormat(),
             )
         }
 
@@ -1124,8 +1134,14 @@ class QuickGameLobbyHandler(
             else -> "sealed"
         }
         // Once the human has picked a deck, Auto means "out of that deck's sets" — say which.
-        val matched = randomDeckResolver.matchingSets(lobby.submittedHumanDeck())
+        val humanDeck = lobby.submittedHumanDeck()
+        val matched = randomDeckResolver.matchingSets(humanDeck)
+        // A constructed list with no set identity is matched by format instead — name the format.
+        val tier = randomDeckResolver.matchedFormat(
+            humanDeck, lobby.submittedHumanDeckFormat(), lobby.format, lobby.usesCommanderRules,
+        )
         return when {
+            tier != null -> "Auto (${tier.displayName})"
             matched.isEmpty() -> "Auto ($shape)"
             lobby.format != null || lobby.usesCommanderRules -> "Auto ($shape · ${matched.joinToString(", ")})"
             else -> "Auto (${matched.joinToString(", ")})"
@@ -1135,6 +1151,10 @@ class QuickGameLobbyHandler(
     /** The first human seat's submitted decklist — null while it is choosing or on Random. */
     private fun QuickGameLobby.submittedHumanDeck(): Map<String, Int>? =
         players.firstNotNullOfOrNull { player -> player.deckList?.takeIf { !player.isAi && it.isNotEmpty() } }
+
+    /** The format the seat behind [submittedHumanDeck] declared its deck was built for, or null. */
+    private fun QuickGameLobby.submittedHumanDeckFormat(): DeckFormat? =
+        players.firstOrNull { !it.isAi && !it.deckList.isNullOrEmpty() }?.deckFormat
 
     private fun validateAiDeck(
         spec: AiDeckSpec.Fixed,

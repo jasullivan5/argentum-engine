@@ -6600,7 +6600,8 @@
     "COMMANDER",
     "DUEL",
     "OATHBREAKER",
-    "PREDH"
+    "PREDH",
+    "VINTAGE_RESTRICTED"
   ],
   "Wheel of Misfortune": [
     "COMMANDER",
@@ -9665,7 +9666,8 @@
     "DUEL",
     "OATHBREAKER",
     "PREDH",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Windgrace Acolyte": [
     "BRAWL",

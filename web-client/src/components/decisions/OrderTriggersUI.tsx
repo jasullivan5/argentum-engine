@@ -16,12 +16,16 @@ import styles from './OrderTriggersUI.module.css'
  * can follow the move. Confirming answers with the server's indices in resolution order; the
  * server already offers the order automatic ordering would use, so confirming untouched changes
  * nothing. "Don't ask again" turns the preference back on for the rest of this game and the next.
+ * A player in Full Control is always asked, so there the footer says why instead.
  */
 export function OrderTriggersUI({ decision }: { decision: OrderTriggersDecision }) {
   const submitTriggerOrder = useGameStore((s) => s.submitTriggerOrder)
   const cards = useGameStore((s) => s.gameState?.cards)
   const hoverCard = useGameStore((s) => s.hoverCard)
   const updatePreferences = usePreferences((s) => s.update)
+  const autoOrderTriggers = usePreferences((s) => s.prefs.gameplay.autoOrderTriggers)
+  // Full Control always asks; "don't ask again" can only promise that outside it.
+  const fullControl = useGameStore((s) => s.priorityMode === 'fullControl')
 
   const [order, setOrder] = useState<number[]>(() => decision.triggers.map((_, i) => i))
   const [dragging, setDragging] = useState<number | null>(null)
@@ -235,13 +239,23 @@ export function OrderTriggersUI({ decision }: { decision: OrderTriggersDecision 
               Put on the stack
             </button>
           </div>
-          <label className={styles.stopAsking}>
-            <input type="checkbox" checked={stopAsking} onChange={(e) => setStopAsking(e.target.checked)} />
-            <span>
-              Don’t ask again — order my triggers automatically
-              <span className={styles.stopAskingHint}>You can switch this back in Preferences → Gameplay.</span>
-            </span>
-          </label>
+          {fullControl && autoOrderTriggers ? (
+            <p className={styles.stopAskingHint}>
+              You’re in Full Control, so you order your own triggers. Switch back to Auto or Stops to have them ordered for you.
+            </p>
+          ) : (
+            <label className={styles.stopAsking}>
+              <input type="checkbox" checked={stopAsking} onChange={(e) => setStopAsking(e.target.checked)} />
+              <span>
+                Don’t ask again — order my triggers automatically
+                <span className={styles.stopAskingHint}>
+                  {fullControl
+                    ? 'Full Control still asks. You can switch this back in Preferences → Gameplay.'
+                    : 'You can switch this back in Preferences → Gameplay.'}
+                </span>
+              </span>
+            </label>
+          )}
         </footer>
       </div>
 

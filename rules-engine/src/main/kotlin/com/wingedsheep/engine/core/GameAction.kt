@@ -3,6 +3,7 @@ package com.wingedsheep.engine.core
 import com.wingedsheep.engine.state.components.identity.RoomFaceId
 import com.wingedsheep.engine.state.components.stack.ChosenTarget
 import com.wingedsheep.sdk.core.Color
+import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.AbilityId
 import com.wingedsheep.sdk.scripting.AdditionalCost
@@ -224,6 +225,11 @@ data class CastSpell(
      * out as its own flag for the same reason (CR 118.9a — only one alternative cost per cast).
      */
     val alternativeCostType: AlternativeCostType? = null,
+    /**
+     * The permanent granting the beam me up this cast uses (Scotty), echoed from the legal action;
+     * null for the card's printed beam me up. Read only when [alternativeCostType] is `BEAM_ME_UP`.
+     */
+    val beamMeUpSource: EntityId? = null,
     /** The selected escape cost, echoed from a legal action and checked against current abilities. */
     val escapeAbility: com.wingedsheep.sdk.scripting.KeywordAbility.Escape? = null,
     /**
@@ -279,6 +285,8 @@ data class GraveyardCastRiderSelection(
 enum class AlternativeCostType {
     /** Flashback ([com.wingedsheep.sdk.scripting.KeywordAbility.Flashback]) — graveyard. */
     FLASHBACK,
+    /** Graveyard cast for mana plus returning a creature; exiled on every stack exit. */
+    BEAM_ME_UP,
     /** Harmonize ([com.wingedsheep.sdk.scripting.KeywordAbility.Harmonize], printed or granted) — graveyard. */
     HARMONIZE,
     /**
@@ -313,6 +321,14 @@ enum class AlternativeCostType {
      * but returns to hand instead of exiling, and grants haste while the marker persists).
      */
     DASH,
+    /**
+     * Surge ([com.wingedsheep.sdk.scripting.KeywordAbility.Surge], CR 702.117) — offered from the
+     * hand (an engine limit: the zone-cast permissions don't offer keyword alternative costs; the
+     * rule itself names no zone), at the spell's normal timing, only once the caster or a teammate has cast another spell this turn.
+     * Pays the surge mana instead of the mana cost; the spell (and the permanent it becomes) is
+     * stamped `ChoiceSlot.SURGE_CAST` for its "if its surge cost was paid" riders.
+     */
+    SURGE,
     /**
      * Blitz ([com.wingedsheep.sdk.scripting.KeywordAbility.Blitz], CR 702.152) — hand, or the
      * graveyard through `MayCastSelfFromZones(castUsing = Keyword.BLITZ)` (Tenacious Underdog). Pays
@@ -368,6 +384,13 @@ enum class AlternativeCostType {
      */
     OVERLOAD,
     /**
+     * Awaken ([com.wingedsheep.sdk.scripting.KeywordAbility.Awaken], CR 702.113) — hand. Pays the
+     * awaken mana instead of the mana cost; the paid branch appends the awaken spell ability — its
+     * "target land you control" after the spell's own targets and its counters-and-animate effect
+     * after the spell's own effect ([com.wingedsheep.engine.handlers.actions.spell.awakenOf]).
+     */
+    AWAKEN,
+    /**
      * Miracle ([com.wingedsheep.sdk.scripting.KeywordAbility.Miracle], printed or granted) — hand,
      * cast only by the miracle trigger as it resolves ([com.wingedsheep.sdk.scripting.Miracle],
      * CR 702.94a). Never enumerated, and refused when a player submits it.
@@ -399,7 +422,21 @@ enum class AlternativeCostType {
      * (hand, not graveyard), in where the cost comes from, and in mana value — CR 712.8f gives a
      * modal back face its *own* mana value, where CR 712.8e would keep the front's.
      */
-    MODAL_BACK_FACE
+    MODAL_BACK_FACE;
+
+    /**
+     * The keyword naming this alternative cost, as a `ModifySpellCost.castUsing` scopes a cost
+     * modifier to it ("dash costs you pay cost {2} less", Warbringer), or null for a cost no such
+     * modifier can name. Only the keywords in `ModifySpellCost.CAST_USING_KEYWORDS` are mapped —
+     * widen both together.
+     */
+    val castUsing: Keyword?
+        get() = when (this) {
+            FLASHBACK -> Keyword.FLASHBACK
+            DASH -> Keyword.DASH
+            BLITZ -> Keyword.BLITZ
+            else -> null
+        }
 }
 
 /**
@@ -514,6 +551,9 @@ data class ActivateAbility(
  *   "Cycling {X}{G}{G}"), chosen as the ability is activated (CR 107.3a). Null on the legal-actions
  *   submission path — the handler then raises a ChooseNumberDecision and re-enters with it bound.
  *   Ignored for cycling costs without `{X}`.
+ * @property grantedBy Which cycling ability to activate: null for the card's printed cycling, else
+ *   the permanent whose `GrantCyclingToCardsInHand` grants it (Rhet-Tomb Mystic). A card with both
+ *   has two cycling abilities and the legal-actions list offers one action per distinct cost.
  */
 @Serializable
 @SerialName("CycleCard")
@@ -521,7 +561,8 @@ data class CycleCard(
     override val playerId: EntityId,
     val cardId: EntityId,
     val paymentStrategy: PaymentStrategy = PaymentStrategy.AutoPay,
-    val xValue: Int? = null
+    val xValue: Int? = null,
+    val grantedBy: EntityId? = null
 ) : GameAction
 
 /**
@@ -593,7 +634,7 @@ data class PutCompanionIntoHand(
  * "does not use the stack once announced"; the card is never cast at all. The player pays
  * the card's printed suspend cost and exiles it from hand with a number of time counters
  * equal to its suspend value. The exiled card counts down at its owner's upkeep — driven by
- * the engine's synthesized [com.wingedsheep.sdk.scripting.Suspend.countdownAbility], granted
+ * the engine's synthesized [com.wingedsheep.sdk.scripting.Suspend.exileAbilities], granted
  * to any exiled card carrying the suspended marker — and when the last counter is removed,
  * its owner may play it for free (with haste, if it becomes a creature).
  *
@@ -790,13 +831,18 @@ data class Concede(
  * @property playerId The player crewing the vehicle
  * @property vehicleId The Vehicle permanent being crewed
  * @property crewCreatures Creatures to tap as the crew cost
+ * @property alternativeCostFrom The permanent that pays the Vehicle's alternative crew cost
+ *   (`AlternativeCrewCost` — Heart of Kiran's "remove a loyalty counter from a planeswalker you
+ *   control rather than pay this Vehicle's crew cost") instead of tapping creatures; when set,
+ *   [crewCreatures] must be empty.
  */
 @Serializable
 @SerialName("CrewVehicle")
 data class CrewVehicle(
     override val playerId: EntityId,
     val vehicleId: EntityId,
-    val crewCreatures: List<EntityId>
+    val crewCreatures: List<EntityId>,
+    val alternativeCostFrom: EntityId? = null
 ) : GameAction
 
 // =============================================================================

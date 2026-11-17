@@ -1,5 +1,6 @@
 package com.wingedsheep.ai.engine.knowledge
 
+import com.wingedsheep.ai.engine.CombatMath
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
@@ -118,13 +119,30 @@ internal object AmbushWindow {
         // Under [readArrival], only what the card can cash in this turn: a loot on attacking is
         // no reason to land a no-haste body early — see [CardIntent.arrivalTags].
         val tags = if (readArrival) intent.tagsOnArrival else intent.tags
-        if (tags.any { it in PAYS_OFF_BEFORE_THE_AMBUSH }) return false
+        // Both payoffs below are "before we attack", and in our own upkeep or draw step our main
+        // phase is still ahead of the attack: casting there is the same payoff with a card more
+        // seen, so neither releases the hold yet (a Little Bear flashed in on our own upkeep).
+        val mainPhaseAhead = state.activePlayerId == playerId && state.step in BEFORE_OUR_MAIN
+        // A blink protects by escaping something on the stack; it does not leave a shield for
+        // the next attack. Our-side blink bodies keep waiting for the same ambush window.
+        // Untapping our team pays off after our creatures tap, not before we attack: a Village
+        // Bell-Ringer flashed in on our main phase untaps nothing.
+        val combatPayoffs = (if (intent.protectionOnlyFromBlink && intent.targetsOnlyOurPermanents) {
+            tags - IntentTag.PROTECTION
+        } else tags).let { if (intent.combatEnhancementOnlyFromUntap) it - IntentTag.COMBAT_ENHANCEMENT else it }
+        if (!mainPhaseAhead && combatPayoffs.any { it in PAYS_OFF_BEFORE_THE_AMBUSH }) return false
 
         // An ETB that answers *their* board wants to happen before we attack. One that points only
         // at our own — a blink, a self-bounce — is worth exactly the same a step later, which is
         // Restoration Angel and is the position that started this. The tag alone cannot tell them
         // apart; see [CardIntent.targetsOnlyOurPermanents] for why.
-        if (tags.any { it in ANSWERS_THEIR_BOARD } && !intent.targetsOnlyOurPermanents) {
+        //
+        // Tapping is the one answer that is *only* about the attack: a blocker tapped on our turn
+        // with nothing of ours able to attack is untapped again before it matters (Glamermite's
+        // "tap target creature", game 6d7c6893).
+        val answers = tags.filter { it in ANSWERS_THEIR_BOARD }
+        val answerPaysNow = answers.any { it != IntentTag.TAPPER } || !tappedBlockerIsWasted(state, playerId)
+        if (!mainPhaseAhead && answers.isNotEmpty() && answerPaysNow && !intent.targetsOnlyOurPermanents) {
             return false
         }
 
@@ -244,6 +262,8 @@ internal object AmbushWindow {
     ): Boolean {
         if (state.activePlayerId != playerId) return false
         val cost = state.getEntity(castCardId)?.get<CardComponent>()?.manaCost?.cmc ?: return false
+        val available = intents.availableMana(state, playerId) ?: return false
+        // An instant the mana we have cannot pay for at all is not competing for it.
         val cheapestOther = state.getZone(playerId, Zone.HAND)
             .filter { it != castCardId }
             .mapNotNull { id ->
@@ -251,8 +271,8 @@ internal object AmbushWindow {
                 if (intents.forName(card.name)?.speed != Speed.INSTANT) return@mapNotNull null
                 card.manaCost.cmc
             }
+            .filter { it <= available }
             .minOrNull() ?: return false
-        val available = intents.availableMana(state, playerId) ?: return false
         return available < cost + cheapestOther
     }
 
@@ -306,12 +326,15 @@ internal object AmbushWindow {
      * Two groups, both about *this turn*:
      *
      *  - **Improves our own attack**: [IntentTag.PUMP], [IntentTag.ANTHEM],
-     *    [IntentTag.EVASION_GRANT], [IntentTag.PROTECTION]. An ETB that pumps the team is worth
+     *    [IntentTag.EVASION_GRANT], [IntentTag.PROTECTION], [IntentTag.COMBAT_ENHANCEMENT],
+     *    [IntentTag.EQUIPMENT_RELOCATION]. An ETB that pumps the team, or hands our attacker first
+     *    strike, is worth
      *    having before we swing, and by construction it aims at our own permanents — so unlike
      *    [ANSWERS_THEIR_BOARD] there is no side-of-the-table question to ask about it.
      *  - **Hands us something to spend**: [IntentTag.DRAW], [IntentTag.TUTOR], [IntentTag.RAMP],
      *    [IntentTag.RECURSION]. A card drawn in our main phase can be cast in our main phase; the
-     *    same card drawn on their end step cannot.
+     *    same card drawn on their end step cannot. [IntentTag.COST_REDUCER] belongs here too: a
+     *    discount in play by our main phase is spent on that main phase's spells.
      *
      * [IntentTag.COUNTERSPELL] and [IntentTag.COMBAT_TRICK] are absent on purpose. They are not
      * exceptions this set forgot — [HoldPolicy] branches on both *before* it reaches here, so
@@ -320,11 +343,23 @@ internal object AmbushWindow {
      * So are [IntentTag.LIFEGAIN], [IntentTag.TOKEN_MAKER], [IntentTag.DISCARD] and
      * [IntentTag.SACRIFICE_OUTLET], and those are the deliberate inclusions in the floor: a Blood
      * token, three life, an opponent's discard and an outlet with nothing to feed it are all worth
-     * exactly the same one window later.
+     * exactly the same one window later — as is [IntentTag.CARD_SELECTION]: a scry arranges the
+     * same top of library whichever window it lands in.
      */
+    /** Our own turn's steps that come before our first main phase. */
+    private val BEFORE_OUR_MAIN = setOf(Step.UNTAP, Step.UPKEEP, Step.DRAW)
+
+    /**
+     * Whether tapping one of their creatures now buys nothing: it is our turn and nothing we
+     * control can attack. On their turn a tap still stops an attacker, so it never is.
+     */
+    private fun tappedBlockerIsWasted(state: GameState, playerId: EntityId): Boolean =
+        state.activePlayerId == playerId &&
+            CombatMath.getCreaturesThatCanAttack(state, state.projectedState, playerId).isEmpty()
+
     private val PAYS_OFF_BEFORE_THE_AMBUSH = setOf(
-        IntentTag.PUMP, IntentTag.ANTHEM, IntentTag.EVASION_GRANT, IntentTag.PROTECTION,
-        IntentTag.DRAW, IntentTag.TUTOR, IntentTag.RAMP, IntentTag.RECURSION,
+        IntentTag.PUMP, IntentTag.ANTHEM, IntentTag.EVASION_GRANT, IntentTag.PROTECTION, IntentTag.COMBAT_ENHANCEMENT,
+        IntentTag.EQUIPMENT_RELOCATION, IntentTag.DRAW, IntentTag.TUTOR, IntentTag.RAMP, IntentTag.COST_REDUCER, IntentTag.RECURSION,
     )
 
     /**
@@ -342,9 +377,9 @@ internal object AmbushWindow {
 
     /**
      * The tags of an instant whose whole payoff is what it leaves on the battlefield — see
-     * [holdsInstantDeploy]. Life gained is worth the same a window later, as [holds] argues.
+     * [holdsInstantDeploy]. Life gained, or a scry, is worth the same a window later, as [holds] argues.
      */
-    private val BODY_ONLY = setOf(IntentTag.TOKEN_MAKER, IntentTag.LIFEGAIN)
+    private val BODY_ONLY = setOf(IntentTag.TOKEN_MAKER, IntentTag.LIFEGAIN, IntentTag.CARD_SELECTION)
 
     /** Their turn, from the moment attackers are known — see [laterWindowIsStillAhead]. */
     private val RELEASED_ON_THEIR_TURN = setOf(

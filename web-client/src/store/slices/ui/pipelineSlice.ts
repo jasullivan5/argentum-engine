@@ -8,7 +8,7 @@
  */
 import type { SliceCreator, ActionPipelineState, PhaseResult } from '../types'
 import type { ActivateAbilityAction, CastSpellAction, EntityId, GameAction, LegalActionInfo } from '@/types'
-import { computePhases, mergeResult, enterPhase } from './pipelinePhases'
+import { computePhases, mergeResult, enterPhase, dropXCountPickerAtZero } from './pipelinePhases'
 import type { PipelineStoreMethods } from './pipelinePhases'
 import {
   parseManaCost as parseManaCostUtil,
@@ -263,6 +263,10 @@ export const createPipelineSlice: SliceCreator<PipelineSlice> = (set, get) => ({
       nextPhases = [{ type: 'costPayment' }, ...nextPhases]
     }
 
+    if (result.type === 'xSelection') {
+      nextPhases = dropXCountPickerAtZero(nextPhases, actionInfo, result.xValue)
+    }
+
     // Dynamic phase injection: a non-mana escalate cost (CR 702.120a) is owed once per mode
     // chosen beyond the first, so how much there is to pay — and whether anything is owed at
     // all — is only known once the modal panel has confirmed its picks.
@@ -280,16 +284,27 @@ export const createPipelineSlice: SliceCreator<PipelineSlice> = (set, get) => ({
       result.type === 'targeting'
         ? targetsOfGroup(result.selectedTargets, result.targetGroupCounts, actionInfo.distributionTargetGroup)
         : []
+    // A total that reads the announced X — a spell's mana-paid {X} (Shatterskull Smashing) or an
+    // activation's X cost (Huatli, Warrior Poet's −X) — is priced by the server per X; look up the
+    // X the xSelection phase already put on the action.
+    const chosenX =
+      mergedAction.type === 'CastSpell' || mergedAction.type === 'ActivateAbility' ? mergedAction.xValue : undefined
+    const totalToDivide = actionInfo.totalDamageByX
+      ? actionInfo.totalDamageByX[chosenX ?? 0]
+      : actionInfo.totalDamageToDistribute
     if (
       result.type === 'targeting' &&
       actionInfo.requiresDamageDistribution &&
-      actionInfo.totalDamageToDistribute &&
+      totalToDivide &&
       dividedTargets.length > 1
     ) {
-      // Spells read "Cast <name>", activated abilities "Activate <name>: …" — strip either verb so
-      // the modal header names the source (Chandra, Flameshaper's −4 divides damage the same way
+      // The modal header names the source. An activated ability's description is its rules text
+      // (Huatli, Warrior Poet's −X), so name the permanent it is activated from; a spell reads
+      // "Cast <name>", so strip the verb (Chandra, Flameshaper's −4 divides damage the same way
       // Arc Lightning does).
-      const cardName = actionInfo.description.replace(/^(Cast|Activate) /, '')
+      const sourceName =
+        mergedAction.type === 'ActivateAbility' ? gameState.cards[mergedAction.sourceId]?.name : undefined
+      const cardName = sourceName ?? actionInfo.description.replace(/^(Cast|Activate) /, '')
       const minPerTarget = actionInfo.minDamagePerTarget ?? 1
       const initialDistribution: Record<string, number> = {}
       for (const targetId of dividedTargets) {
@@ -310,7 +325,7 @@ export const createPipelineSlice: SliceCreator<PipelineSlice> = (set, get) => ({
         action: mergedAction as CastSpellAction | ActivateAbilityAction,
         cardName,
         targetIds: [...dividedTargets],
-        totalDamage: actionInfo.totalDamageToDistribute,
+        totalDamage: totalToDivide,
         minPerTarget,
         ...(actionInfo.distributionUnit ? { unit: actionInfo.distributionUnit } : {}),
         distribution: initialDistribution,

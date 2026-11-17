@@ -14,129 +14,130 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * The release meter the flipping player plays against, sent with the decision so the client draws
- * exactly the zones and scatter the engine scores. Strength runs 0..1; a release at [sweetSpot]
- * carries exactly to the aim, and every bit of strength either side of it drifts the landing
- * [depthPerStrength] mm short of the aim or past it, and the hand's sideways sway at release pulls
- * it up to [sidePerSway] mm to either side. Inside [cleanFrom]..[cleanTo] the hand is as
- * steady as it gets; below [tooSoftBelow] the card is unlikely to turn over. The scatter terms are
- * [FlipPhysics.scatter]'s, for the aim preview.
+ * The numbers a flick is scored against, sent with the decision so the client draws the same spin
+ * gauge the engine scores and turns the player's swipe into the same units. A flick carries
+ * [flightTime] seconds of its release speed across the table; it spins for [airTime] seconds, so
+ * below [tooLittleSpinBelow] turns per second it can't turn over completely. Inside
+ * [cleanSpinFrom]..[cleanSpinTo] it flies true; a spin [spinSlop] outside that band is as wild as
+ * it gets. The scatter terms are [FlipPhysics.scatter]'s.
  */
 @Serializable
 data class FlipReleaseProfile(
-    val sweetSpot: Double = FlipPhysics.SWEET_SPOT,
-    val depthPerStrength: Double = FlipPhysics.DEPTH_PER_STRENGTH,
-    val sidePerSway: Double = FlipPhysics.SIDE_PER_SWAY,
-    val cleanFrom: Double = FlipPhysics.CLEAN_FROM,
-    val cleanTo: Double = FlipPhysics.CLEAN_TO,
-    val tooSoftBelow: Double = FlipPhysics.TOO_SOFT_BELOW,
+    val flightTime: Double = FlipPhysics.FLIGHT_TIME,
+    val airTime: Double = FlipPhysics.AIR_TIME,
+    val tooLittleSpinBelow: Double = FlipPhysics.TOO_LITTLE_SPIN,
+    val cleanSpinFrom: Double = FlipPhysics.CLEAN_SPIN_FROM,
+    val cleanSpinTo: Double = FlipPhysics.CLEAN_SPIN_TO,
+    val spinSlop: Double = FlipPhysics.SPIN_SLOP,
+    val maxSpin: Double = FlipPhysics.MAX_SPIN,
     val baseScatter: Double = FlipPhysics.BASE_SCATTER,
     val scatterPerMm: Double = FlipPhysics.SCATTER_PER_MM,
     val sloppyScatter: Double = FlipPhysics.SLOPPY_SCATTER,
-    val slopRange: Double = FlipPhysics.SLOP_RANGE,
 )
 
 /**
- * How a flipped card flies and where it lands, given the player's intent.
+ * How a flicked card flies and where it lands.
  *
- * The player supplies an aim point and a release strength; the engine supplies the hand's
- * unsteadiness. The release decides how far the card carries: early falls short along the line
- * from the hand (often onto the thrower's own permanents), late sails long, so a mistimed flip
- * comes down on some other card rather than just "a bit off". The hand also sways from side to
- * side while it swings, and wherever the sway is at release pulls the card that far to the
- * thrower's left or right of the line. The aim is the player's to get
- * right: a clean release lands within a few millimetres of it, so random scatter stays small —
- * growing a little with distance from the hand and more with a sloppy release — and the number
- * of half-turns grows with strength. All randomness comes from the game's seeded RNG, so a flip
- * replays identically.
+ * The player throws it for real: they wind up spin, then flick the card forward from their hand
+ * and let go. The flick's velocity at release is the whole aim — its direction is the line, its
+ * speed how far the card carries ([FLIGHT_TIME] seconds of it). The spin decides how it flies: too
+ * little and it can't turn over completely; inside the clean band it flies true and lands within a
+ * few millimetres of where the flick sent it; spun too hard it wobbles in the air, scatters, and
+ * skids on along its line when it lands. All randomness comes from the game's seeded RNG, so a
+ * flip replays identically.
  */
 object FlipPhysics {
-    const val SWEET_SPOT = 0.74
-    const val CLEAN_FROM = 0.70
-    const val CLEAN_TO = 0.78
-    const val TOO_SOFT_BELOW = 0.2
+    /** Seconds of release speed the card carries: a 2 m/s flick lands 60 cm out. */
+    const val FLIGHT_TIME = 0.3
+    /** Seconds the card spins in the air: each turn per second of spin is two half-turns. */
+    const val AIR_TIME = 0.6
+    /** Below this spin (turns/s) the card can't make the two half-turns a full turn-over needs. */
+    const val TOO_LITTLE_SPIN = 2.0 / (2.0 * AIR_TIME)
+    /** The spin (turns/s) at which the card flies true. */
+    const val CLEAN_SPIN_FROM = 2.4
+    const val CLEAN_SPIN_TO = 4.0
+    /** How far outside the clean band a spin must stray to be as wild as it gets. */
+    const val SPIN_SLOP = 2.5
+    /** The fastest spin and flick the engine believes; anything past them is clamped. */
+    const val MAX_SPIN = 12.0
+    const val MAX_SPEED = 6000.0
 
-    /** How far (mm) a release carries short or long per unit of strength off the sweet spot. */
-    const val DEPTH_PER_STRENGTH = 800.0
-    /** How far (mm) a release at the very edge of the hand's sway pulls to that side. */
-    const val SIDE_PER_SWAY = 110.0
-
-    /** Scatter (one standard deviation, mm) of a clean release, before distance. */
+    /** Scatter (one standard deviation, mm) of a clean flick, before distance. */
     const val BASE_SCATTER = 3.0
-    /** Extra scatter per mm between the hand and the aim point. */
+    /** Extra scatter per mm the card carries. */
     const val SCATTER_PER_MM = 0.016
-    /** Extra scatter of the worst possible release. */
+    /** Extra scatter of the wildest spin. */
     const val SLOPPY_SCATTER = 35.0
-    /** How far outside the clean zone a release must stray to be as sloppy as it gets. */
-    const val SLOP_RANGE = 0.4
+    /** How far (mm) an over-spun card skids on along its line per turn/s above the clean band. */
+    const val SKID_PER_SPIN = 22.0
 
-    /** Spread (degrees, one standard deviation) of the resting angle of a clean / the sloppiest release. */
+    /** Spread (degrees, one standard deviation) of the resting angle of a clean / the wildest spin. */
     const val CLEAN_SKEW = 7.0
     const val SLOPPY_SKEW = 40.0
 
-    /** Half-turns a release of strength 0 / 1 averages, and the spread around that. */
-    private const val HALF_TURNS_AT_ZERO = 0.9
-    private const val HALF_TURNS_PER_STRENGTH = 7.5
-    private const val HALF_TURN_NOISE = 0.55
+    /**
+     * Spread (half-turns, one standard deviation) around the spin's half-turn count, cut off at
+     * [HALF_TURN_NOISE_CAP] deviations so any spin in the clean band always turns over.
+     */
+    private const val HALF_TURN_NOISE = 0.35
+    private const val HALF_TURN_NOISE_CAP = 2.5
 
-    /** Aim is clamped to this far beyond the table's edges; past it, a throw is still a miss. */
-    private const val AIM_SLACK = 400.0
+    /** The spin the AI and tests aim for: the middle of the clean band. */
+    const val IDEAL_SPIN = (CLEAN_SPIN_FROM + CLEAN_SPIN_TO) / 2
 
-    /** 1 for a clean release, falling to 0 as it strays [SLOP_RANGE] outside the clean zone. */
-    fun releaseQuality(strength: Double): Double {
-        val s = strength.coerceIn(0.0, 1.0)
+    private fun clampSpin(spin: Double) = if (spin.isFinite()) kotlin.math.abs(spin).coerceAtMost(MAX_SPIN) else 0.0
+
+    /** 1 for a spin in the clean band, falling to 0 as it strays [SPIN_SLOP] outside it. */
+    fun spinQuality(spin: Double): Double {
+        val s = clampSpin(spin)
         val miss = when {
-            s < CLEAN_FROM -> CLEAN_FROM - s
-            s > CLEAN_TO -> s - CLEAN_TO
+            s < CLEAN_SPIN_FROM -> CLEAN_SPIN_FROM - s
+            s > CLEAN_SPIN_TO -> s - CLEAN_SPIN_TO
             else -> 0.0
         }
-        return 1.0 - min(1.0, miss / SLOP_RANGE)
+        return 1.0 - min(1.0, miss / SPIN_SLOP)
     }
 
-    /**
-     * Where a release of [strength] aimed at ([aimX], [aimY]) carries to before scatter: the aim
-     * point, pushed along the line from the hand by the release's distance from the sweet spot,
-     * and across it by the hand's [sway] (positive is the thrower's right).
-     */
-    fun carry(table: FlipTable, aimX: Double, aimY: Double, strength: Double, sway: Double = 0.0): Pair<Double, Double> {
-        val dx = aimX - table.handX
-        val dy = aimY - table.handY
-        val length = hypot(dx, dy)
-        // Aiming at the hand itself: the throw still goes away from the thrower.
-        val (ux, uy) = if (length < 1.0) 0.0 to -1.0 else dx / length to dy / length
-        val drift = drift(strength)
-        // The thrower faces along (ux, uy); their right-hand side is (-uy, ux).
-        val pull = pull(sway)
-        return (aimX + ux * drift - uy * pull) to (aimY + uy * drift + ux * pull)
+    /** The release velocity, clamped to [MAX_SPEED] and with non-numbers read as no flick at all. */
+    private fun clampVelocity(vx: Double, vy: Double): Pair<Double, Double> {
+        if (!vx.isFinite() || !vy.isFinite()) return 0.0 to 0.0
+        val speed = hypot(vx, vy)
+        return if (speed <= MAX_SPEED) vx to vy else vx * MAX_SPEED / speed to vy * MAX_SPEED / speed
     }
 
-    /** Sideways carry error (mm) of a release: positive pulls to the thrower's right. */
-    fun pull(sway: Double): Double = sway.coerceIn(-1.0, 1.0) * SIDE_PER_SWAY
-
-    /** Signed carry error (mm) of a release: negative falls short, positive sails long. */
-    fun drift(strength: Double): Double = (strength.coerceIn(0.0, 1.0) - SWEET_SPOT) * DEPTH_PER_STRENGTH
-
-    /** Standard deviation (mm) of where a throw at ([aimX], [aimY]) with [strength] lands. */
-    fun scatter(table: FlipTable, aimX: Double, aimY: Double, strength: Double): Double {
-        val distance = hypot(aimX - table.handX, aimY - table.handY)
-        return BASE_SCATTER + SCATTER_PER_MM * distance + SLOPPY_SCATTER * (1.0 - releaseQuality(strength)).pow(1.6)
+    /** Where a flick released at ([vx], [vy]) mm/s carries to before spin and scatter. */
+    fun carry(table: FlipTable, vx: Double, vy: Double): Pair<Double, Double> {
+        val (cx, cy) = clampVelocity(vx, vy)
+        return (table.handX + cx * FLIGHT_TIME) to (table.handY + cy * FLIGHT_TIME)
     }
 
-    /** Roll where the flip lands. Returns the landing and the advanced RNG. */
+    /** The velocity (mm/s) of a flick that carries exactly to ([x], [y]) — for the AI and tests. */
+    fun flickToward(table: FlipTable, x: Double, y: Double): Pair<Double, Double> =
+        (x - table.handX) / FLIGHT_TIME to (y - table.handY) / FLIGHT_TIME
+
+    /** How far (mm) an over-spun card skids on along its line; 0 at or below the clean band. */
+    fun skid(spin: Double): Double = max(0.0, clampSpin(spin) - CLEAN_SPIN_TO) * SKID_PER_SPIN
+
+    /** Standard deviation (mm) of where a flick that carries [distance] mm with [spin] lands. */
+    fun scatter(distance: Double, spin: Double): Double =
+        BASE_SCATTER + SCATTER_PER_MM * distance + SLOPPY_SCATTER * (1.0 - spinQuality(spin)).pow(1.6)
+
+    /** Roll where the flick lands. Returns the landing and the advanced RNG. */
     fun land(
         table: FlipTable,
-        aimX: Double,
-        aimY: Double,
-        strength: Double,
+        velocityX: Double,
+        velocityY: Double,
+        spin: Double,
         rng: GameRng,
-        sway: Double = 0.0,
     ): Pair<FlipLanding, GameRng> {
-        val ax = aimX.coerceIn(-AIM_SLACK, table.width + AIM_SLACK)
-        val ay = aimY.coerceIn(-AIM_SLACK, table.height + AIM_SLACK)
-        val s = strength.coerceIn(0.0, 1.0)
-        val sigma = scatter(table, ax, ay, s)
-        val w = if (sway.isFinite()) sway.coerceIn(-1.0, 1.0) else 0.0
-        val (cx, cy) = carry(table, ax, ay, s, w)
+        val (vx, vy) = clampVelocity(velocityX, velocityY)
+        val speed = hypot(vx, vy)
+        val w = clampSpin(spin)
+        val (cx, cy) = carry(table, vx, vy)
+        val distance = speed * FLIGHT_TIME
+        val (ux, uy) = if (speed < 1.0) 0.0 to -1.0 else vx / speed to vy / speed
+        val skid = skid(w)
+        val sigma = scatter(distance, w)
 
         var r = rng
         fun uniform(): Double { val (d, next) = r.nextDouble(); r = next; return d }
@@ -147,14 +148,13 @@ object FlipPhysics {
             return sqrt(-2.0 * ln(u1)) * cos(2.0 * Math.PI * u2)
         }
 
-        val x = cx + gaussian() * sigma
-        val y = cy + gaussian() * sigma
-        // A clean release keeps the card nearly square to the thrower, so the aim ghost tells the
-        // truth about what it covers; a sloppy one can come down at any skew.
-        val skew = CLEAN_SKEW + SLOPPY_SKEW * (1.0 - releaseQuality(s))
+        val x = cx + ux * skid + gaussian() * sigma
+        val y = cy + uy * skid + gaussian() * sigma
+        // A clean spin lands it nearly square to the thrower; a wild one can come down at any skew.
+        val skew = CLEAN_SKEW + SLOPPY_SKEW * (1.0 - spinQuality(w))
         val rotation = ((gaussian() * skew) % 360.0 + 360.0) % 360.0
-        val halfTurns = floor(max(0.0, HALF_TURNS_AT_ZERO + HALF_TURNS_PER_STRENGTH * s + gaussian() * HALF_TURN_NOISE)).toInt()
-        return FlipLanding(x = x, y = y, rotation = rotation, halfTurns = halfTurns, drift = drift(s), pull = pull(w), aimX = ax, aimY = ay) to r
+        val halfTurns = floor(max(0.0, 2.0 * w * AIR_TIME + gaussian().coerceIn(-HALF_TURN_NOISE_CAP, HALF_TURN_NOISE_CAP) * HALF_TURN_NOISE)).toInt()
+        return FlipLanding(x = x, y = y, rotation = rotation, halfTurns = halfTurns, speed = speed, spin = w, skid = skid) to r
     }
 
     /**

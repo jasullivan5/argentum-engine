@@ -11,22 +11,13 @@ import { useMemo, useState } from 'react'
 import type React from 'react'
 import { geoNaturalEarth1, geoPath } from 'd3-geo'
 import { feature } from 'topojson-client'
-import countriesData from 'world-countries'
+import CENTROIDS from 'virtual:country-centroids'
 import worldTopology from 'world-atlas/countries-110m.json'
 import type { GeoBucket } from '@/api/adminStats'
 import { adminTheme } from './adminUi'
 
 const WIDTH = 760
 const HEIGHT = 380
-
-/** ISO alpha-2 → [longitude, latitude] centroid, from the world-countries dataset. */
-const CENTROIDS: Record<string, [number, number]> = Object.fromEntries(
-  (countriesData as unknown as Array<{ cca2: string; latlng: [number, number] }>).map((c) => [
-    c.cca2,
-    // world-countries stores [lat, lng]; d3 projections want [lng, lat].
-    [c.latlng[1], c.latlng[0]] as [number, number],
-  ]),
-)
 
 interface CountryAgg {
   code: string | null

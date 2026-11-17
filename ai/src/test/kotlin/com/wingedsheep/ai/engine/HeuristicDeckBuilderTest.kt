@@ -1,5 +1,11 @@
 package com.wingedsheep.ai.engine
 
+import com.wingedsheep.mtg.sets.definitions.fra.cards.BloodlineRecollector
+import com.wingedsheep.mtg.sets.definitions.fra.cards.CarnivorousCultivator
+import com.wingedsheep.mtg.sets.definitions.fra.cards.HeartwoodCrafter
+import com.wingedsheep.mtg.sets.definitions.fra.cards.HexhavenDuelingArena
+import com.wingedsheep.mtg.sets.definitions.fra.cards.MeticulousCommons
+import com.wingedsheep.mtg.sets.definitions.fra.cards.StingerquillAnnex
 import com.wingedsheep.mtg.sets.definitions.hob.cards.GoblinTown
 import com.wingedsheep.mtg.sets.definitions.mh3.cards.UnfathomableTruths
 import com.wingedsheep.mtg.sets.definitions.ons.cards.WoodedFoothills
@@ -47,12 +53,49 @@ class HeuristicDeckBuilderTest : FunSpec({
         deck.values.sum() shouldBe 40
     }
 
-    test("a B/x build keeps a land that taps for one of its colors") {
+    test("a B/R build keeps the dual for its pair") {
         val pool = (1..12).map { creature("Black $it", "{1}{B}") } +
-            (1..12).map { creature("Green $it", "{1}{G}") } +
+            (1..12).map { creature("Red $it", "{1}{R}") } +
             GoblinTown
 
         buildHeuristicSealedDeck(pool) shouldContainKey "Goblin-town"
+    }
+
+    // 2026-10-31 production games 8d182668, aa98…, 7f03…: drafted decks ran off-colour tapped duals
+    // (a {B}/{R} Annex in B/G — a tapped Swamp) and colourless utility lands with nothing to do in
+    // place of basics. A dual making one deck colour is worse than that colour's basic.
+    test("a B/G build leaves out an off-colour tapped dual and colourless utility lands without a payoff") {
+        val pool = (1..12).map { creature("Black $it", "{1}{B}") } +
+            (1..12).map { creature("Green $it", "{1}{G}") } +
+            StingerquillAnnex + HexhavenDuelingArena + HexhavenDuelingArena + GoblinTown
+
+        val deck = buildHeuristicSealedDeck(pool)
+
+        deck shouldNotContainKey "Stingerquill Annex"
+        deck shouldNotContainKey "Hexhaven Dueling Arena"
+        deck shouldNotContainKey "Goblin-town"
+        deck.values.sum() shouldBe 40
+    }
+
+    test("a colourless utility land with a payoff in the deck makes it, one copy at most") {
+        val pool = (1..10).map { creature("Black $it", "{1}{B}") } +
+            (1..10).map { creature("Green $it", "{1}{G}") } +
+            List(2) { BloodlineRecollector } + List(2) { CarnivorousCultivator } + List(2) { HeartwoodCrafter } +
+            HexhavenDuelingArena + HexhavenDuelingArena
+
+        val deck = buildHeuristicSealedDeck(pool)
+
+        deck["Hexhaven Dueling Arena"] shouldBe 1
+        deck.values.sum() shouldBe 40
+    }
+
+    test("a land is on-colour only when it adds no colour the deck doesn't play, or fixes two of them") {
+        val bg = setOf(Color.BLACK, Color.GREEN)
+        landFitsColors(StingerquillAnnex, bg) shouldBe false
+        landFitsColors(StingerquillAnnex, setOf(Color.BLACK, Color.RED)) shouldBe true
+        // The splash colour counts: B/G splashing red runs the {B}/{R} dual as a red source.
+        landFitsColors(StingerquillAnnex, bg + Color.RED) shouldBe true
+        landFitsColors(HexhavenDuelingArena, bg) shouldBe false
     }
 
     test("a devoid spell needing {U} is not a candidate for a deck without blue") {
@@ -78,7 +121,9 @@ class HeuristicDeckBuilderTest : FunSpec({
     }
 
     test("fetch lands fit by the basic types they name; a generic fetch fits any deck") {
-        landFitsColors(WoodedFoothills, setOf(Color.GREEN, Color.WHITE)) shouldBe true
+        landFitsColors(WoodedFoothills, setOf(Color.GREEN, Color.RED)) shouldBe true
+        // Half off-colour: a Forest that costs life.
+        landFitsColors(WoodedFoothills, setOf(Color.GREEN, Color.WHITE)) shouldBe false
         landFitsColors(WoodedFoothills, setOf(Color.BLUE, Color.WHITE)) shouldBe false
         landFitsColors(EvolvingWilds, setOf(Color.BLUE, Color.WHITE)) shouldBe true
     }
@@ -100,8 +145,8 @@ class HeuristicDeckBuilderTest : FunSpec({
     //
     // Production game 2e28f192 (Reality Fracture draft): the AI's U/B deck ran 2x Yargle, Goliath
     // of Otaria (a vanilla 3/9) and 2x Yargle, Glutton of Urborg while Jace, Reality Sculptor — an
-    // on-color rare planeswalker — sat in the sideboard. FRA has no 17Lands/Draftsim table, so the
-    // heuristic rater decided: it gave a walker the generic 1.5 "other permanent" base (2.0 with
+    // on-color rare planeswalker — sat in the sideboard. FRA had no 17Lands/Draftsim table then, so
+    // the heuristic rater decided: it gave a walker the generic 1.5 "other permanent" base (2.0 with
     // rarity, under the 3/9's 2.4), and the builder counted a second copy of a legend at full value.
 
     fun legend(name: String, manaCost: String, power: Int, toughness: Int) = CardDefinition.creature(
@@ -142,7 +187,7 @@ class HeuristicDeckBuilderTest : FunSpec({
             2.4 * LEGEND_EXTRA_COPY_FACTOR
     }
 
-    test("production FRA pool: the on-color walker makes the deck and the Yargles stop doubling up") {
+    test("production FRA pool: the on-color walker makes the deck") {
         val byName = MtgSetCatalog.all.flatMap { it.cards }.associateBy { it.name }
         val maindeck = listOf(
             "Lyra, Tolarian Archangel", "Cast Away Doubt", "Terminal Criticism", "Traxos, Academy Guardian",
@@ -166,10 +211,46 @@ class HeuristicDeckBuilderTest : FunSpec({
 
         deck.values.sum() shouldBe 40
         deck shouldContainKey "Jace, Reality Sculptor"
-        deck["Yargle, Goliath of Otaria"] shouldBe 1
-        deck["Yargle, Glutton of Urborg"] shouldBe 1
+        // No Yargle-count assertion any more: FRA now has a vendored Draftsim table that rates both
+        // Yargles 1.0, so whether a second copy makes the deck depends on how thin the U/B pool is,
+        // not on the legend discount. The unit test above pins that discount on its own.
         // Still the pool's real colors: nothing white, red or green.
         val spells = deck.keys.mapNotNull { byName[it] }.filterNot { it.typeLine.isLand }
         spells.all { castableWithColors(it, setOf(Color.BLUE, Color.BLACK)) } shouldBe true
+        // Its {G}/{U} Commons is a tapped Island in U/B.
+        deck shouldNotContainKey "Transformative Commons"
+    }
+
+    // A drafted pool with only 19 castable spells in its pair used to make up the four-card gap in
+    // basics: 21 lands beside 19 spells (2026-10-31 games 2d31a409, 8d182668, ee882769 ran 22/18).
+    // A light black splash fills it instead, and the deck runs at most one land over 17.
+    test("19 castable spells in the pair splash for depth rather than pad to 21 lands") {
+        val pool = (1..10).map { creature("White $it", "{1}{W}") } +
+            (1..9).map { creature("Blue $it", "{2}{U}") } +
+            (1..4).map { creature("Black $it", "{3}{B}") } +
+            creature("Green Giant", "{3}{G}{G}")
+
+        val deck = buildHeuristicSealedDeck(pool)
+
+        deck.values.sum() shouldBe 40
+        val basics = listOf("Plains", "Island", "Swamp", "Forest", "Mountain")
+        (basics.sumOf { deck[it] ?: 0 } <= 18) shouldBe true
+        (1..4).count { "Black $it" in deck } shouldBe 3
+        deck shouldNotContainKey "Green Giant"
+        deck["Swamp"] shouldBe 3
+    }
+
+    test("a dual making the splash colour and a main colour is a splash source") {
+        val pool = (1..10).map { creature("White $it", "{1}{W}") } +
+            (1..9).map { creature("Blue $it", "{2}{U}") } +
+            (1..4).map { creature("Black $it", "{3}{B}") } +
+            MeticulousCommons + StingerquillAnnex
+
+        val deck = buildHeuristicSealedDeck(pool)
+
+        deck.values.sum() shouldBe 40
+        deck["Meticulous Commons"] shouldBe 1
+        deck shouldNotContainKey "Stingerquill Annex"
+        deck["Swamp"] shouldBe 2
     }
 })

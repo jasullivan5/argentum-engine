@@ -13714,7 +13714,8 @@
     "OATHBREAKER",
     "PREDH",
     "TIMELESS",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Thorn of Amethyst // Thorn of Amethyst": [],
   "Thorn of the Black Rose": [
@@ -18349,8 +18350,12 @@
     "PREMODERN",
     "VINTAGE"
   ],
-  "Time Vault": [],
-  "Time Walk": [],
+  "Time Vault": [
+    "VINTAGE_RESTRICTED"
+  ],
+  "Time Walk": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Time Warp": [
     "BRAWL",
     "COMMANDER",
@@ -18608,7 +18613,8 @@
   "Timetwister": [
     "COMMANDER",
     "OATHBREAKER",
-    "PREDH"
+    "PREDH",
+    "VINTAGE_RESTRICTED"
   ],
   "Timid Drake": [
     "COMMANDER",
@@ -18768,7 +18774,8 @@
   "Tinfoil Helm": [],
   "Tinker": [
     "PREMODERN",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Tinker's Tote": [
     "BRAWL",
@@ -19795,7 +19802,9 @@
     "TLR",
     "VINTAGE"
   ],
-  "Tolarian Academy": [],
+  "Tolarian Academy": [
+    "VINTAGE_RESTRICTED"
+  ],
   "Tolarian Contempt": [
     "BRAWL",
     "COMMANDER",
@@ -24156,7 +24165,8 @@
     "OATHBREAKER",
     "PAUPERCOMMANDER",
     "PIONEER",
-    "TIMELESS"
+    "TIMELESS",
+    "VINTAGE_RESTRICTED"
   ],
   "Treasure Dredger": [
     "BRAWL",
@@ -25450,7 +25460,8 @@
     "MODERN",
     "OATHBREAKER",
     "PREDH",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Trinket Mage": [
     "BRAWL",

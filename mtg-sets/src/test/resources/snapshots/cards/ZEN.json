@@ -280,6 +280,116 @@
     ]
 }
 
+// Blade of the Bloodchief
+{
+    "name": "Blade of the Bloodchief",
+    "manaCost": "{1}",
+    "typeLine": "Artifact — Equipment",
+    "oracleText": "Whenever a creature dies, put a +1/+1 counter on equipped creature. If equipped creature is a Vampire, put two +1/+1 counters on it instead.\nEquip {1}",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Blade of the Bloodchief:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "EntityMatches",
+                            "entity": "EquippedCreature",
+                            "filter": "creature Vampire"
+                        }
+                    },
+                    "then": {
+                        "type": "AddCounters",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
+                        "count": 2,
+                        "target": "EquippedCreature"
+                    },
+                    "otherwise": {
+                        "type": "AddCounters",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
+                        "count": 1,
+                        "target": "EquippedCreature"
+                    }
+                },
+                "descriptionOverride": "Whenever a creature dies, put a +1/+1 counter on equipped creature. If equipped creature is a Vampire, put two +1/+1 counters on it instead."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Blade of the Bloodchief:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{1}"
+                    }
+                },
+                "effect": {
+                    "type": "AttachEquipment",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "creature you control"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        },
+                        "id": "creature you control"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "isEquipAbility": true
+            }
+        ]
+    },
+    "equipCost": "{1}",
+    "metadata": {
+        "collectorNumber": "196",
+        "rarity": "RARE",
+        "artist": "Jung Park",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/e/7e4b42e5-0e60-4148-907e-456d9f3043be.jpg?1783942128",
+        "rulings": [
+            {
+                "date": "2009-10-01",
+                "text": "Blade of the Bloodchief's ability triggers regardless of who controlled the creature and whose graveyard it was put into."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "The +1/+1 counters are put on the equipped creature, not Blade of the Bloodchief. If Blade of the Bloodchief is moved to a different creature, the +1/+1 counters will stay where they are."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "The creature that gets the counters is the one that's equipped by Blade of the Bloodchief at the time the ability resolves. It doesn't matter what creature Blade of the Bloodchief was attached to (if any) when it triggered."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "If Blade of the Bloodchief leaves the battlefield before its triggered ability resolves, the counters are put on the creature it was attached to at the time it left the battlefield. If it wasn't attached to a creature at that time, nothing gets the counters."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "If the equipped creature itself is put into a graveyard, Blade of the Bloodchief's ability will trigger. However, it won't do anything when it resolves unless a spell or ability has caused it to become attached to another creature by that time. (Remember that you may activate an equip ability only as a sorcery.)"
+            },
+            {
+                "date": "2009-10-01",
+                "text": "If the equipped creature and another creature are dealt lethal damage at the same time, the equipped creature will be put into a graveyard before it would receive any counters."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
 // Bladetusk Boar
 {
     "name": "Bladetusk Boar",
@@ -409,6 +519,203 @@
         "imageUri": "https://cards.scryfall.io/normal/front/1/e/1e9d1ff2-9ce3-4737-af1d-9fc82e4dffe6.jpg?1783942128"
     },
     "colorIdentityOverride": []
+}
+
+// Blood Seeker
+{
+    "name": "Blood Seeker",
+    "manaCost": "{1}{B}",
+    "typeLine": "Creature — Vampire Shaman",
+    "oracleText": "Whenever a creature an opponent controls enters, you may have that player lose 1 life.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Blood Seeker:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:opponent",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "LoseLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "target": "ControllerOfTriggeringEntity"
+                    },
+                    "descriptionOverride": "Whenever a creature an opponent controls enters, you may have that player lose 1 life."
+                },
+                "descriptionOverride": "Whenever a creature an opponent controls enters, you may have that player lose 1 life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "80",
+        "artist": "Greg Staples",
+        "flavorText": "A drop now is all he needs to find you later.",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/1/d1abc9e8-9ecf-4665-9ea5-ee18ab83c148.jpg?1783942157",
+        "rulings": [
+            {
+                "date": "2011-09-22",
+                "text": "Life loss is not the same as damage. Blood Seeker's ability will not cause creatures with bloodthirst to enter with +1/+1 counters."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Bloodchief Ascension
+{
+    "name": "Bloodchief Ascension",
+    "manaCost": "{B}",
+    "typeLine": "Enchantment",
+    "oracleText": "At the beginning of each end step, if an opponent lost 2 or more life this turn, you may put a quest counter on this enchantment. (Damage causes loss of life.)\nWhenever a card is put into an opponent's graveyard from anywhere, if this enchantment has three or more quest counters on it, you may have that player lose 2 life. If you do, you gain 2 life.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Bloodchief Ascension:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END",
+                    "player": "Each"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "AddCounters",
+                        "counterType": "QUEST",
+                        "count": 1,
+                        "target": "Self"
+                    },
+                    "descriptionOverride": "At the beginning of each end step, if an opponent lost 2 or more life this turn, you may put a quest counter on this enchantment."
+                },
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "CountPlayersWith",
+                        "scope": "EachOpponent",
+                        "condition": {
+                            "type": "Compare",
+                            "left": {
+                                "type": "TurnTracking",
+                                "player": "You",
+                                "tracker": "LIFE_LOST_AMOUNT"
+                            },
+                            "operator": "GTE",
+                            "right": {
+                                "type": "Fixed",
+                                "amount": 2
+                            }
+                        }
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "At the beginning of each end step, if an opponent lost 2 or more life this turn, you may put a quest counter on this enchantment."
+            },
+            {
+                "id": "Bloodchief Ascension:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "nontoken own:opponent",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "LoseLife",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 2
+                                },
+                                "target": {
+                                    "type": "PlayerRef",
+                                    "player": "OwnerOfTriggeringEntity"
+                                }
+                            },
+                            {
+                                "type": "GainLife",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 2
+                                }
+                            }
+                        ]
+                    },
+                    "descriptionOverride": "Whenever a card is put into an opponent's graveyard from anywhere, if this enchantment has three or more quest counters on it, you may have that player lose 2 life. If you do, you gain 2 life."
+                },
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "EntityProperty",
+                        "entity": "Self",
+                        "numericProperty": {
+                            "type": "CounterCount",
+                            "counterType": "QUEST"
+                        }
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 3
+                    }
+                },
+                "descriptionOverride": "Whenever a card is put into an opponent's graveyard from anywhere, if this enchantment has three or more quest counters on it, you may have that player lose 2 life. If you do, you gain 2 life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "82",
+        "rarity": "RARE",
+        "artist": "Adi Granov",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/a/aa213dbb-c52a-4084-92aa-d0b5d97a97d9.jpg?1783942156",
+        "rulings": [
+            {
+                "date": "2009-10-01",
+                "text": "Bloodchief Ascension's first ability has an \"intervening 'if' clause.\" It won't trigger at all unless an opponent has already lost 2 or more life by the time the end step begins."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "Bloodchief Ascension's second ability doesn't behave like a leaves-the-battlefield triggered ability, since the card put into an opponent's graveyard may come from anywhere. If a Bloodchief Ascension with three quest counters on it and a permanent an opponent owns are destroyed at the same time, for example, the game will not \"look back in time\" at the game state, and Bloodchief Ascension's second ability won't trigger."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "Bloodchief Ascension's first ability checks how much life was lost by each opponent over the course of the entire turn, even if Bloodchief Ascension wasn't on the battlefield the whole time."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "For the first ability to trigger, a single opponent must have lost 2 life. Two opponents each losing 1 life won't cause it to trigger. It will trigger a maximum of once per turn, no matter how many opponents have lost 2 or more life."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "Bloodchief Ascension's first ability checks only whether life was lost. It doesn't care whether life was also gained."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
 }
 
 // Bloodghast
@@ -783,6 +1090,68 @@
     ]
 }
 
+// Crypt of Agadeem
+{
+    "name": "Crypt of Agadeem",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "This land enters tapped.\n{T}: Add {B}.\n{2}, {T}: Add {B} for each black creature card in your graveyard.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Crypt of Agadeem:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "BLACK"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Crypt of Agadeem:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{2}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "AddMana",
+                    "color": "BLACK",
+                    "amount": {
+                        "type": "AggregateZone",
+                        "player": "You",
+                        "zone": "Graveyard",
+                        "filter": "creature black"
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ],
+        "replacementEffects": [
+            "EntersTapped"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "212",
+        "rarity": "RARE",
+        "artist": "Jason Felix",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/7/672869d6-5314-422e-92f6-6a328fe0c6f6.jpg?1783942125"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Day of Judgment
 {
     "name": "Day of Judgment",
@@ -976,6 +1345,90 @@
         "artist": "Jim Murray",
         "flavorText": "When the earth shudders, the sky overflows.",
         "imageUri": "https://cards.scryfall.io/normal/front/8/b/8b386d39-ba41-42f8-ba05-f9ed602ee23f.jpg"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Emeria, the Sky Ruin
+{
+    "name": "Emeria, the Sky Ruin",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "This land enters tapped.\nAt the beginning of your upkeep, if you control seven or more Plains, you may return target creature card from your graveyard to the battlefield.\n{T}: Add {W}.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Emeria, the Sky Ruin:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "destination": "Battlefield",
+                        "fromZone": "Graveyard"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature own:you",
+                        "zone": "Graveyard"
+                    },
+                    "id": "t0"
+                },
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "land Plains"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 7
+                    }
+                }
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Emeria, the Sky Ruin:2",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddMana",
+                    "color": "WHITE"
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            }
+        ],
+        "replacementEffects": [
+            "EntersTapped"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "213",
+        "rarity": "RARE",
+        "artist": "Jaime Jones",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/d/fdf6016e-71e7-4339-80f9-78e9aa44c54b.jpg?1783942124",
+        "rulings": [
+            {
+                "date": "2009-10-01",
+                "text": "Emeria, the Sky Ruin's triggered ability has an \"intervening 'if' clause.\" That means (1) the ability won't trigger at all unless you control seven or more Plains as your upkeep starts, and (2) the ability will do nothing if you control fewer than seven Plains by the time it resolves."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "WHITE"
@@ -1231,6 +1684,64 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// Felidar Sovereign
+{
+    "name": "Felidar Sovereign",
+    "manaCost": "{4}{W}{W}",
+    "typeLine": "Creature — Cat Beast",
+    "oracleText": "Vigilance (Attacking doesn't cause this creature to tap.)\nLifelink (Damage dealt by this creature also causes you to gain that much life.)\nAt the beginning of your upkeep, if you have 40 or more life, you win the game.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 6
+    },
+    "keywords": [
+        "VIGILANCE",
+        "LIFELINK"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Felidar Sovereign:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": "WinGame",
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "LifeTotal",
+                        "player": "You"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 40
+                    }
+                },
+                "descriptionOverride": "At the beginning of your upkeep, if you have 40 or more life, you win the game."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "12",
+        "rarity": "MYTHIC",
+        "artist": "Zoltan Boros & Gabor Szikszai",
+        "flavorText": "\"If survival is a game, I've seen the winner.\"\n—Hazir, Sejiri cartographer",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/c/cc3c93e6-af75-4d7e-86b0-8a38425f51a1.jpg?1783942174",
+        "rulings": [
+            {
+                "date": "2015-08-25",
+                "text": "Felidar Sovereign's triggered ability checks to see if you have 40 or more life as your upkeep begins. If you don't, the ability won't trigger at all. If you do, the ability will check again as it tries to resolve. If you don't have 40 or more life at that time, the ability won't do anything."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }
 
@@ -1761,6 +2272,135 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// Heartstabber Mosquito
+{
+    "name": "Heartstabber Mosquito",
+    "manaCost": "{3}{B}",
+    "typeLine": "Creature — Insect",
+    "oracleText": "Kicker {2}{B} (You may pay an additional {2}{B} as you cast this spell.)\nFlying\nWhen this creature enters, if it was kicked, destroy target creature.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Kicker",
+            "manaCost": "{2}{B}"
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Heartstabber Mosquito:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature"
+                    },
+                    "id": "t0"
+                },
+                "interveningIf": "WasKicked"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "97",
+        "artist": "Jason Felix",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/d/1d20016d-2b5a-445e-a59b-5305e76f549c.jpg?1783942153"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Hedron Crab
+{
+    "name": "Hedron Crab",
+    "manaCost": "{U}",
+    "typeLine": "Creature — Crab",
+    "oracleText": "Landfall — Whenever a land you control enters, target player mills three cards. (They put the top three cards of their library into their graveyard.)",
+    "creatureStats": {
+        "power": 0,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Hedron Crab:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "land ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "TopOfLibrary",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 3
+                                },
+                                "player": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                },
+                                "isMill": true
+                            },
+                            "storeAs": "milled"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "milled",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard",
+                                "player": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "47",
+        "rarity": "UNCOMMON",
+        "artist": "Jesper Ejsing",
+        "flavorText": "Hedrons perplex minds both great and small.",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/0/f0fa1946-4f97-4c52-b5f2-b80571230616.jpg?1783942165"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 
@@ -2423,6 +3063,127 @@
     ]
 }
 
+// Luminarch Ascension
+{
+    "name": "Luminarch Ascension",
+    "manaCost": "{1}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "At the beginning of each opponent's end step, if you didn't lose life this turn, you may put a quest counter on this enchantment. (Damage causes loss of life.)\n{1}{W}: Create a 4/4 white Angel creature token with flying. Activate only if this enchantment has four or more quest counters on it.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Luminarch Ascension:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "AddCounters",
+                        "counterType": "QUEST",
+                        "count": 1,
+                        "target": "Self"
+                    },
+                    "descriptionOverride": "At the beginning of each opponent's end step, if you didn't lose life this turn, you may put a quest counter on this enchantment."
+                },
+                "interveningIf": {
+                    "type": "Not",
+                    "condition": {
+                        "type": "Compare",
+                        "left": {
+                            "type": "TurnTracking",
+                            "player": "You",
+                            "tracker": "LIFE_LOST"
+                        },
+                        "operator": "GTE",
+                        "right": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    }
+                },
+                "descriptionOverride": "At the beginning of each opponent's end step, if you didn't lose life this turn, you may put a quest counter on this enchantment."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Luminarch Ascension:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{1}{W}"
+                    }
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 4,
+                    "toughness": 4,
+                    "colors": [
+                        "WHITE"
+                    ],
+                    "creatureTypes": [
+                        "Angel"
+                    ],
+                    "keywords": [
+                        "FLYING"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/1/f/1fc37484-b58b-4a42-9281-b4272dc7c872.jpg?1783942179"
+                },
+                "restrictions": [
+                    {
+                        "type": "ActivationOnlyIfCondition",
+                        "condition": {
+                            "type": "Compare",
+                            "left": {
+                                "type": "EntityProperty",
+                                "entity": "Self",
+                                "numericProperty": {
+                                    "type": "CounterCount",
+                                    "counterType": "QUEST"
+                                }
+                            },
+                            "operator": "GTE",
+                            "right": {
+                                "type": "Fixed",
+                                "amount": 4
+                            }
+                        }
+                    }
+                ],
+                "descriptionOverride": "Create a 4/4 white Angel creature token with flying."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "25",
+        "rarity": "RARE",
+        "artist": "Michael Komarck",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/9/e9f3a20f-a788-4d8b-946b-d9c1c983a85a.jpg?1783942171",
+        "rulings": [
+            {
+                "date": "2018-03-16",
+                "text": "Luminarch Ascension's first ability doesn't trigger if you have lost life before an opponent's end step begins. If it does trigger but you lose life before it resolves, it does nothing and you won't put a quest counter on Luminarch Ascension."
+            },
+            {
+                "date": "2018-03-16",
+                "text": "Luminarch Ascension's first ability cares only whether you lost life this turn, even if Luminarch Ascension wasn't on the battlefield when that happened. It doesn't care how much you lost, whether you also gained life, or even whether you gained more life than you lost."
+            },
+            {
+                "date": "2018-03-16",
+                "text": "You can activate Luminarch Ascension's last ability during the end step in which it receives its fourth quest counter."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Magma Rift
 {
     "name": "Magma Rift",
@@ -2515,6 +3276,58 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Malakir Bloodwitch
+{
+    "name": "Malakir Bloodwitch",
+    "manaCost": "{3}{B}{B}",
+    "typeLine": "Creature — Vampire Shaman",
+    "oracleText": "Flying, protection from white\nWhen this creature enters, each opponent loses life equal to the number of Vampires you control. You gain life equal to the life lost this way.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Protection",
+            "scope": {
+                "type": "ProtectionScope.Color",
+                "color": "WHITE"
+            }
+        }
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Malakir Bloodwitch:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "DrainLife",
+                    "amount": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "permanent Vampire"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "100",
+        "rarity": "RARE",
+        "artist": "Shelly Wan",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/6/865ac36f-4c61-468b-a2ed-ed2d1bbbf4e3.jpg?1783942152"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -3097,6 +3910,71 @@
     ]
 }
 
+// Ob Nixilis, the Fallen
+{
+    "name": "Ob Nixilis, the Fallen",
+    "manaCost": "{3}{B}{B}",
+    "typeLine": "Legendary Creature — Demon",
+    "oracleText": "Landfall — Whenever a land you control enters, you may have target player lose 3 life. If you do, put three +1/+1 counters on Ob Nixilis.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Ob Nixilis, the Fallen:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "land ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "LoseLife",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 3
+                                },
+                                "target": {
+                                    "type": "BoundVariable",
+                                    "name": "t0"
+                                }
+                            },
+                            {
+                                "type": "AddCounters",
+                                "counterType": "PLUS_ONE_PLUS_ONE",
+                                "count": 3,
+                                "target": "Self"
+                            }
+                        ]
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "107",
+        "rarity": "MYTHIC",
+        "artist": "Jason Felix",
+        "flavorText": "His spark lost, he plots revenge upon the plane whose corrupting mana fractured his soul.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/8/7824a001-3f0e-4ac5-8406-e58f4288f2f2.jpg?1783942149"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Oracle of Mul Daya
 {
     "name": "Oracle of Mul Daya",
@@ -3584,6 +4462,82 @@
         "rarity": "RARE",
         "artist": "Matt Cavotta",
         "imageUri": "https://cards.scryfall.io/normal/front/4/5/4530fe45-8a3d-48e9-a7a5-abf8fb1485e3.jpg?1783942162"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Roil Elemental
+{
+    "name": "Roil Elemental",
+    "manaCost": "{3}{U}{U}{U}",
+    "typeLine": "Creature — Elemental",
+    "oracleText": "Flying\nLandfall — Whenever a land you control enters, you may gain control of target creature for as long as you control this creature.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Roil Elemental:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "land ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "GainControl",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "duration": {
+                            "type": "WhileYouControlSource",
+                            "sourceDescription": "this creature"
+                        }
+                    },
+                    "descriptionOverride": "Landfall — Whenever a land you control enters, you may gain control of target creature for as long as you control this creature."
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature"
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "Landfall — Whenever a land you control enters, you may gain control of target creature for as long as you control this creature."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "62",
+        "rarity": "RARE",
+        "artist": "Raymond Swanland",
+        "flavorText": "A vortex that devours everything—even the souls of the living.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/6/66139c73-8e14-433d-bcb6-ae3e518bcdfb.jpg?1783942161",
+        "rulings": [
+            {
+                "date": "2009-10-01",
+                "text": "If Roil Elemental leaves the battlefield, you no longer control it, so all of its control-change effects end."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "If Roil Elemental ceases to be under your control before its ability resolves, you won't gain control of the targeted creature at all."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "You may target a creature you already control with Roil Elemental's ability. This will usually have no visible effect, but it will overwrite any previous control-change effects."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "BLUE"
@@ -5013,6 +5967,90 @@
         "imageUri": "https://cards.scryfall.io/normal/front/7/a/7abd2723-2851-4f1a-b2d0-dfcb526472c3.jpg?1783942121"
     },
     "colorIdentityOverride": []
+}
+
+// Warren Instigator
+{
+    "name": "Warren Instigator",
+    "manaCost": "{R}{R}",
+    "typeLine": "Creature — Goblin Berserker",
+    "oracleText": "Double strike\nWhenever this creature deals damage to an opponent, you may put a Goblin creature card from your hand onto the battlefield.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "DOUBLE_STRIKE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Warren Instigator:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "EachOpponent"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Hand",
+                                "filter": "creature Goblin"
+                            },
+                            "storeAs": "put_candidates"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "put_candidates",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "putting",
+                            "prompt": "Put a Goblin creature card onto the battlefield?"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "putting",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Battlefield"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "154",
+        "rarity": "MYTHIC",
+        "artist": "Andrew Robinson",
+        "flavorText": "\"Danger! Danger! Come out of the safety of your holes!\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/8/98637219-40d8-414c-939d-e2c90b909725.jpg?1783942138",
+        "rulings": [
+            {
+                "date": "2009-10-01",
+                "text": "Warren Instigator's ability triggers when it deals any kind of damage to an opponent, not just combat damage."
+            },
+            {
+                "date": "2009-10-01",
+                "text": "If Warren Instigator attacks an opponent and isn't blocked, its double strike ability will cause it to deal combat damage to that opponent twice, once during each combat damage step. Its triggered ability will thus trigger twice."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
 }
 
 // Welkin Tern

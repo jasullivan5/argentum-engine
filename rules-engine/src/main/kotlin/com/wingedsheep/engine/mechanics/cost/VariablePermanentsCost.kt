@@ -5,8 +5,6 @@ import com.wingedsheep.engine.core.tap
 import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.TargetFinder
-import com.wingedsheep.engine.handlers.TargetingSourceType
-import com.wingedsheep.engine.mechanics.targeting.NumericTargetEquality
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
@@ -15,7 +13,6 @@ import com.wingedsheep.sdk.scripting.TapReason
 import com.wingedsheep.sdk.scripting.costs.CostAtom
 import com.wingedsheep.sdk.scripting.costs.PermanentCostAction
 import com.wingedsheep.sdk.scripting.costs.VariableCostMeasure
-import com.wingedsheep.sdk.scripting.targets.TargetChooser
 import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 
 /**
@@ -72,22 +69,10 @@ object VariablePermanentsCost {
         targetFinder: TargetFinder,
     ): List<EntityId> {
         if (atom.maxCount != 1) return candidates
-        val mandatory = targetRequirements.filter { it.chooser == TargetChooser.Controller && it.effectiveMinCount > 0 }
-        if (mandatory.isEmpty()) return candidates
-        val viableByX = mutableMapOf<Int, Boolean>()
-        return candidates.filter { id ->
-            val x = measure(state, atom.xMeasure, listOf(id))
-            viableByX.getOrPut(x) {
-                val context = PredicateContext(controllerId = playerId, sourceId = sourceId, xValue = x)
-                mandatory.all { req ->
-                    val legal = targetFinder.findLegalTargets(
-                        state, req, playerId, sourceId,
-                        targetingSourceType = TargetingSourceType.ACTIVATED_ABILITY, pipelineContext = context
-                    )
-                    NumericTargetEquality.eligible(state, legal, req).size >= req.effectiveMinCount
-                }
-            }
-        }
+        return CostDefinedX.picksLeavingTargets(
+            state, candidates, { id -> measure(state, atom.xMeasure, listOf(id)) },
+            targetRequirements, playerId, sourceId, targetFinder
+        )
     }
 
     /** Human name of the measured quantity, for "falls short of the required total power" errors. */
@@ -122,7 +107,8 @@ object VariablePermanentsCost {
      * Permanents [playerId] may choose to pay [atom], in battlefield order.
      *
      * A `TAP` atom sees only untapped permanents (CR 701.26a — "only untapped permanents can be
-     * tapped"); the other actions see every match. [sourceId] is the cost's own source, excluded
+     * tapped"); a `SACRIFICE` atom drops what no cost may sacrifice ([SacrificeCostLegality]); the
+     * other actions see every match. [sourceId] is the cost's own source, excluded
      * when the atom sets `excludeSelf`; pass null for a spell's additional cost, which has no
      * source permanent on the battlefield.
      */
@@ -140,6 +126,9 @@ object VariablePermanentsCost {
             val container = state.getEntity(entityId) ?: return@filter false
             container.get<CardComponent>() ?: return@filter false
             if (atom.action == PermanentCostAction.TAP && container.has<TappedComponent>()) return@filter false
+            if (atom.action == PermanentCostAction.SACRIFICE && !SacrificeCostLegality.canSacrificeForCost(state, entityId)) {
+                return@filter false
+            }
             predicateEvaluator.matches(state, projected, entityId, atom.filter, context)
         }
     }

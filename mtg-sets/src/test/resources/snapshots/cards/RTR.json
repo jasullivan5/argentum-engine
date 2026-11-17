@@ -87,6 +87,125 @@
     ]
 }
 
+// Angel of Serenity
+{
+    "name": "Angel of Serenity",
+    "manaCost": "{4}{W}{W}{W}",
+    "typeLine": "Creature — Angel",
+    "oracleText": "Flying\nWhen this creature enters, you may exile up to three other target creatures from the battlefield and/or creature cards from graveyards.\nWhen this creature leaves the battlefield, return the exiled cards to their owners' hands.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 6
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Angel of Serenity:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": "ChosenTargets",
+                                "storeAs": "gathered0"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "gathered0",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Exile"
+                                },
+                                "linkToSource": true
+                            }
+                        ]
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "count": 3,
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "creature",
+                        "excludeSelf": true,
+                        "alternatives": [
+                            {
+                                "baseFilter": "creature",
+                                "zone": "Graveyard"
+                            }
+                        ]
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "When this creature enters, you may exile up to three other target creatures from the battlefield and/or creature cards from graveyards."
+            },
+            {
+                "id": "Angel of Serenity:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": "FromLinkedExile",
+                            "storeAs": "linked_return_hand"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "linked_return_hand",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Hand"
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "When this creature leaves the battlefield, return the exiled cards to their owners' hands."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "1",
+        "rarity": "MYTHIC",
+        "artist": "Aleksi Briclot",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/1/f10d82f7-7759-457e-a9bb-f9a5bd968f82.jpg?1783940378",
+        "rulings": [
+            {
+                "date": "2013-01-24",
+                "text": "You choose up to three total targets from among other creatures on the battlefield and creature cards in graveyards. You may choose zero targets."
+            },
+            {
+                "date": "2013-01-24",
+                "text": "You choose the targets as part of putting the \"enters\" trigger on the stack. Because that ability includes \"you may,\" you choose whether to exile the targets when the ability resolves."
+            },
+            {
+                "date": "2013-01-24",
+                "text": "If a creature targeted by the \"enters\" ability dies before that ability resolves, it will become an illegal target even though it may be a creature card in a graveyard when the ability resolves. It won't be exiled."
+            },
+            {
+                "date": "2012-10-01",
+                "text": "If Angel of Serenity leaves the battlefield before its \"enters\" ability has resolved, its leaves-the-battlefield ability will trigger and do nothing. Then the \"enters\" ability will resolve and exile the targeted creatures and/or creature cards indefinitely."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Aquus Steed
 {
     "name": "Aquus Steed",
@@ -918,7 +1037,7 @@
     },
     "script": {
         "replacementEffects": [
-            "DoubleCounterPlacement"
+            "ScaleCounterPlacement"
         ]
     },
     "metadata": {
@@ -1738,6 +1857,96 @@
     ]
 }
 
+// Electrickery
+{
+    "name": "Electrickery",
+    "manaCost": "{R}",
+    "typeLine": "Instant",
+    "oracleText": "Electrickery deals 1 damage to target creature you don't control.\nOverload {1}{R} (You may cast this spell for its overload cost. If you do, change \"target\" in its text to \"each.\")",
+    "keywords": [
+        "OVERLOAD"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Overload",
+            "cost": "{1}{R}"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "DealDamage",
+            "amount": {
+                "type": "Fixed",
+                "amount": 1
+            },
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "controllerPredicate": {
+                            "type": "ControllerNot",
+                            "predicate": "ControlledByYou"
+                        }
+                    }
+                },
+                "id": "t0"
+            }
+        ],
+        "overloadSpellEffect": {
+            "type": "ForEach",
+            "space": {
+                "type": "IterationSpace.Group",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "controllerPredicate": {
+                            "type": "ControllerNot",
+                            "predicate": "ControlledByYou"
+                        }
+                    }
+                }
+            },
+            "body": {
+                "type": "DealDamage",
+                "amount": {
+                    "type": "Fixed",
+                    "amount": 1
+                },
+                "target": "IterationEntity"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "93",
+        "artist": "Greg Staples",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/e/5ed81ee8-d5e4-4127-876e-9bff81f9c726.jpg?1783940356",
+        "rulings": [
+            {
+                "date": "2024-01-12",
+                "text": "Because a spell with overload doesn't target when its overload cost is paid, it may affect permanents with hexproof or with protection from the appropriate color."
+            },
+            {
+                "date": "2024-01-12",
+                "text": "Note that if the spell with overload is dealing damage, protection from that spell's color will still prevent that damage."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Explosive Impact
 {
     "name": "Explosive Impact",
@@ -1979,6 +2188,93 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Golgari Charm
+{
+    "name": "Golgari Charm",
+    "manaCost": "{B}{G}",
+    "typeLine": "Instant",
+    "oracleText": "Choose one —\n• All creatures get -1/-1 until end of turn.\n• Destroy target enchantment.\n• Regenerate each creature you control.",
+    "script": {
+        "spellEffect": {
+            "type": "Modal",
+            "modes": [
+                {
+                    "effect": {
+                        "type": "ForEach",
+                        "space": {
+                            "type": "IterationSpace.Group",
+                            "filter": {
+                                "baseFilter": "creature"
+                            }
+                        },
+                        "body": {
+                            "type": "ModifyStats",
+                            "powerModifier": {
+                                "type": "Fixed",
+                                "amount": -1
+                            },
+                            "toughnessModifier": {
+                                "type": "Fixed",
+                                "amount": -1
+                            },
+                            "target": "IterationEntity"
+                        }
+                    },
+                    "description": "All creatures get -1/-1 until end of turn"
+                },
+                {
+                    "effect": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "destination": "Graveyard",
+                        "byDestruction": true
+                    },
+                    "targetRequirements": [
+                        {
+                            "type": "TargetObject",
+                            "filter": {
+                                "baseFilter": "enchantment"
+                            },
+                            "id": "t0"
+                        }
+                    ],
+                    "description": "Destroy target enchantment"
+                },
+                {
+                    "effect": {
+                        "type": "ForEach",
+                        "space": {
+                            "type": "IterationSpace.Group",
+                            "filter": {
+                                "baseFilter": "creature ctrl:you"
+                            }
+                        },
+                        "body": {
+                            "type": "Regenerate",
+                            "target": "IterationEntity"
+                        }
+                    },
+                    "description": "Regenerate each creature you control"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "164",
+        "rarity": "UNCOMMON",
+        "artist": "Zoltan Boros",
+        "flavorText": "\"Let the rest of Ravnica sneer. One way or another, they all end up in the undercity.\"\n—Jarad",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/8/48fce388-eefc-4234-8dd9-1260c1ba97eb.jpg?1783940339"
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "GREEN"
     ]
 }
 
@@ -2269,6 +2565,57 @@
     ]
 }
 
+// Judge's Familiar
+{
+    "name": "Judge's Familiar",
+    "manaCost": "{W/U}",
+    "typeLine": "Creature — Bird",
+    "oracleText": "Flying\nSacrifice this creature: Counter target instant or sorcery spell unless its controller pays {1}.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Judge's Familiar:1",
+                "cost": "CostSacrificeSelf",
+                "effect": {
+                    "type": "Counter",
+                    "condition": {
+                        "type": "CounterCondition.UnlessPaysMana",
+                        "cost": "{1}"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "instant|sorcery",
+                            "zone": "Stack"
+                        },
+                        "id": "t0"
+                    }
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "218",
+        "rarity": "UNCOMMON",
+        "artist": "Jack Wang",
+        "flavorText": "\"It misses nothing and it has no sense of humor.\"\n—Barvisa, courtroom scribe",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/f/0fc51899-3970-416b-b7de-fadbc9678955.jpg?1783940327"
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLUE"
+    ]
+}
+
 // Keening Apparition
 {
     "name": "Keening Apparition",
@@ -2523,6 +2870,63 @@
     ]
 }
 
+// Necropolis Regent
+{
+    "name": "Necropolis Regent",
+    "manaCost": "{3}{B}{B}{B}",
+    "typeLine": "Creature — Vampire",
+    "oracleText": "Flying\nWhenever a creature you control deals combat damage to a player, put that many +1/+1 counters on it.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Necropolis Regent:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    },
+                    "sourceFilter": "creature ctrl:you"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddDynamicCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "amount": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGER_DAMAGE_AMOUNT"
+                    },
+                    "target": "TriggeringEntity"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "71",
+        "rarity": "MYTHIC",
+        "artist": "Winona Nelson",
+        "flavorText": "\"Jarad fancies himself king of the undercity, but he's merely king of rot.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/4/b421dcc9-0299-416d-86bc-c70ef49bcf98.jpg?1783940361",
+        "rulings": [
+            {
+                "date": "2012-10-01",
+                "text": "If that creature deals combat damage to a player at the same time it's dealt lethal damage (perhaps because it has trample and was blocked), it will die before the triggered ability resolves and puts +1/+1 counters on it."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Perilous Shadow
 {
     "name": "Perilous Shadow",
@@ -2721,6 +3125,115 @@
     ]
 }
 
+// Rakdos Charm
+{
+    "name": "Rakdos Charm",
+    "manaCost": "{B}{R}",
+    "typeLine": "Instant",
+    "oracleText": "Choose one —\n• Exile target player's graveyard.\n• Destroy target artifact.\n• Each creature deals 1 damage to its controller.",
+    "script": {
+        "spellEffect": {
+            "type": "Modal",
+            "modes": [
+                {
+                    "effect": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "FromZone",
+                                    "zone": "Graveyard",
+                                    "player": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    }
+                                },
+                                "storeAs": "gathered0"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "gathered0",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Exile",
+                                    "player": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                    "targetRequirements": [
+                        {
+                            "type": "TargetPlayer",
+                            "id": "t0"
+                        }
+                    ],
+                    "description": "Exile target player's graveyard"
+                },
+                {
+                    "effect": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t1"
+                        },
+                        "destination": "Graveyard",
+                        "byDestruction": true
+                    },
+                    "targetRequirements": [
+                        {
+                            "type": "TargetObject",
+                            "filter": {
+                                "baseFilter": "artifact"
+                            },
+                            "id": "t1"
+                        }
+                    ],
+                    "description": "Destroy target artifact"
+                },
+                {
+                    "effect": {
+                        "type": "ForEach",
+                        "space": {
+                            "type": "IterationSpace.Group",
+                            "filter": {
+                                "baseFilter": "creature"
+                            }
+                        },
+                        "body": {
+                            "type": "DealDamage",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 1
+                            },
+                            "target": {
+                                "type": "PlayerRef",
+                                "player": "ControllerOfIterationEntity"
+                            },
+                            "damageSource": "IterationEntity"
+                        }
+                    },
+                    "description": "Each creature deals 1 damage to its controller"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "184",
+        "rarity": "UNCOMMON",
+        "artist": "Zoltan Boros",
+        "flavorText": "\"Let all feel joy in pain.\"\n—Rakdos",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/f/0fcd4394-d22d-4eec-ad73-ffaf10ad60de.jpg?1783940335"
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
 // Rakdos Guildgate
 {
     "name": "Rakdos Guildgate",
@@ -2811,6 +3324,90 @@
         "artist": "Wayne Reynolds",
         "flavorText": "\"If there were such a thing as a soul, I think it would be behind the gallbladder but above the kidneys.\"",
         "imageUri": "https://cards.scryfall.io/normal/front/0/6/06899549-5534-4d11-86c1-afd1796e18b1.jpg?1783940326"
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
+// Rakdos, Lord of Riots
+{
+    "name": "Rakdos, Lord of Riots",
+    "manaCost": "{B}{B}{R}{R}",
+    "typeLine": "Legendary Creature — Demon",
+    "oracleText": "You can't cast Rakdos unless an opponent lost life this turn.\nFlying, trample\nCreature spells you cast cost {1} less to cast for each 1 life your opponents have lost this turn.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "keywords": [
+        "FLYING",
+        "TRAMPLE"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifySpellCost",
+                "target": {
+                    "type": "YouCast",
+                    "filter": "creature"
+                },
+                "modification": {
+                    "type": "ReduceGenericBy",
+                    "source": {
+                        "type": "Dynamic",
+                        "amount": {
+                            "type": "TurnTracking",
+                            "player": "EachOpponent",
+                            "tracker": "LIFE_LOST_AMOUNT"
+                        }
+                    }
+                }
+            }
+        ],
+        "castRestrictions": [
+            {
+                "type": "CastOnlyIfCondition",
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "TurnTracking",
+                        "player": "EachOpponent",
+                        "tracker": "LIFE_LOST"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "187",
+        "rarity": "MYTHIC",
+        "artist": "Vincent Proce",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/4/04f3db71-802f-488c-b40d-ac90df2d660a.jpg?1783940334",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "Rakdos can be put onto the battlefield by another spell or ability even if no opponent has lost life that turn."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "Rakdos's last ability cares about the total life lost, not necessarily what an opponent's life total is compared to what it was at the beginning of the turn. For example, if an opponent loses 5 life and then gains 10 life in a turn, creature spells you cast will cost {5} less to cast."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "Rakdos's last ability can't reduce the colored mana requirement of a creature spell you cast."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "Rakdos's last ability won't reduce the cost to cast Rakdos itself. It applies only to creature spells you cast once Rakdos is on the battlefield."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "BLACK",
@@ -3396,6 +3993,83 @@
     ]
 }
 
+// Sphere of Safety
+{
+    "name": "Sphere of Safety",
+    "manaCost": "{4}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "Creatures can't attack you or planeswalkers you control unless their controller pays {X} for each of those creatures, where X is the number of enchantments you control.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "AttackTax",
+                "amountPerAttacker": {
+                    "type": "AggregateBattlefield",
+                    "player": "You",
+                    "filter": "enchantment"
+                },
+                "coversPlaneswalkers": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "24",
+        "rarity": "UNCOMMON",
+        "artist": "Slawomir Maniak",
+        "flavorText": "The Rakdos believe that all are eager to join their revels, even when told otherwise.",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/e/ce3bd0d8-7e44-4cf2-9012-8ff0bc39417f.jpg?1783940373",
+        "rulings": [
+            {
+                "date": "2012-10-01",
+                "text": "If you control Sphere of Safety, your opponents can choose not to attack with a creature with an ability that says it attacks if able."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Sphinx's Revelation
+{
+    "name": "Sphinx's Revelation",
+    "manaCost": "{X}{W}{U}{U}",
+    "typeLine": "Instant",
+    "oracleText": "You gain X life and draw X cards.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GainLife",
+                    "amount": "XValue"
+                },
+                {
+                    "type": "DrawCards",
+                    "count": "XValue"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "200",
+        "rarity": "MYTHIC",
+        "artist": "Slawomir Maniak",
+        "flavorText": "\"Let the knowledge of absolute law inspire you to live a life of absolute order.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/0/404d9413-ef57-4b6e-8584-48a1dc7fe6f1.jpg?1783940331",
+        "rulings": [
+            {
+                "date": "2012-10-01",
+                "text": "If the value chosen for X is larger than the number of cards left in your library, you'll lose the game the next time state-based actions are performed."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLUE"
+    ]
+}
+
 // Stealer of Secrets
 {
     "name": "Stealer of Secrets",
@@ -3662,6 +4336,61 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Tavern Swindler
+{
+    "name": "Tavern Swindler",
+    "manaCost": "{1}{B}",
+    "typeLine": "Creature — Human Rogue",
+    "oracleText": "{T}, Pay 3 life: Flip a coin. If you win the flip, you gain 6 life.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Tavern Swindler:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        "CostTap",
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomPayLife",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 3
+                                }
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "FlipCoin",
+                    "wonEffect": {
+                        "type": "GainLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 6
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "79",
+        "rarity": "UNCOMMON",
+        "artist": "Cynthia Sheppard",
+        "flavorText": "Rakdos cultists are her best customers. They never flinch at pain and are seldom good at math.",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/7/47240ed3-f256-45fb-ab38-7b07e672d2ed.jpg"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -3943,6 +4672,107 @@
     "colorIdentityOverride": [
         "BLACK",
         "GREEN"
+    ]
+}
+
+// Ultimate Price
+{
+    "name": "Ultimate Price",
+    "manaCost": "{1}{B}",
+    "typeLine": "Instant",
+    "oracleText": "Destroy target monocolored creature.",
+    "script": {
+        "spellEffect": {
+            "type": "MoveToZone",
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            },
+            "destination": "Graveyard",
+            "byDestruction": true
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            "IsMonocolored"
+                        ]
+                    }
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "82",
+        "rarity": "UNCOMMON",
+        "artist": "Karl Kopinski",
+        "flavorText": "\"Let him be an example to others who would default on their debts to us.\"\n—\"The Cozen,\" Orzhov assassin",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/2/d2b4912a-83a2-4870-8fac-81fa79da2830.jpg?1783940359",
+        "rulings": [
+            {
+                "date": "2024-01-12",
+                "text": "A monocolored creature is exactly one color. Colorless creatures aren't monocolored."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Utvara Hellkite
+{
+    "name": "Utvara Hellkite",
+    "manaCost": "{6}{R}{R}",
+    "typeLine": "Creature — Dragon",
+    "oracleText": "Flying\nWhenever a Dragon you control attacks, create a 6/6 red Dragon creature token with flying.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Utvara Hellkite:1",
+                "trigger": {
+                    "type": "AttackEvent",
+                    "filter": "creature Dragon ctrl:you"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 6,
+                    "toughness": 6,
+                    "colors": [
+                        "RED"
+                    ],
+                    "creatureTypes": [
+                        "Dragon"
+                    ],
+                    "keywords": [
+                        "FLYING"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/8/4/84310f84-3e5f-4db8-bff1-16bef64de1a0.jpg?1783940383"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "110",
+        "rarity": "MYTHIC",
+        "artist": "Mark Zug",
+        "flavorText": "The fear of dragons is as old and as powerful as the fear of death itself.",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/1/f17c6478-dd80-4854-9560-bfc5ef597872.jpg?1783940353"
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 

@@ -13,6 +13,19 @@ data class PendingTrigger(
     val sourceName: String,
     /** Source battlefield visit captured at detection, before target or ordering decisions. */
     val sourceBattlefieldTimestamp: Long? = null,
+    /**
+     * The source as it last existed on the battlefield, when it left after this ability triggered
+     * but before the ability is put on the stack (state-based actions run first, CR 704.3 / 603.3).
+     * Set at detection by [DamageTriggerDetector] for a damage source the same batch took off the
+     * battlefield — the combat damage step applies its state-based actions before triggers are
+     * detected, so a Permeating Mass dealt lethal damage in that combat is already gone — and by
+     * [com.wingedsheep.engine.handlers.effects.ZoneTransitionService] when the visit named by
+     * [sourceBattlefieldTimestamp] ends while this trigger waits in the queue. Carried onto
+     * [com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComponent.lastKnownSourceSnapshot]
+     * so the resolving ability reads its source's last-known information (CR 608.2h), including a
+     * token source that has since ceased to exist. Null while the source remains the same object.
+     */
+    val lastKnownSourceSnapshot: com.wingedsheep.engine.state.components.stack.EntitySnapshot? = null,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment =
         com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
     val controllerId: EntityId,
@@ -65,6 +78,14 @@ data class PendingTrigger(
      * is known; read through [isEntryCaused]. A bare enters-shaped pattern needs no flag.
      */
     val enteredViaAnyOfAtom: Boolean = false,
+    /**
+     * The objects whose move into a graveyard caused this *batched* graveyard trigger ("one or more
+     * creatures you control die", "one or more cards are put into your graveyard"), stamped at
+     * detection. A batch trigger keeps no per-object triggering entity, so this is how a
+     * [com.wingedsheep.sdk.scripting.SuppressZoneChangeTriggers] dying lock (Hushbringer) tells
+     * which deaths caused it. Null on every other trigger.
+     */
+    val graveyardBatchCauseIds: List<EntityId>? = null,
     /** Frozen before stack-placement rewrites such as unwrapping a consent gate. */
     val rulesText: TriggeredAbility = ability,
     /** Provisional declaration taps; removed if their attack-tax payment is cancelled. */

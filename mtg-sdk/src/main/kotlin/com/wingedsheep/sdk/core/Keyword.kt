@@ -19,6 +19,13 @@ enum class Keyword(val displayName: String) {
     SHADOW("Shadow"),
     HORSEMANSHIP("Horsemanship"),
 
+    /**
+     * Skulk (CR 702.118) — "can't be blocked by creatures with greater power". Engine-live through
+     * `SkulkRule`, which compares projected powers when blockers are declared; multiple instances
+     * are redundant (CR 702.118c).
+     */
+    SKULK("Skulk"),
+
     // ── Landwalk ─────────────────────────────────────────────
     SWAMPWALK("Swampwalk"),
     FORESTWALK("Forestwalk"),
@@ -52,6 +59,13 @@ enum class Keyword(val displayName: String) {
      * [com.wingedsheep.sdk.scripting.Myriad].
      */
     MYRIAD("Myriad"),
+
+    /**
+     * Ingest (CR 702.115) — engine-live: the "whenever this creature deals combat damage to a
+     * player, that player exiles the top card of their library" trigger is derived from the
+     * projected keyword, one trigger per instance. See [com.wingedsheep.sdk.scripting.Ingest].
+     */
+    INGEST("Ingest"),
 
     /**
      * Banding (CR 702.22). As they declare attackers, a player may group one or more
@@ -217,6 +231,9 @@ enum class Keyword(val displayName: String) {
     STORM("Storm"),
     FLASHBACK("Flashback"),
 
+    /** Graveyard alternative cost: mana and returning a creature; exile on every stack exit. */
+    BEAM_ME_UP("Beam me up"),
+
     /**
      * Split second (CR 702.61, Time Spiral). "As long as this spell is on the stack, players can't
      * cast other spells or activate abilities that aren't mana abilities."
@@ -320,6 +337,13 @@ enum class Keyword(val displayName: String) {
      * `MayCastSelfFromZones` permission to it (`castUsing = Keyword.BLITZ`).
      */
     BLITZ("Blitz"),
+    /**
+     * Dash [cost] (CR 702.109) — see [com.wingedsheep.sdk.scripting.KeywordAbility.Dash]. Named here
+     * so "dash costs you pay cost {N} less" can scope a cost modifier to the dash cast
+     * (`ModifySpellCost(castUsing = Keyword.DASH)`, Warbringer), and derived into the keyword set of
+     * every card with dash, so a filter can ask for "a card with dash".
+     */
+    DASH("Dash"),
     /** Mutate (CR 702.140) — see [com.wingedsheep.sdk.scripting.KeywordAbility.Mutate]. */
     MUTATE("Mutate"),
     /** Prototype (CR 702.160) — see [com.wingedsheep.sdk.scripting.KeywordAbility.Prototype]. */
@@ -539,6 +563,20 @@ enum class Keyword(val displayName: String) {
     OVERLOAD("Overload"),
 
     /**
+     * Awaken N—[cost] (CR 702.113, Battle for Zendikar). On instants and sorceries: "You may pay
+     * [cost] rather than pay this spell's mana cost as you cast this spell" and "If this spell's
+     * awaken cost was paid, put N +1/+1 counters on target land you control. That land becomes a
+     * 0/0 Elemental creature with haste. It's still a land." (CR 702.113a). The land target exists
+     * only when the awaken cost is paid (CR 702.113b).
+     *
+     * Modelled as an alternative cost ([com.wingedsheep.sdk.scripting.KeywordAbility.Awaken]) whose
+     * paid branch *appends* the awaken spell ability — its land target after the spell's own targets
+     * and its effect after the spell's own effect — so the card author writes only the printed spell.
+     * Surfaced as a keyword so "card with awaken" filters (Halimar Tidecaller) can read it.
+     */
+    AWAKEN("Awaken"),
+
+    /**
      * Daybound (CR 702.145, Innistrad: Midnight Hunt / Crimson Vow). Found on the **front** faces of
      * some transforming double-faced cards; represents three static abilities: "If it is night and
      * this permanent is represented by a transforming double-faced card, it enters transformed"; "As
@@ -619,6 +657,20 @@ enum class Keyword(val displayName: String) {
     EMBALM("Embalm"),
 
     /**
+     * Eternalize [cost] (CR 702.129, Hour of Devastation).
+     * "[Cost], Exile this card from your graveyard: Create a token that's a copy of it, except
+     * it's black, it's 4/4, it has no mana cost, and it's a Zombie in addition to its other types.
+     * Activate only as a sorcery."
+     *
+     * The 4/4 black sibling of [EMBALM], composed the same way by the `eternalize(cost)` helper on
+     * [com.wingedsheep.sdk.dsl.CardBuilder] (`eternalizeAbility(cost)`). The keyword is
+     * display-only on the card; the activated ability carries it as its
+     * [com.wingedsheep.sdk.scripting.ActivatedAbility.keyword] so "whenever you activate an
+     * eternalize ability" (Vizier of the Anointed) can name it.
+     */
+    ETERNALIZE("Eternalize"),
+
+    /**
      * Unearth [cost] (CR 702.84, Shards of Alara). "[Cost]: Return this card from your graveyard
      * to the battlefield. It gains haste. Exile it at the beginning of the next end step. If it
      * would leave the battlefield, exile it instead of putting it anywhere else. Activate only as
@@ -630,6 +682,19 @@ enum class Keyword(val displayName: String) {
      * [com.wingedsheep.sdk.dsl.CardBuilder]; the keyword itself is display-only.
      */
     UNEARTH("Unearth"),
+
+    /**
+     * Encore [cost] (CR 702.141, Commander Legends). "[Cost], Exile this card from your graveyard:
+     * For each opponent, create a token that's a copy of this card that attacks that opponent this
+     * turn if able. The tokens gain haste. Sacrifice them at the beginning of the next end step.
+     * Activate only as a sorcery."
+     *
+     * Like [EMBALM], a graveyard-activated ability composed of existing primitives — a per-opponent
+     * token copy, a permanent haste grant, a player-directed must-attack mark and a delayed
+     * sacrifice. Wired in one call via the `encore(cost)` helper on
+     * [com.wingedsheep.sdk.dsl.CardBuilder]; the keyword itself is display-only.
+     */
+    ENCORE("Encore"),
 
     /**
      * Ascend (Ixalan, CR 702.131). On a permanent spell, means "When this permanent
@@ -802,6 +867,13 @@ enum class Keyword(val displayName: String) {
 
     // ── Damage modification ──────────────────────────────
     WITHER("Wither"),
+    /**
+     * Infect (CR 702.90): damage this source deals to a player gives that player that many poison
+     * counters instead of causing life loss (CR 120.3b); damage to a creature is dealt as -1/-1
+     * counters, exactly as with [WITHER] (CR 120.3d). Works from any zone (a spell with infect),
+     * and multiple instances are redundant.
+     */
+    INFECT("Infect"),
     TOXIC("Toxic"),
 
     // ── Numeric (parameterized by N) ──────────────────────
@@ -817,10 +889,29 @@ enum class Keyword(val displayName: String) {
     VANISHING("Vanishing"),
 
     /**
+     * Sunburst (CR 702.44). "If this object is entering the battlefield from the stack as a
+     * creature, it enters with a +1/+1 counter on it for each color of mana spent to cast it.
+     * Otherwise, it enters with a charge counter on it for each color of mana spent to cast it."
+     *
+     * A bare keyword with no DSL helper: the engine synthesizes the entry counters on the
+     * stack-resolution path only (CR 702.44a, "from the stack"), counting
+     * [com.wingedsheep.sdk.scripting.values.DynamicAmount.DistinctColorsManaSpent] and choosing the
+     * counter kind from the object's characteristics as it would exist on the battlefield
+     * (CR 614.12) — so an artifact March of the Machines animates enters with +1/+1 counters.
+     */
+    SUNBURST("Sunburst"),
+
+    /**
      * Cumulative upkeep [cost] (CR 702.24). Display-only; the `cumulativeUpkeep(cost)` DSL helper
      * composes the upkeep trigger (age counter, then pay the cost per age counter or sacrifice).
      */
     CUMULATIVE_UPKEEP("Cumulative upkeep"),
+
+    /**
+     * Echo [cost] (CR 702.30). Display-only; the `echo(cost)` DSL helper composes the upkeep trigger
+     * (if it came under your control since your last upkeep, sacrifice it unless you pay the cost).
+     */
+    ECHO("Echo"),
 
     /**
      * Soulshift N (CR 702.46). Display-only; the `soulshift(n)` DSL helper composes the optional
@@ -836,8 +927,8 @@ enum class Keyword(val displayName: String) {
      *
      * The exile-side behavior is component-driven, not definition-driven: any exiled card
      * carrying the engine's suspended marker (set by [com.wingedsheep.sdk.dsl.Effects.Suspend]
-     * or by the printed-suspend special action) gets the synthesized countdown-and-cast
-     * triggered ability ([com.wingedsheep.sdk.scripting.Suspend.countdownAbility]). This
+     * or by the printed-suspend special action) gets the synthesized countdown and
+     * last-counter cast triggered abilities ([com.wingedsheep.sdk.scripting.Suspend.exileAbilities]). This
      * lets "exile it with N time counters; it gains suspend" effects (Taigam, Master
      * Opportunist) suspend an arbitrary card — even a card with no printed suspend — while a
      * printed "Suspend N—[cost]" (`KeywordAbility.Suspend`) drives the from-hand special
@@ -991,6 +1082,16 @@ enum class Keyword(val displayName: String) {
     REBOUND("Rebound"),
 
     /**
+     * Cipher (CR 702.99). A spell ability plus a static ability: as the spell resolves, just after
+     * its other effects, its controller may exile the card encoded on a creature they control; for
+     * as long as it stays encoded, that creature has "Whenever this creature deals combat damage to
+     * a player, you may copy the encoded card and you may cast the copy without paying its mana
+     * cost." Read by the spell-resolution path (`NonPermanentSpellResolver`), which appends
+     * [com.wingedsheep.sdk.scripting.Cipher.encodeStep] to a resolving cipher card's effect.
+     */
+    CIPHER("Cipher"),
+
+    /**
      * Teamwork N (CR 702.194, Marvel Super Heroes). A static ability that functions while the
      * spell is on the stack: "As an additional cost to cast this spell, you may tap any number of
      * creatures you control with total power N or more" (CR 702.194a). A spell whose controller
@@ -1009,7 +1110,23 @@ enum class Keyword(val displayName: String) {
      * Tapping creatures this way is a *cost*, not the `{T}` symbol, so summoning sickness
      * (CR 302.6) never applies — only CR 701.26a's "only untapped permanents can be tapped".
      */
-    TEAMWORK("Teamwork");
+    TEAMWORK("Teamwork"),
+
+    /**
+     * Entwine [cost] (CR 702.42, Mirrodin). A static ability of modal spells that functions while
+     * the spell is on the stack: "You may choose all modes of this spell instead of just the
+     * number specified. If you do, you pay an additional [cost]" (CR 702.42a).
+     *
+     * Modelled as an optional additional cost on the shared cast-time rail:
+     * [com.wingedsheep.sdk.scripting.KeywordAbility.OptionalAdditionalCost] with
+     * `declaredSlot = `[com.wingedsheep.sdk.scripting.ChoiceSlot.ENTWINED], so "entwined" is a
+     * *different* fact from "kicked". The cost is paid **once** however many modes the spell
+     * has, which is what separates it from escalate's per-extra-mode cost. Wired by the
+     * `entwine(cost)` DSL helper on [com.wingedsheep.sdk.dsl.CardBuilder], paired with
+     * `entwineModal { }` on the spell; the mode count branches on
+     * [com.wingedsheep.sdk.dsl.Conditions.WasEntwined].
+     */
+    ENTWINE("Entwine");
 
     companion object {
         /** The landwalk family (CR 702.14): every keyword that makes a creature unblockable

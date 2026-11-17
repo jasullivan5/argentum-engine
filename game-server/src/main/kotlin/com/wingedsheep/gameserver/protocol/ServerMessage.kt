@@ -160,6 +160,18 @@ sealed interface ServerMessage {
         val stateVersion: Long = 0,
         /** Originating live timeline for browser and asynchronous AI action submissions. */
         val interactionEpoch: String? = null,
+        /**
+         * The only legal answer to [pendingDecision], when it has exactly one (see
+         * `ForcedDecisionAutoAnswer`). The client may submit it unchanged instead of asking the
+         * player. Browser seats only; null whenever the question is a real choice.
+         */
+        val autoAnswer: com.wingedsheep.engine.core.DecisionResponse? = null,
+        /**
+         * True when everyone at the table can already see that [pendingDecision] has only
+         * [autoAnswer] (`ForcedDecisionAutoAnswer.isPublic`), so answering it at once gives
+         * nothing away. False whenever that is unknown, or could depend on a hidden card.
+         */
+        val autoAnswerPublic: Boolean = false,
     ) : ServerMessage
 
     /**
@@ -188,6 +200,18 @@ sealed interface ServerMessage {
         val stateVersion: Long = 0,
         /** Originating live timeline for browser and asynchronous AI action submissions. */
         val interactionEpoch: String? = null,
+        /**
+         * The only legal answer to [pendingDecision], when it has exactly one (see
+         * `ForcedDecisionAutoAnswer`). The client may submit it unchanged instead of asking the
+         * player. Browser seats only; null whenever the question is a real choice.
+         */
+        val autoAnswer: com.wingedsheep.engine.core.DecisionResponse? = null,
+        /**
+         * True when everyone at the table can already see that [pendingDecision] has only
+         * [autoAnswer] (`ForcedDecisionAutoAnswer.isPublic`), so answering it at once gives
+         * nothing away. False whenever that is unknown, or could depend on a hidden card.
+         */
+        val autoAnswerPublic: Boolean = false,
     ) : ServerMessage
 
     /**
@@ -440,6 +464,11 @@ sealed interface ServerMessage {
          * the deckbuilder's usual 4-of cap), so adding a card must not consume it from the pool.
          */
         val poolPlay: Boolean = false,
+        /**
+         * Per-card copy cap for the deck (basic lands exempt), or null when the pool's own copy
+         * count is the only limit — Limited's default. Always set under [poolPlay].
+         */
+        val maxCopiesPerCard: Int? = null,
     ) : ServerMessage
 
     /**
@@ -535,7 +564,12 @@ sealed interface ServerMessage {
         val maxPlayers: Int,
         val pickTimeSeconds: Int = 45,      // Draft only
         val picksPerRound: Int = 1,         // Draft only: 1 or 2 (Pick 2 mode)
+        /** How many times each pair meets in the round-robin — each meeting its own match. */
         val gamesPerMatch: Int = 1,
+        /** Games per match: 1, or 3 for a best-of-three (first to two game wins). */
+        val bestOf: Int = 1,
+        /** Whether players may change their deck between the games of a best-of-three. */
+        val allowsSideboarding: Boolean = true,
         val isPublic: Boolean = false,
         /** Optional deck-construction format (Standard/Modern/Commander/...). Null = no restriction. */
         val deckFormat: String? = null,
@@ -549,6 +583,11 @@ sealed interface ServerMessage {
         val deckSizeMin: Int = 60,
         /** Commander Draft/Sealed only — when true, drafted/sealed decks may include duplicates. */
         val allowDuplicates: Boolean = true,
+        /**
+         * Limited pools only — when true, decks are capped at 4 copies of any non-basic card; when
+         * false (the default), every copy in the pool is playable. Pool Play always caps.
+         */
+        val limitedCopyLimit: Boolean = false,
         /** Commander Draft/Sealed only — "BRAWL" (25 life / 16 cmdr damage) or "COMMANDER" (30/21). */
         val commanderPreset: String = "BRAWL",
         /** When true, each booster mixes cards from the union of all selected sets. */
@@ -659,7 +698,8 @@ sealed interface ServerMessage {
         val passDirection: String,     // "LEFT" or "RIGHT"
         val picksPerRound: Int = 1,    // Cards to pick this round (1 or 2)
         val pickedCards: List<SealedCardInfo> = emptyList(),  // Cards already picked (for reconnect)
-        val queuedPacks: Int = 0       // Number of additional packs queued behind this one
+        val queuedPacks: Int = 0,      // Number of additional packs queued behind this one
+        val podSize: Int = 0           // Drafters at the table (0 = unknown)
     ) : ServerMessage
 
     /**
@@ -815,7 +855,10 @@ sealed interface ServerMessage {
         val isBye: Boolean = false,
         /** True when the result was simulated rather than played — an AI-vs-AI match on a server that
          *  has `game.tournament.simulate-ai-matches` on. Such a match has no replay to open. */
-        val isSimulated: Boolean = false
+        val isSimulated: Boolean = false,
+        /** Game wins in this match — 1–0 for a single game, up to 2 in a best-of-three. */
+        val player1GameWins: Int = 0,
+        val player2GameWins: Int = 0,
     )
 
     /**
@@ -842,7 +885,57 @@ sealed interface ServerMessage {
         val lobbyId: String,
         val round: Int,
         val gameSessionId: String,
-        val opponentName: String
+        val opponentName: String,
+        /** Which game of the match this is (1-based). */
+        val gameNumber: Int = 1,
+        /** Games per match — 1, or 3 for a best-of-three. */
+        val bestOf: Int = 1,
+        /** Match score going into this game, from this player's seat. */
+        val yourGameWins: Int = 0,
+        val opponentGameWins: Int = 0,
+    ) : ServerMessage
+
+    /**
+     * A best-of-three match is between two of its games. Sent to each seat when a game ends without
+     * deciding the match, again whenever either seat's sideboarding state changes, and on reconnect —
+     * always the whole picture, so the client replaces rather than merges.
+     *
+     * The seat changes its deck for the rest of the match with `submitMatchDeck` (which also readies
+     * it), and the next game starts once both seats are ready.
+     */
+    @Serializable
+    @SerialName("betweenGames")
+    data class BetweenGames(
+        val lobbyId: String,
+        val round: Int,
+        val opponentName: String,
+        val bestOf: Int,
+        /** The game about to be played (2 or 3). */
+        val nextGameNumber: Int,
+        val yourGameWins: Int,
+        val opponentGameWins: Int,
+        val drawnGames: Int = 0,
+        /** The game that just ended, from this seat: "WIN", "LOSS" or "DRAW". */
+        val lastGameResult: String,
+        /** Whether this format lets the deck change between games; false shows a plain "next game" step. */
+        val canSideboard: Boolean,
+        /** The deck for the next game — the registered deck until this seat sideboards. */
+        val deck: Map<String, Int>,
+        /** What the seat could bring in: pool − deck in Limited, the brought sideboard otherwise. */
+        val sideboard: Map<String, Int>,
+        /** The deck registered for the tournament — what "Reset" returns to. */
+        val registeredDeck: Map<String, Int>,
+        /** Card details for every name in [deck], [sideboard] and [registeredDeck]. */
+        val cards: List<SealedCardInfo>,
+        /** Basic lands the seat may add freely (Limited); empty when basics come from the sideboard. */
+        val basicLands: List<SealedCardInfo> = emptyList(),
+        val minDeckSize: Int = 40,
+        /** True when this seat lost the last game and so picks who takes the first turn (CR 103.1). */
+        val youChoosePlayDraw: Boolean,
+        /** Once the chooser has decided: "YOU" or "OPPONENT" take the first turn; null until then. */
+        val startingPlayer: String? = null,
+        val youAreReady: Boolean,
+        val opponentReady: Boolean,
     ) : ServerMessage
 
     /**

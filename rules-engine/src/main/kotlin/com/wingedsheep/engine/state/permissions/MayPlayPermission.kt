@@ -28,13 +28,14 @@ import kotlinx.serialization.Serializable
  * @param condition Optional gate re-evaluated on every query. When present, the permission is
  *   only honored while the condition holds.
  * @param withAnyManaType If true, mana of any type can be spent to cast (Taster of Wares).
- * @param colorlessAsAnyColor If true, colorless mana may be spent as though it were mana of any
- *   color to cast (Abstruse Appropriation) — read into
- *   [com.wingedsheep.engine.mechanics.mana.SpellPaymentContext.colorlessAsAnyColor].
- * @param landEntersTapped If true, a land card played via this permission enters the battlefield
- *   tapped. Used by Lightstall Inquisitor-style exile-from-hand effects whose "lands played
- *   this way enter tapped" clause must be enforced on top of the played card's intrinsic ETB
- *   state, independent of the card's own script.
+ * @param spendAsAnyColor Which mana may be spent as though it were mana of any color to cast —
+ *   colorless (Abstruse Appropriation) or mana from snow sources (Draugr Necromancer); read into
+ *   [com.wingedsheep.engine.mechanics.mana.SpellPaymentContext.spendAsAnyColor].
+ * @param entersTapped Which cards played via this permission enter the battlefield tapped — a
+ *   land played or a permanent spell cast through it, when the card matches (Lightstall
+ *   Inquisitor's "each land played this way enters tapped", Kaldring, the Rimestaff's "if you do,
+ *   it enters tapped"). Enforced on top of the played card's own entry, independent of its script;
+ *   read through [mayPlayEntersTappedRiders] and matched against the permanent as it enters.
  * @param permanent If true, the permission is not auto-removed at end of turn cleanup. Permanent
  *   permissions are removed explicitly (e.g., when their card resolves). Non-permanent grants
  *   expire via [expiresAfterTurn].
@@ -53,7 +54,7 @@ data class MayPlayPermission(
     val withAnyManaType: Boolean = false,
     /** "Spend mana as though it were mana of any color" — colored pips relaxed, `{C}` kept (CR 609.4b). */
     val withAnyManaColor: Boolean = false,
-    val colorlessAsAnyColor: Boolean = false,
+    val spendAsAnyColor: com.wingedsheep.sdk.scripting.effects.ManaSpentAsAnyColor? = null,
     /**
      * If true, cards played via this permission may be cast at instant speed — "as though they
      * had flash" (CR 702.8) — even if they are sorceries, creatures, or other non-instant cards.
@@ -62,7 +63,7 @@ data class MayPlayPermission(
      * flash" (Azula, Cunning Usurper). Does not waive any cost.
      */
     val asThoughFlash: Boolean = false,
-    val landEntersTapped: Boolean = false,
+    val entersTapped: com.wingedsheep.sdk.scripting.GameObjectFilter? = null,
     val permanent: Boolean = false,
     val expiresAfterTurn: Int? = null,
     /**
@@ -170,6 +171,16 @@ data class MayPlayPermission(
      */
     val castFaceIndex: Int? = null,
     /**
+     * When true, this permission authorizes only the card's **primary** characteristics — none of
+     * its alternative faces. A permission without [castFaceIndex] otherwise covers every face the
+     * card can be cast as: "you may cast that card" lets an Adventurer card be cast as its Adventure
+     * (CR 715.3) and a modal double-faced card as either face (CR 712.11b). The exception is the
+     * Adventure's own exile — "may cast the creature later from exile" (CR 715.3d) — which grants
+     * the creature half alone. Read through [authorizesFace] / [authorizesModalBack].
+     */
+    @kotlinx.serialization.EncodeDefault(kotlinx.serialization.EncodeDefault.Mode.NEVER)
+    val primaryFaceOnly: Boolean = false,
+    /**
      * When set, this permission authorizes casting only spells of this **color** — the color is
      * checked against the characteristics of the face actually being cast, not the card sitting in
      * exile. Mirrors
@@ -187,6 +198,13 @@ data class MayPlayPermission(
      * (Meeting of the Five).
      */
     val castColorCount: Int? = null,
+    /**
+     * When set, this permission authorizes casting only spells with at least one of these card
+     * types, checked against the face being cast like [castColorRestriction]. Mirrors
+     * [com.wingedsheep.sdk.scripting.effects.GrantMayPlayFromExileEffect.castSpellTypes]
+     * ("you may cast it if it's a creature spell" — Vivien, Champion of the Wilds).
+     */
+    val castSpellTypes: Set<com.wingedsheep.sdk.core.CardType>? = null,
     /**
      * When true, a cast authorized by this permission puts the card on the stack **transformed** —
      * back face up (CR 712.8c), so the back face supplies the spell's characteristics, targets, and
@@ -236,13 +254,40 @@ data class MayPlayPermission(
     val timestamp: Long
 ) {
     /**
-     * Whether this permission's spell-color riders ([castColorRestriction], [castColorCount])
-     * allow casting a face whose colors are [castColors]. Both the from-zone enumerator and the
-     * authoritative cast validator ask this, with the colors of the face actually being cast.
+     * Whether this permission's spell riders ([castColorRestriction], [castColorCount],
+     * [castSpellTypes]) allow casting a face whose colors are [castColors] and whose card types are
+     * [castTypes]. The from-zone enumerator, the authoritative cast validator and the cast-zone
+     * resolver all ask this, with the characteristics of the face actually being cast.
      */
-    fun authorizesSpellColors(castColors: Set<com.wingedsheep.sdk.core.Color>): Boolean =
+    fun authorizesSpell(
+        castColors: Set<com.wingedsheep.sdk.core.Color>,
+        castTypes: Set<com.wingedsheep.sdk.core.CardType>,
+    ): Boolean =
         (castColorRestriction == null || castColorRestriction in castColors) &&
-            (castColorCount == null || castColors.size == castColorCount)
+            (castColorCount == null || castColors.size == castColorCount) &&
+            (castSpellTypes == null || castSpellTypes.any { it in castTypes })
+
+    /**
+     * Whether this permission lets its holder cast [cardDef] as `cardFaces[faceIndex]` (null: the
+     * primary characteristics). [castFaceIndex] pins one face; [primaryFaceOnly] and a
+     * [castTransformed] grant (whose cast face is the back, chosen elsewhere) pin the primary;
+     * otherwise every face the card can be cast as is covered (CR 712.11b / 715.3) —
+     * [com.wingedsheep.engine.mechanics.AlternativeFaceCasts.spellFaceIndices].
+     */
+    fun authorizesFace(faceIndex: Int?, cardDef: com.wingedsheep.sdk.model.CardDefinition?): Boolean = when {
+        castFaceIndex != null -> faceIndex == castFaceIndex
+        primaryFaceOnly || castTransformed -> faceIndex == null
+        else -> faceIndex == null ||
+            faceIndex in com.wingedsheep.engine.mechanics.AlternativeFaceCasts.spellFaceIndices(cardDef)
+    }
+
+    /**
+     * Whether this permission lets its holder cast a modal double-faced card as its permanent back
+     * face (CR 712.11b) — the back lives in `CardDefinition.backFace`, not `cardFaces`, so it is
+     * asked apart from [authorizesFace].
+     */
+    val authorizesModalBack: Boolean
+        get() = castFaceIndex == null && !primaryFaceOnly && !castTransformed && !castFaceDown
 
     init {
         // gateOpen falls back sourceId ?: cardId when building the EffectContext, which would

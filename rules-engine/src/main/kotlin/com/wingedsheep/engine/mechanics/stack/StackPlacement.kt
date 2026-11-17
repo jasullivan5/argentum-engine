@@ -14,6 +14,7 @@ import com.wingedsheep.engine.state.nameVisibleToAll
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.ChoiceSlot
 import com.wingedsheep.sdk.scripting.targets.*
+import com.wingedsheep.sdk.scripting.OnceOnlyAbilityKind
 
 /**
  * Puts the non-cast stack objects on the stack — a copy of a spell (CR 707.10), a triggered
@@ -155,7 +156,7 @@ internal object StackPlacement {
         // Clone cast-time state; per 707.10 the copy inherits every decision made for
         // the original. The data-class copy preserves: xValue, declaredCostSlot (bar a granted offspring), wasBlightPaid,
         // wasWarped, wasEvoked, sacrificedPermanents (snapshots of P/T + subtypes), damageDistribution,
-        // chosenCreatureType, exiledCardCount, beheldCards, convokedCreatures (CR 707.10: an
+        // chosenCreatureType, exiledCardCount, beheldCards, convokedCreatures, tappedPermanents (CR 707.10: an
         // effect of the copy that refers to objects used to pay its costs uses the original's).
         // castFromZone is cleared: a copy isn't cast (707.10), so it wasn't cast from any zone —
         // "if this spell was cast from a graveyard" is false for it (Sevinne's Reclamation ruling).
@@ -171,6 +172,19 @@ internal object StackPlacement {
             // copiable values (CR 707.2), so the uncast copy has no offspring to have paid.
             declaredCostSlot = sourceSpell.declaredCostSlot.takeUnless { it == ChoiceSlot.OFFSPRING },
             entryKeywordGrants = emptyList(),
+            // Counters owed to the original aren't copied either (CR 707.2) — neither a cast
+            // trigger's nor Chorus of the Conclave's bought ones: a copy isn't cast (CR 707.10).
+            additionalEntryCounters = emptyList(),
+            // "As you cast this spell" captures (CR 601.2i) describe the cast, and a copy wasn't
+            // cast (CR 707.10): the DTK Dragon-bonus ruling — "the copy wasn't cast, so whether you
+            // controlled a Dragon won't matter" — so a copy reads them as absent (0). The one
+            // exception is the pool of a division announced at cast (Monstrous Onslaught's "X
+            // damage divided …"): the division is a decision the copy inherits, and so is what it
+            // divides.
+            castTimeValues = if (sourceSpell.castTimeValues.isEmpty()) emptyMap() else {
+                val pool = com.wingedsheep.engine.handlers.effects.AnnouncedDivision.poolCaptures(sourceCard.spellEffect)
+                sourceSpell.castTimeValues.filterKeys { it in pool }
+            },
             manaSpentWhite = 0,
             manaSpentBlue = 0,
             manaSpentBlack = 0,
@@ -204,7 +218,7 @@ internal object StackPlacement {
                         is ChosenTarget.Spell -> t.spellEntityId
                         is ChosenTarget.Card -> t.cardId
                     }
-                    sourceSpell.damageDistribution?.get(id(old))?.let { amount -> put(id(new), (get(id(new)) ?: 0) + amount) }
+                    sourceSpell.damageDistribution[id(old)]?.let { amount -> put(id(new), (get(id(new)) ?: 0) + amount) }
                 }
             }
         )
@@ -287,10 +301,12 @@ internal object StackPlacement {
         targetRequirements: List<TargetRequirement> = emptyList(),
         emitActivationEvent: Boolean = true,
         costsTap: Boolean = false,
-        isExhaust: Boolean = false,
+        onceOnlyKind: OnceOnlyAbilityKind? = null,
         cantBeCopied: Boolean = false,
         isLoyalty: Boolean = false,
         loyaltyCountersRemoved: Int = 0,
+        sourceLastKnown: com.wingedsheep.engine.state.components.stack.EntitySnapshot? = null,
+        sourceZone: com.wingedsheep.sdk.core.Zone? = null,
     ): ExecutionResult {
         val (abilityId, stateWithId) = state.newEntity()
 
@@ -323,10 +339,12 @@ internal object StackPlacement {
                     abilityEntityId = abilityId,
                     costsTap = costsTap,
                     isManaAbility = false,
-                    isExhaust = isExhaust,
+                    onceOnlyKind = onceOnlyKind,
                     isLoyalty = isLoyalty,
                     loyaltyCountersRemoved = loyaltyCountersRemoved,
                     keyword = ability.activatedAbility?.keyword,
+                    sourceLastKnown = sourceLastKnown,
+                    sourceZone = sourceZone,
                 )
             )
         }

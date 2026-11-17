@@ -22,6 +22,9 @@ import kotlin.random.Random
  * A candidate qualifies when it is built from the human's sets ([MIN_COVERAGE] of its non-basics
  * printed there), isn't the human's own deck in disguise ([MAX_OVERLAP]), has the shape the lobby
  * plays (a commander exactly when the game uses commanders), and passes the lobby's format.
+ *
+ * A constructed deck spread over many sets has no set identity to match, so the resolver matches
+ * it by format instead ([matchFormat]) and generates the opponent — no starter is offered there.
  */
 @Component
 class PremadeOpponentPicker(
@@ -55,6 +58,38 @@ class PremadeOpponentPicker(
             }
     }
 
+    /**
+     * The format to build an opponent for [deck] in, or null when none applies.
+     *
+     * In order: the format the deck [declared] it was built for (checked legal when it was
+     * submitted), when the lobby admits it; else the lobby's own [lobbyFormat] — narrowed, on the
+     * Standard-to-Vintage ladder, to the smallest step the deck is legal in, so a Standard deck in
+     * a Modern lobby meets a Standard deck; else, with no lobby restriction, the narrowest step of
+     * that ladder the deck is legal in. Commander-shaped formats never apply — a commander game
+     * builds its own deck.
+     */
+    fun matchFormat(deck: Map<String, Int>, declared: DeckFormat?, lobbyFormat: DeckFormat?): DeckFormat? {
+        if (declared != null && !declared.isCommanderShape && admits(lobbyFormat, declared)) return declared
+        return when {
+            lobbyFormat == null -> narrowestLegal(deck, NESTED_FORMATS)
+            lobbyFormat in NESTED_FORMATS ->
+                narrowestLegal(deck, NESTED_FORMATS.subList(0, NESTED_FORMATS.indexOf(lobbyFormat) + 1))
+            lobbyFormat.isCommanderShape -> null
+            else -> lobbyFormat
+        }
+    }
+
+    private fun narrowestLegal(deck: Map<String, Int>, formats: List<DeckFormat>): DeckFormat? =
+        formats.firstOrNull { deckValidator.validate(deck, it).valid }
+
+    /** Whether a lobby restricted to [lobbyFormat] accepts a deck built for [format]. */
+    private fun admits(lobbyFormat: DeckFormat?, format: DeckFormat): Boolean = when {
+        lobbyFormat == null || lobbyFormat == format -> true
+        lobbyFormat in NESTED_FORMATS && format in NESTED_FORMATS ->
+            NESTED_FORMATS.indexOf(format) <= NESTED_FORMATS.indexOf(lobbyFormat)
+        else -> false
+    }
+
     private fun isLegal(starter: DecksController.ExampleDeckDTO, format: DeckFormat): Boolean =
         if (starter.commander != null) {
             val library = DeckRequestConverter.stripCommanders(starter.cards, listOf(starter.commander))
@@ -76,5 +111,14 @@ class PremadeOpponentPicker(
         const val MIN_COVERAGE = 0.9
         /** Past this, the "sibling" is the human's own starter (or a light edit of it). */
         const val MAX_OVERLAP = 0.5
+
+        /** The formats whose card pools nest, smallest first; see [matchFormat]. */
+        val NESTED_FORMATS = listOf(
+            DeckFormat.STANDARD,
+            DeckFormat.PIONEER,
+            DeckFormat.MODERN,
+            DeckFormat.LEGACY,
+            DeckFormat.VINTAGE,
+        )
     }
 }

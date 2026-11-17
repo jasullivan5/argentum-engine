@@ -4,9 +4,13 @@ import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.event.GrantedReplacementEffect
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
+import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
+import com.wingedsheep.engine.state.components.identity.captureCopiableSnapshot
+import com.wingedsheep.sdk.scripting.EntersAsCopy
+import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.effects.GrantReplacementEffectEffect
 import kotlin.reflect.KClass
 
@@ -19,8 +23,15 @@ import kotlin.reflect.KClass
  * ([com.wingedsheep.engine.handlers.effects.ZoneMovementUtils.checkZoneChangeRedirect]) consults
  * granted [com.wingedsheep.sdk.scripting.RedirectZoneChange] entries alongside permanents'
  * printed replacement effects. Mirrors [GrantStaticAbilityExecutor].
+ *
+ * A granted [EntersAsCopy] whose [EntersAsCopy.copyOf] names this resolution's object (Mystic
+ * Reflection's "the chosen creature") is bound here: the reference becomes the
+ * [EffectTarget.SpecificEntity] it resolved to, and that object's copiable values are captured on the
+ * grant as its last-known information (see [GrantedReplacementEffect.referenceSnapshot]).
  */
-class GrantReplacementEffectExecutor : EffectExecutor<GrantReplacementEffectEffect> {
+class GrantReplacementEffectExecutor(
+    private val cardRegistry: CardRegistry,
+) : EffectExecutor<GrantReplacementEffectEffect> {
 
     override val effectType: KClass<GrantReplacementEffectEffect> =
         GrantReplacementEffectEffect::class
@@ -30,13 +41,25 @@ class GrantReplacementEffectExecutor : EffectExecutor<GrantReplacementEffectEffe
         effect: GrantReplacementEffectEffect,
         context: EffectContext
     ): EffectResult {
+        // A floating rider granted by its own source ("when this creature enters, each token that
+        // would be created under an opponent's control this turn is created under your control
+        // instead" — Crafty Cutpurse) doesn't need the source to still exist: it is read through its
+        // controllerId + filter alone, so a source that died in response (a new object, CR 400.7,
+        // or a token that ceased to exist) still leaves the rider in force. Only a self-scoped grant
+        // is an ability of the object itself and lapses with it.
+        val floatingFromSource = effect.target == EffectTarget.Self &&
+            (effect.replacement as? com.wingedsheep.sdk.scripting.RedirectZoneChange)?.selfOnly != true
         val targetId = context.resolveTarget(effect.target)
+            ?: context.sourceId?.takeIf { floatingFromSource }
             ?: return EffectResult.error(state, "No valid target for replacement effect grant")
 
         val targetContainer = state.getEntity(targetId)
-            ?: return EffectResult.error(state, "Target no longer exists")
-        targetContainer.get<CardComponent>()
-            ?: return EffectResult.error(state, "Target is not a card")
+        if (targetContainer == null && !floatingFromSource) {
+            return EffectResult.error(state, "Target no longer exists")
+        }
+        if (targetContainer != null && targetContainer.get<CardComponent>() == null) {
+            return EffectResult.error(state, "Target is not a card")
+        }
 
         val onBattlefield = state.getBattlefield().contains(targetId)
         // A resolving instant/sorcery (its `EffectTarget.Self` is the spell on the stack, not a
@@ -53,16 +76,27 @@ class GrantReplacementEffectExecutor : EffectExecutor<GrantReplacementEffectEffe
 
         val controllerId = if (onBattlefield) {
             state.projectedState.getController(targetId)
-                ?: targetContainer.get<ControllerComponent>()?.playerId ?: context.controllerId
+                ?: targetContainer?.get<ControllerComponent>()?.playerId ?: context.controllerId
         } else {
             context.controllerId
+        }
+
+        var replacement = effect.replacement
+        var referenceSnapshot: com.wingedsheep.engine.state.components.stack.EntitySnapshot? = null
+        val copyOf = (replacement as? EntersAsCopy)?.copyOf
+        if (copyOf != null && copyOf !is EffectTarget.SpecificEntity) {
+            val referenceId = context.resolveTarget(copyOf)
+                ?: return EffectResult.error(state, "No object for the granted copy effect to copy")
+            replacement = (replacement as EntersAsCopy).copy(copyOf = EffectTarget.SpecificEntity(referenceId))
+            referenceSnapshot = captureCopiableSnapshot(state, referenceId, cardRegistry)
         }
 
         val grant = GrantedReplacementEffect(
             entityId = targetId,
             controllerId = controllerId,
-            replacement = effect.replacement,
-            duration = effect.duration
+            replacement = replacement,
+            duration = effect.duration,
+            referenceSnapshot = referenceSnapshot,
         )
 
         val newState = state.copy(

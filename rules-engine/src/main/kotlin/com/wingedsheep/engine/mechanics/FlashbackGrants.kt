@@ -1,14 +1,14 @@
 package com.wingedsheep.engine.mechanics
 
 import com.wingedsheep.engine.handlers.EffectContext
-import com.wingedsheep.engine.handlers.PredicateContext
 import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.EntityId
-import com.wingedsheep.sdk.scripting.GraveyardCardsHaveFlashback
+import com.wingedsheep.sdk.scripting.GraveyardCardsHaveCastKeyword
+import com.wingedsheep.sdk.scripting.GraveyardCastKeyword
 import com.wingedsheep.sdk.scripting.KeywordAbility
 
 /**
@@ -21,7 +21,7 @@ import com.wingedsheep.sdk.scripting.KeywordAbility
  *     gated by its optional [KeywordAbility.Flashback.condition] when it has one.
  *  2. **Per-entity runtime grant** to a specific card (Archmage's Newt: "target instant or sorcery
  *     card in your graveyard gains flashback until end of turn").
- *  3. **Whole-graveyard group grant** from a battlefield static ([GraveyardCardsHaveFlashback],
+ *  3. **Whole-graveyard group grant** from a battlefield static ([GraveyardCardsHaveCastKeyword],
  *     Iroh, Grand Lotus: "During your turn, each non-Lesson instant and sorcery card in your
  *     graveyard has flashback …"). This source is only consulted when the optional
  *     [controllerId] / [cardRegistry] / [predicateEvaluator] are supplied.
@@ -32,7 +32,7 @@ import com.wingedsheep.sdk.scripting.KeywordAbility
  * The group grant matches on the card's characteristics (type/subtype), which are zone-independent,
  * so it resolves the same whether the card is still in the graveyard (enumeration / cast) or has
  * moved to the stack (exile-on-resolution). It is gated to the controller's turn via
- * [GraveyardCardsHaveFlashback.duringYourTurnOnly]; the card must be cast from the graveyard for
+ * [GraveyardCardsHaveCastKeyword.duringYourTurnOnly]; the card must be cast from the graveyard for
  * the exile-on-resolution clause to fire, so a normal hand cast while the granter is in play is
  * unaffected.
  */
@@ -42,7 +42,7 @@ object FlashbackGrants {
      * The effective flashback ability for [cardId], or null if it has none. A printed flashback
      * on [cardDef] wins; then a per-entity runtime grant (a later grant overrides an earlier one
      * for the same card); then, when [controllerId]/[cardRegistry]/[predicateEvaluator] are given,
-     * a battlefield group grant ([GraveyardCardsHaveFlashback]) controlled by [controllerId].
+     * a battlefield group grant ([GraveyardCardsHaveCastKeyword]) controlled by [controllerId].
      */
     fun effectiveFlashback(
         state: GameState,
@@ -91,10 +91,11 @@ object FlashbackGrants {
     }
 
     /**
-     * Scan [controllerId]'s battlefield for a [GraveyardCardsHaveFlashback] static whose filter
+     * Scan [controllerId]'s battlefield for a [GraveyardCardsHaveCastKeyword] static whose filter
      * matches [cardId] (during their turn, if the grant requires it), synthesizing a
      * [KeywordAbility.Flashback] carrying the granted cost — the grant's fixed [cost], or the
-     * card's own mana cost when the grant leaves it null ("equal to that card's mana cost").
+     * card's own mana cost when the grant leaves it null ("equal to that card's mana cost"). The
+     * scan itself is [GraveyardCastGrants].
      */
     private fun groupGrantFlashback(
         state: GameState,
@@ -104,20 +105,9 @@ object FlashbackGrants {
         predicateEvaluator: PredicateEvaluator,
     ): KeywordAbility.Flashback? {
         val cardComponent = state.getEntity(cardId)?.get<CardComponent>() ?: return null
-        val context = PredicateContext(controllerId = controllerId)
-        // Controlled view (not the ownership-keyed zone map) so the grant follows whoever controls
-        // the granter — CR 109.5: "you" in an ability refers to the object's controller.
-        for (granterId in state.controlledBattlefield(controllerId)) {
-            val def = state.getEntity(granterId)?.get<CardComponent>()
-                ?.let { cardRegistry.getCard(it.cardDefinitionId) } ?: continue
-            for (ability in def.script.staticAbilities) {
-                if (ability !is GraveyardCardsHaveFlashback) continue
-                if (ability.duringYourTurnOnly && !state.isActiveTurnFor(controllerId)) continue
-                if (predicateEvaluator.matches(state, state.projectedState, cardId, ability.filter, context)) {
-                    return KeywordAbility.Flashback(ability.cost ?: cardComponent.manaCost)
-                }
-            }
-        }
-        return null
+        val (_, grant) = GraveyardCastGrants.castKeyword<GraveyardCastKeyword.Flashback>(
+            state, cardId, controllerId, cardRegistry, predicateEvaluator
+        ).firstOrNull() ?: return null
+        return KeywordAbility.Flashback(grant.cost ?: cardComponent.manaCost)
     }
 }

@@ -1,3 +1,92 @@
+// Call the Coppercoats
+{
+    "name": "Call the Coppercoats",
+    "manaCost": "{2}{W}",
+    "typeLine": "Instant",
+    "oracleText": "Strive — This spell costs {1}{W} more to cast for each target beyond the first.\nChoose any number of target opponents. Create X 1/1 white Human Soldier creature tokens, where X is the number of creatures those opponents control.",
+    "script": {
+        "spellEffect": {
+            "type": "CreateToken",
+            "count": {
+                "type": "Count",
+                "player": "EachTargetedPlayer",
+                "zone": "Battlefield",
+                "filter": "creature"
+            },
+            "power": 1,
+            "toughness": 1,
+            "colors": [
+                "WHITE"
+            ],
+            "creatureTypes": [
+                "Human",
+                "Soldier"
+            ],
+            "imageUri": "https://cards.scryfall.io/normal/front/9/0/90de6d1e-e654-4f4a-8014-061ce69e540f.jpg?1783930948"
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetOpponent",
+                "unlimited": true,
+                "id": "t0"
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifySpellCost",
+                "target": "SelfCast",
+                "modification": {
+                    "type": "IncreaseGenericBy",
+                    "source": {
+                        "type": "ChosenTargets",
+                        "beyond": 1
+                    }
+                }
+            },
+            {
+                "type": "ModifySpellCost",
+                "target": "SelfCast",
+                "modification": {
+                    "type": "IncreaseColoredPerUnit",
+                    "symbols": "{W}",
+                    "countSource": {
+                        "type": "ChosenTargets",
+                        "beyond": 1
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "23",
+        "rarity": "RARE",
+        "artist": "Cristi Balanescu",
+        "flavorText": "When the alarm crystals flash, Drannith's finest answer the call.",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/1/e11cb353-d864-4b22-bdaf-1d42c25f0918.jpg?1783931224",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "Any target opponents that are no longer legal targets by the time Call the Coppercoats resolves won't have their creatures counted when determining how many tokens you create."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "You choose how many targets each spell with a strive ability has and what those targets are as you cast it. It's legal to cast such a spell with no targets, although this is rarely a good idea. You can't choose the same target more than once for a single strive spell."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "The mana value of a strive spell doesn't change no matter how many targets it has."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "If a spell or ability allows you to cast a strive spell without paying its mana cost, you must pay the additional cost for any targets beyond the first."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Deadly Rollick
 {
     "name": "Deadly Rollick",
@@ -195,6 +284,66 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Flawless Maneuver
+{
+    "name": "Flawless Maneuver",
+    "manaCost": "{2}{W}",
+    "typeLine": "Instant",
+    "oracleText": "If you control a commander, you may cast this spell without paying its mana cost.\nCreatures you control gain indestructible until end of turn.",
+    "script": {
+        "spellEffect": {
+            "type": "ForEach",
+            "space": {
+                "type": "IterationSpace.Group",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                }
+            },
+            "body": {
+                "type": "GrantKeyword",
+                "keyword": "INDESTRUCTIBLE",
+                "target": "IterationEntity"
+            }
+        },
+        "selfAlternativeCost": {
+            "manaCost": "{0}",
+            "condition": {
+                "type": "Exists",
+                "player": "You",
+                "zone": "Battlefield",
+                "filter": {
+                    "cardPredicates": [
+                        "IsPermanent"
+                    ],
+                    "statePredicates": [
+                        "IsCommander"
+                    ]
+                }
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "26",
+        "rarity": "RARE",
+        "artist": "Zoltan Boros",
+        "flavorText": "\"Captain, your units are the tip of our spear. There is zero room for failure.\"\n—Jirina Kudro",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/9/c972abe6-c732-4745-bde4-8b51698f05be.jpg?1783931225",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "It doesn't matter whose commander you control. Any one will do. If you have two commanders, you just need to control one of them."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "Once you begin casting this spell, players can't take any other actions until you're done casting it. Notably, they can't try to remove the commander you control to make you pay its cost."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }
 
@@ -414,4 +563,309 @@
         "imageUri": "https://cards.scryfall.io/normal/front/c/f/cf559d4e-07a7-4ca4-b76a-d0615222cb60.jpg?1783931205"
     },
     "colorIdentityOverride": []
+}
+
+// Shiny Impetus
+{
+    "name": "Shiny Impetus",
+    "manaCost": "{2}{R}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant creature\nEnchanted creature gets +2/+2 and is goaded. (It attacks each combat if able and attacks a player other than you if able.)\nWhenever enchanted creature attacks, you create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Shiny Impetus:1",
+                "trigger": "AttackEvent",
+                "binding": "ATTACHED",
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure"
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 2,
+                "toughnessBonus": 2
+            },
+            "Goaded"
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "creature"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "55",
+        "rarity": "UNCOMMON",
+        "artist": "Svetlin Velinov",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/a/0aa80931-0501-4712-a11b-563a3cd1e1c9.jpg?1783931212",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "Shiny Impetus causes you to create a Treasure token, not the attacking creature's controller."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Surly Badgersaur
+{
+    "name": "Surly Badgersaur",
+    "manaCost": "{3}{R}",
+    "typeLine": "Creature — Badger Dinosaur",
+    "oracleText": "Whenever you discard a creature card, put a +1/+1 counter on this creature.\nWhenever you discard a land card, create a Treasure token. (It's an artifact with \"{T}, Sacrifice this token: Add one mana of any color.\")\nWhenever you discard a noncreature, nonland card, this creature fights up to one target creature you don't control.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Surly Badgersaur:1",
+                "trigger": {
+                    "type": "DiscardEvent",
+                    "cardFilter": "creature"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                },
+                "descriptionOverride": "Whenever you discard a creature card, put a +1/+1 counter on this creature."
+            },
+            {
+                "id": "Surly Badgersaur:2",
+                "trigger": {
+                    "type": "DiscardEvent",
+                    "cardFilter": "land"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure"
+                },
+                "descriptionOverride": "Whenever you discard a land card, create a Treasure token."
+            },
+            {
+                "id": "Surly Badgersaur:3",
+                "trigger": {
+                    "type": "DiscardEvent",
+                    "cardFilter": "noncreature nonland"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Fight",
+                    "target1": "Self",
+                    "target2": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": {
+                            "cardPredicates": [
+                                "IsCreature"
+                            ],
+                            "controllerPredicate": {
+                                "type": "ControllerNot",
+                                "predicate": "ControlledByYou"
+                            }
+                        }
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "Whenever you discard a noncreature, nonland card, this creature fights up to one target creature you don't control."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "57",
+        "rarity": "RARE",
+        "artist": "Izzy",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/b/7ba507e2-fe5e-4947-aada-20184aa09700.jpg?1783931211",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "Surly Badgersaur's abilities are triggered abilities, not activated abilities. They don't allow you to discard a card whenever you want; rather, you need some other way of discarding a card, such as a cycling ability."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "If you discard a card as a cost to cast a spell or activate an ability, Surly Badgersaur's triggered ability resolves before that spell or ability but after you've chosen targets for it. If you discard a card while a spell or ability is resolving, that spell or ability finishes resolving before Surly Badgersaur's triggered ability does."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "If the target creature is an illegal target when Surly Badgersaur's last ability tries to resolve, the ability doesn't resolve. If it's a legal target but Surly Badgersaur is no longer on the battlefield when the ability resolves, the target creature won't deal or be dealt damage."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Twinning Staff
+{
+    "name": "Twinning Staff",
+    "manaCost": "{3}",
+    "typeLine": "Artifact",
+    "oracleText": "If you would copy a spell one or more times, instead copy it that many times plus an additional time. You may choose new targets for the additional copy.\n{7}, {T}: Copy target instant or sorcery spell you control. You may choose new targets for the copy.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Twinning Staff:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{7}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "CopyTargetSpell",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "instant|sorcery ctrl:you",
+                            "zone": "Stack"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{7}, {T}: Copy target instant or sorcery spell you control. You may choose new targets for the copy.",
+                "holdPriority": true
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "ModifyKeywordActionAmount",
+                "appliesTo": "SpellCopiedEvent",
+                "modifier": 1
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "70",
+        "rarity": "RARE",
+        "artist": "Mike Bierek",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/7/e7971306-700e-4677-bf52-83e4f9ac04c1.jpg?1783931206"
+    }
+}
+
+// Xyris, the Writhing Storm
+{
+    "name": "Xyris, the Writhing Storm",
+    "manaCost": "{2}{G}{U}{R}",
+    "typeLine": "Legendary Creature — Snake Leviathan",
+    "oracleText": "Flying\nWhenever an opponent draws a card except the first one they draw in each of their draw steps, create a 1/1 green Snake creature token.\nWhenever Xyris deals combat damage to a player, you and that player each draw that many cards.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Xyris, the Writhing Storm:1",
+                "trigger": {
+                    "type": "DrawEvent",
+                    "player": "EachOpponent",
+                    "firstInDrawStep": "EXCLUDED"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Snake"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/0/e/0e0f26b2-eaeb-4ea3-8305-1d65d4402d1a.jpg?1783931098"
+                }
+            },
+            {
+                "id": "Xyris, the Writhing Storm:2",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "ContextProperty",
+                                "key": "TRIGGER_DAMAGE_AMOUNT"
+                            }
+                        },
+                        {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "ContextProperty",
+                                "key": "TRIGGER_DAMAGE_AMOUNT"
+                            },
+                            "target": {
+                                "type": "PlayerRef",
+                                "player": "TriggeringPlayer"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "18",
+        "rarity": "MYTHIC",
+        "artist": "Filip Burburan",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/4/447db519-7825-4330-99e7-a2429e1f6b2e.jpg?1783931227",
+        "rulings": [
+            {
+                "date": "2020-04-17",
+                "text": "If a spell or ability causes an opponent to put cards into their hand without specifically using the word \"draw,\" it's not a card drawn."
+            },
+            {
+                "date": "2020-04-17",
+                "text": "If the amount of damage Xyris deals is greater than the number of cards in your library and the number of cards in that player's library, you both lose the game at the same time. It doesn't matter if one of you had more cards in library than the other. If there are no other players left in the game, the game is a draw."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "BLUE",
+        "RED"
+    ]
 }

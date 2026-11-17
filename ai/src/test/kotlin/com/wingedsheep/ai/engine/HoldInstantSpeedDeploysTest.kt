@@ -48,6 +48,24 @@ class HoldInstantSpeedDeploysTest : ScenarioTestBase() {
             intents.forName("Tam's Resistance")!!.grantsInstantSpeedLoyalty shouldBe false
         }
 
+        // ── Game 6d7c6893, turn 6: Glamermite ──
+
+        test("T6: a flash body is held when the other instant in hand costs more than all our mana") {
+            // Feed the Flames ({3}{R}) cannot be cast on three lands in either window, so holding
+            // the Glamermite contests no mana with it.
+            val game = scenario().withPlayers()
+                .withTurnNumber(6)
+                .withLandsOnBattlefield(1, "Island", 1)
+                .withLandsOnBattlefield(1, "Mountain", 2)
+                .withCardInHand(1, "Glamermite")
+                .withCardInHand(1, "Feed the Flames")
+                .withCardOnBattlefield(2, "Heartfire Hero")
+                .build()
+                .advanceToPriority(1, Step.PRECOMBAT_MAIN)
+
+            game.castName(game.choice()) shouldBe null
+        }
+
         // ── Game 8522de5e, turn 8: Sphinx of False Conclusions ──
 
         test("T8: a flash flier whose only draw is on attacking is held in our own main phase") {

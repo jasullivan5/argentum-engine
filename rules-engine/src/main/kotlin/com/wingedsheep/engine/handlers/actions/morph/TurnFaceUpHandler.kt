@@ -59,10 +59,6 @@ class TurnFaceUpHandler(
 ) : ActionHandler<TurnFaceUp> {
     override val actionType: KClass<TurnFaceUp> = TurnFaceUp::class
 
-    // Lets restricted mana tagged "spend only to turn permanents face up" (Overgrown Zealot,
-    // Creeping Peeper) be recognized when paying a turn-face-up cost from the pool.
-    private val faceUpContext = SpellPaymentContext(isTurnFaceUpAction = true)
-
     /**
      * The turn-up cost as a *concrete* amount of mana, with the chosen X folded in.
      *
@@ -114,6 +110,15 @@ class TurnFaceUpHandler(
         // client-supplied, so bounds-check it here rather than trusting it.
         val procedure = morphData.procedures.getOrNull(action.procedureIndex)
             ?: return "No such turn-up procedure: ${action.procedureIndex}"
+        // "If the permanent wouldn't have a morph cost if it were face up, it can't be turned face
+        // up this way" (CR 702.37e, 702.168d): a lose-all-abilities effect closes the morph and
+        // disguise routes; a manifest or cloak route stays open.
+        if (!procedure.isOpen(state.projectedState.hasLostAllAbilities(action.sourceId))) {
+            return "This creature has lost its ${procedure.label.lowercase()} ability"
+        }
+        // Lets restricted mana tagged "spend only to turn permanents face up" (Overgrown Zealot) — or
+        // only for some procedures, "a morph cost" (Qarsi Deceiver) — pay for this procedure.
+        val faceUpContext = SpellPaymentContext.turnFaceUp(procedure.mechanic)
 
         // Validate cost payment based on morph cost type.
         val morphCost = procedure.cost
@@ -202,6 +207,9 @@ class TurnFaceUpHandler(
 
         val procedure = morphData.procedures.getOrNull(action.procedureIndex)
             ?: return ExecutionResult.error(state, "No such turn-up procedure: ${action.procedureIndex}")
+        // Lets restricted mana tagged "spend only to turn permanents face up" (Overgrown Zealot) — or
+        // only for some procedures, "a morph cost" (Qarsi Deceiver) — pay for this procedure.
+        val faceUpContext = SpellPaymentContext.turnFaceUp(procedure.mechanic)
 
         val cardComponent = container.get<CardComponent>()
         val cardDef = cardRegistry.getCard(morphData.originalCardDefinitionId)

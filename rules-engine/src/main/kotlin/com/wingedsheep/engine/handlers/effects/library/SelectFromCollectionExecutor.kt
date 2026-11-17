@@ -8,6 +8,7 @@ import com.wingedsheep.engine.handlers.PredicateEvaluator
 import com.wingedsheep.engine.handlers.effects.ChooserResolution
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
+import com.wingedsheep.engine.mechanics.CompelledActionImmunity
 import com.wingedsheep.engine.mechanics.mana.ManaSolver
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
@@ -17,6 +18,10 @@ import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.scripting.CompelledAction
+import com.wingedsheep.sdk.scripting.effects.CompositeEffect
+import com.wingedsheep.sdk.scripting.effects.MoveCollectionEffect
+import com.wingedsheep.sdk.scripting.effects.MoveType
 import com.wingedsheep.sdk.scripting.effects.Chooser
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.effects.SelectFromCollectionEffect
@@ -46,11 +51,48 @@ class SelectFromCollectionExecutor(
 
     private val manaSolver by lazy { ManaSolver(cardRegistry, predicateEvaluator) }
 
+    private val visibility = com.wingedsheep.engine.view.Visibility(cardRegistry, conditionEvaluator = predicateEvaluator.conditions)
+
+    /**
+     * Whether this selection only picks the cards a later step of the running program discards
+     * (a `MoveCollection` of [SelectFromCollectionEffect.storeSelected] with [MoveType.Discard]),
+     * for a spell or ability every owner of [cards] is protected from ([CompelledActionImmunity]).
+     * The running program is the frame the interpreter pushed beneath this leaf.
+     */
+    private fun selectionFeedsForbiddenDiscard(
+        state: GameState,
+        effect: SelectFromCollectionEffect,
+        context: EffectContext,
+        cards: List<EntityId>
+    ): Boolean {
+        if (context.discardIsCost || cards.isEmpty()) return false
+        val cause = context.effectControllerId ?: context.controllerId
+        val owners = cards.mapTo(HashSet()) { cardId ->
+            state.getEntity(cardId)?.get<com.wingedsheep.engine.state.components.identity.OwnerComponent>()?.playerId
+                ?: state.getEntity(cardId)?.get<CardComponent>()?.ownerId ?: return false
+        }
+        if (!owners.all { CompelledActionImmunity.appliesTo(state, it, cause, CompelledAction.DISCARD, predicateEvaluator) }) return false
+        if (!cards.all { cardId -> owners.any { cardId in state.getHand(it) } }) return false
+        val program = state.peekContinuation() as? EffectProgram ?: return false
+        val steps = program.cursor.steps.filterIsInstance<CursorStep.Child>()
+        if (steps.size != program.cursor.steps.size || steps.isEmpty()) return false
+        var composite = program.root as? CompositeEffect ?: return false
+        for (step in steps.dropLast(1)) {
+            composite = composite.effects.getOrNull(step.index) as? CompositeEffect ?: return false
+        }
+        val index = steps.last().index
+        if (composite.effects.getOrNull(index) != effect) return false
+        return composite.effects.drop(index + 1).any {
+            it is MoveCollectionEffect && it.from == effect.storeSelected && it.moveType == MoveType.Discard
+        }
+    }
+
     override fun execute(
         state: GameState,
         effect: SelectFromCollectionEffect,
         context: EffectContext
     ): EffectResult {
+        val original = effect
         // Resolve any dynamic selection restriction (e.g. TotalManaValueAtMost bound to X on a
         // pay-{X} reflexive) to a concrete integer cap up front, so the ceiling calc, the
         // decision, the continuation, and response normalization all see a fixed value.
@@ -68,18 +110,34 @@ class SelectFromCollectionExecutor(
                 is SelectionRestriction.MaxAffordablePayment, is SelectionRestriction.ReducedMinimumIfMatches -> false
                 is SelectionRestriction.OnePerCardType, is SelectionRestriction.OnePerColor,
                 is SelectionRestriction.OnePerCardName, is SelectionRestriction.OnePerPower,
+                is SelectionRestriction.OnePerManaValue,
                 is SelectionRestriction.TotalManaValueAtMost, is SelectionRestriction.TotalPowerAtMost,
                 is SelectionRestriction.OnePerBasicLandType -> true
             }
         }
         val characteristicEligible = if (readsCharacteristics) cards.filterNot { it in unknown } else cards
 
-        if (cards.isEmpty()) {
-            // Nothing to select from — store empty collections
+        // Every player sees whether a question is pending, so the question is skipped, or answered
+        // here, only on facts every player has (#3340). A pool whose membership hidden cards
+        // decided — a search, a filtered look at a hand — is always asked about, so an empty
+        // answer ("fail to find", CR 701.23b) is a real one rather than a skipped question.
+        val poolDeciders = HiddenPools.deciders(context.pipeline.storedCollections, effect.from)
+
+        if (cards.isEmpty() && poolDeciders.isEmpty()) {
+            // Nothing to select from, and everyone can see that — store empty collections
             val collections = mutableMapOf(effect.storeSelected to emptyList<EntityId>())
             if (remainderName != null) {
                 collections[remainderName] = emptyList()
             }
+            return EffectResult.success(state).copy(updatedCollections = collections)
+        }
+
+        // The chosen cards are about to be discarded by an opponent's spell or ability, and every
+        // player whose hand they'd come from can't be made to discard (Tamiyo, Collector of Tales):
+        // the discard won't happen, so the question isn't asked. Both facts are public.
+        if (selectionFeedsForbiddenDiscard(state, original, context, cards)) {
+            val collections = mutableMapOf(effect.storeSelected to emptyList<EntityId>())
+            if (remainderName != null) collections[remainderName] = cards
             return EffectResult.success(state).copy(updatedCollections = collections)
         }
 
@@ -98,7 +156,8 @@ class SelectFromCollectionExecutor(
             return createDecision(
                 state, context, effect, faces.keys.toList(), 0, minOf(1, faces.size), decidingPlayerId = chooser,
                 allCards = cards, nonSelectableCards = if (effect.showAllCards) cards - faces.keys else emptyList(),
-                spellFaces = faces
+                spellFaces = faces,
+                hiddenDeciders = (poolDeciders + HiddenPools.hiddenOwners(state, cards, visibility, context.pipeline.storedCollections)).distinct()
             )
         }
 
@@ -149,8 +208,15 @@ class SelectFromCollectionExecutor(
                 state, outcome.opponents, effect, context,
                 prompt = "Choose which opponent makes this choice"
             )
-            is ChooserResolution.Outcome.Unresolvable ->
+            // A chooser read off the cards ("that card's controller") has nobody to ask once the
+            // pool is empty; nothing is selected, as before hidden pools were asked about.
+            is ChooserResolution.Outcome.Unresolvable -> if (cards.isEmpty()) {
+                return EffectResult.success(state).copy(
+                    updatedCollections = listOfNotNull(effect.storeSelected, remainderName).associateWith { emptyList() }
+                )
+            } else {
                 return EffectResult.error(state, "SelectFromCollection chooser: ${outcome.reason}")
+            }
         }
 
         // OnePerColor(matchControllerPermanentColors = true) narrows eligibility to
@@ -162,7 +228,7 @@ class SelectFromCollectionExecutor(
             } else null
         if (controllerPermanentColors != null) {
             eligibleCards = eligibleCards.filter { cardId ->
-                val cardColors = state.getEntity(cardId)?.get<CardComponent>()?.colors ?: emptySet()
+                val cardColors = state.projectedState.colorSetOf(cardId)
                 cardColors.any { it in controllerPermanentColors }
             }
         }
@@ -172,35 +238,53 @@ class SelectFromCollectionExecutor(
         // They are also propagated into the continuation for response-time normalization.
         val restrictionCeiling = restrictionCeiling(effect.restrictions, state, context, eligibleCards, controllerPermanentColors)
 
+        // Which cards are eligible is hidden when the pool was built from hidden cards, or when
+        // this step reads the characteristics of a card some player can't see. Either way, how
+        // many are eligible must not decide whether the chooser is asked.
+        val readsCards = effect.filter != GameObjectFilter.Any || effect.matchChosenCreatureType ||
+            readsCharacteristics || controllerPermanentColors != null
+        val hiddenDeciders = if (readsCards) {
+            (poolDeciders + HiddenPools.hiddenOwners(state, cards, visibility, context.pipeline.storedCollections)).distinct()
+        } else {
+            poolDeciders
+        }
+        val eligibilityHidden = hiddenDeciders.isNotEmpty()
+        val prior = context.pipeline.storedCollections
+        fun selectedWithoutAsking(selected: List<EntityId>, stateAfter: GameState = state): EffectResult {
+            val collections = mutableMapOf(effect.storeSelected to selected)
+            if (remainderName != null) collections[remainderName] = cards.filter { it !in selected }
+            collections += HiddenPools.marks(listOfNotNull(effect.storeSelected, remainderName), hiddenDeciders, prior)
+            collections += LibrarySearchControl.narrowPool(prior, effect.from, cards, selected)
+            return EffectResult.success(stateAfter).copy(updatedCollections = collections)
+        }
+        // Nothing the chooser could pick, asked anyway: the empty selection is the only answer, so
+        // the decision is forced and auto-answers. A look ([SelectFromCollectionEffect.showAllCards])
+        // keeps showing the cards, as it always has.
+        fun askWithNothingEligible(): EffectResult =
+            if (effect.showAllCards && cards.isNotEmpty()) {
+                createDecision(state, context, effect, emptyList(), 0, 0, decidingPlayerId, allCards = cards, nonSelectableCards = cards, controllerPermanentColors = controllerPermanentColors, hiddenDeciders = hiddenDeciders)
+            } else {
+                createDecision(state, context, effect, emptyList(), 0, 0, decidingPlayerId, allCards = cards, hiddenDeciders = hiddenDeciders)
+            }
+
         return when (val selection = effect.selection) {
             SelectionMode.ChooseSpell -> error("Spell selection is handled before card filtering")
-            is SelectionMode.All -> {
-                // Auto-select all eligible, no decision needed
-                val collections = mutableMapOf(effect.storeSelected to eligibleCards)
-                if (remainderName != null) {
-                    collections[remainderName] = cards.filter { it !in eligibleCards }
-                }
-                EffectResult.success(state).copy(updatedCollections = collections)
-            }
+            // Auto-select all eligible: no decision is ever asked, so none can leak.
+            is SelectionMode.All -> selectedWithoutAsking(eligibleCards)
 
             is SelectionMode.ChooseExactly -> {
                 val requested = amountEvaluator.evaluate(state, selection.count, context)
                 val count = minOf(requested, restrictionCeiling)
-                if (eligibleCards.isEmpty() || count == 0) {
-                    // No eligible cards or zero requested — auto-select nothing
-                    val collections = mutableMapOf(effect.storeSelected to emptyList<EntityId>())
-                    if (remainderName != null) {
-                        collections[remainderName] = cards
-                    }
-                    return EffectResult.success(state).copy(updatedCollections = collections)
+                if (count == 0 || (eligibleCards.isEmpty() && !eligibilityHidden)) {
+                    // Zero requested, or visibly nothing eligible — auto-select nothing
+                    return selectedWithoutAsking(emptyList())
                 }
-                if (count >= eligibleCards.size && effect.restrictions.isEmpty() && !effect.alwaysPrompt) {
-                    // Must select all eligible — no choice needed
-                    val collections = mutableMapOf(effect.storeSelected to eligibleCards)
-                    if (remainderName != null) {
-                        collections[remainderName] = cards.filter { it !in eligibleCards }
-                    }
-                    EffectResult.success(state).copy(updatedCollections = collections)
+                if (eligibleCards.isEmpty()) return askWithNothingEligible()
+                if (count >= eligibleCards.size && effect.restrictions.isEmpty() && !effect.alwaysPrompt && !eligibilityHidden) {
+                    // Must select all eligible, and everyone can see so — no choice needed. Over
+                    // hidden cards it is asked: selecting every option is then the only answer,
+                    // which auto-answers as forced.
+                    selectedWithoutAsking(eligibleCards)
                 } else {
                     val clamped = minOf(count, eligibleCards.size)
                     val nonSelectable = if (effect.showAllCards) cards.filter { it !in eligibleCards } else emptyList()
@@ -217,7 +301,8 @@ class SelectFromCollectionExecutor(
                         allCards = cards,
                         nonSelectableCards = nonSelectable,
                         controllerPermanentColors = controllerPermanentColors,
-                        conditionalMinimums = conditionalMinimums
+                        conditionalMinimums = conditionalMinimums,
+                        hiddenDeciders = hiddenDeciders
                     )
                 }
             }
@@ -225,63 +310,44 @@ class SelectFromCollectionExecutor(
             is SelectionMode.ChooseUpTo -> {
                 val requested = amountEvaluator.evaluate(state, selection.count, context)
                 val count = minOf(requested, restrictionCeiling)
-                if (eligibleCards.isEmpty()) {
-                    if (effect.showAllCards && cards.isNotEmpty()) {
-                        // Show all cards even though none are selectable (e.g., "look at top 3, you may reveal a creature or land")
-                        return createDecision(state, context, effect, emptyList(), 0, 0, decidingPlayerId, allCards = cards, nonSelectableCards = cards, controllerPermanentColors = controllerPermanentColors)
-                    }
-                    val collections = mutableMapOf(effect.storeSelected to emptyList<EntityId>())
-                    if (remainderName != null) {
-                        collections[remainderName] = cards
-                    }
-                    return EffectResult.success(state).copy(updatedCollections = collections)
-                }
                 if (count <= 0 && !effect.showAllCards) {
                     // "Up to zero" is no choice at all — a dynamic count that came out 0 (Hurkyl,
                     // Master Wizard's per-type pick for a type you didn't cast) selects nothing.
-                    val collections = mutableMapOf(effect.storeSelected to emptyList<EntityId>())
-                    if (remainderName != null) {
-                        collections[remainderName] = cards
-                    }
-                    return EffectResult.success(state).copy(updatedCollections = collections)
+                    return selectedWithoutAsking(emptyList())
+                }
+                if (eligibleCards.isEmpty()) {
+                    // Show all cards even though none are selectable (e.g., "look at top 3, you may
+                    // reveal a creature or land"); over a hidden pool, ask with nothing to pick.
+                    if ((effect.showAllCards && cards.isNotEmpty()) || eligibilityHidden) return askWithNothingEligible()
+                    return selectedWithoutAsking(emptyList())
                 }
                 val nonSelectable = if (effect.showAllCards) cards.filter { it !in eligibleCards } else emptyList()
-                createDecision(state, context, effect, eligibleCards, 0, minOf(count, eligibleCards.size), decidingPlayerId, allCards = cards, nonSelectableCards = nonSelectable, controllerPermanentColors = controllerPermanentColors)
+                createDecision(state, context, effect, eligibleCards, 0, minOf(count, eligibleCards.size), decidingPlayerId, allCards = cards, nonSelectableCards = nonSelectable, controllerPermanentColors = controllerPermanentColors, hiddenDeciders = hiddenDeciders)
             }
 
             is SelectionMode.Random -> {
                 // No player decision — engine randomly picks N cards
                 val count = minOf(amountEvaluator.evaluate(state, selection.count, context), restrictionCeiling)
                 val (shuffledEligible, stateAfterShuffle) = state.nextRandom { shuffle(eligibleCards) }
-                val selected = shuffledEligible.take(count)
-                val collections = mutableMapOf(effect.storeSelected to selected)
-                if (remainderName != null) {
-                    collections[remainderName] = cards.filter { it !in selected }
-                }
-                EffectResult.success(stateAfterShuffle).copy(updatedCollections = collections)
+                selectedWithoutAsking(shuffledEligible.take(count), stateAfterShuffle)
             }
 
             is SelectionMode.ChooseAnyNumber -> {
                 // Player picks 0 to all eligible cards
                 if (eligibleCards.isEmpty()) {
-                    if (effect.showAllCards && cards.isNotEmpty()) {
-                        // Show all cards even though none are selectable (caster still sees the reveal).
-                        return createDecision(state, context, effect, emptyList(), 0, 0, decidingPlayerId, allCards = cards, nonSelectableCards = cards, controllerPermanentColors = controllerPermanentColors)
-                    }
-                    val collections = mutableMapOf(effect.storeSelected to emptyList<EntityId>())
-                    if (remainderName != null) collections[remainderName] = cards
-                    return EffectResult.success(state).copy(updatedCollections = collections)
+                    // Show all cards even though none are selectable (caster still sees the
+                    // reveal); over a hidden pool, ask with nothing to pick.
+                    if ((effect.showAllCards && cards.isNotEmpty()) || eligibilityHidden) return askWithNothingEligible()
+                    return selectedWithoutAsking(emptyList())
                 }
                 val maxSelectable = minOf(eligibleCards.size, restrictionCeiling)
                 if (maxSelectable <= 0 && !effect.showAllCards) {
                     // A restriction ceiling of zero (e.g. MaxAffordablePayment with no mana
                     // available) makes the choice vacuous — skip the prompt, select nothing.
-                    val collections = mutableMapOf(effect.storeSelected to emptyList<EntityId>())
-                    if (remainderName != null) collections[remainderName] = cards
-                    return EffectResult.success(state).copy(updatedCollections = collections)
+                    return selectedWithoutAsking(emptyList())
                 }
                 val nonSelectable = if (effect.showAllCards) cards.filter { it !in eligibleCards } else emptyList()
-                createDecision(state, context, effect, eligibleCards, 0, maxSelectable, decidingPlayerId, allCards = cards, nonSelectableCards = nonSelectable, controllerPermanentColors = controllerPermanentColors)
+                createDecision(state, context, effect, eligibleCards, 0, maxSelectable, decidingPlayerId, allCards = cards, nonSelectableCards = nonSelectable, controllerPermanentColors = controllerPermanentColors, hiddenDeciders = hiddenDeciders)
             }
         }
     }
@@ -297,9 +363,8 @@ class SelectFromCollectionExecutor(
     ): Set<com.wingedsheep.sdk.core.Color> {
         val colors = mutableSetOf<com.wingedsheep.sdk.core.Color>()
         for (entityId in state.getBattlefield()) {
-            val controller = state.getEntity(entityId)?.get<ControllerComponent>()?.playerId
-            if (controller != playerId) continue
-            colors += state.getEntity(entityId)?.get<CardComponent>()?.colors ?: emptySet()
+            if (state.projectedState.getController(entityId) != playerId) continue
+            colors += state.projectedState.colorSetOf(entityId)
         }
         return colors
     }
@@ -359,7 +424,7 @@ class SelectFromCollectionExecutor(
                     val distinctColors = mutableSetOf<com.wingedsheep.sdk.core.Color>()
                     var colourlessCount = 0
                     for (cardId in eligibleCards) {
-                        val cardColors = state.getEntity(cardId)?.get<CardComponent>()?.colors ?: emptySet()
+                        val cardColors = state.projectedState.colorSetOf(cardId)
                         if (cardColors.isEmpty()) colourlessCount++ else distinctColors += cardColors
                     }
                     if (restriction.matchControllerPermanentColors && controllerPermanentColors != null) {
@@ -382,6 +447,13 @@ class SelectFromCollectionExecutor(
                         state.getEntity(cardId)?.get<CardComponent>()?.baseStats?.basePower
                     }.toSet().size
                 }
+                is SelectionRestriction.OnePerManaValue ->
+                    // One slot per distinct mana value present; every card has one.
+                    eligibleCards.mapNotNull { cardId ->
+                        com.wingedsheep.engine.mechanics.targeting.NumericTargetEquality.value(
+                            state, cardId, com.wingedsheep.sdk.scripting.values.CardNumericProperty.MANA_VALUE
+                        )
+                    }.toSet().size
                 is SelectionRestriction.TotalManaValueAtMost -> {
                     // Greedy upper bound: how many cards fit under the cap when picking
                     // the cheapest first. Any selection of more cards than this is
@@ -507,9 +579,13 @@ class SelectFromCollectionExecutor(
         nonSelectableCards: List<EntityId> = emptyList(),
         controllerPermanentColors: Set<com.wingedsheep.sdk.core.Color>? = null,
         conditionalMinimums: List<ConditionalSelectionMinimum> = emptyList(),
-        spellFaces: Map<EntityId, List<Int>>? = null
+        spellFaces: Map<EntityId, List<Int>>? = null,
+        hiddenDeciders: List<EntityId> = emptyList()
     ): EffectResult {
-        val playerId = decidingPlayerId ?: context.controllerId
+        // A searcher someone else controls while they search (Opposition Agent) doesn't make the pick.
+        val playerId = LibrarySearchControl.decider(
+            context.pipeline.storedCollections, effect.from, decidingPlayerId ?: context.controllerId
+        )
         val sourceName = context.sourceId?.let { sourceId ->
             state.getEntity(sourceId)?.get<CardComponent>()?.name
         }
@@ -524,8 +600,9 @@ class SelectFromCollectionExecutor(
                 manaCost = cardComponent?.manaCost?.toString() ?: "",
                 typeLine = cardComponent?.typeLine?.toString() ?: "",
                 imageUri = null,
-                colors = cardComponent?.colors?.map { it.name }?.toList() ?: emptyList(),
-                power = cardComponent?.baseStats?.basePower
+                colors = if (cardComponent == null) emptyList() else state.projectedState.colorsOf(cardId).toList(),
+                power = cardComponent?.baseStats?.basePower,
+                zone = state.logicalZone(cardId)?.zoneType
             )
         }
 
@@ -547,11 +624,18 @@ class SelectFromCollectionExecutor(
 
         val librarySearch = context.pipeline.storedCollections[PipelineState.searchedKey(effect.from)]
             .orEmpty().isNotEmpty()
+        // The controlling player picks for the searcher, and what they find is exiled for the picker.
+        val controlledSearch = playerId != (decidingPlayerId ?: context.controllerId)
 
         val decision = { decisionId: String -> SelectCardsDecision(
             id = decisionId,
             playerId = playerId,
-            prompt = prompt,
+            prompt = if (controlledSearch) {
+                // The authored prompt speaks to the searcher, and names a destination the cards
+                // won't reach: say whose search it is and where the found cards go instead.
+                val what = prompt.replace(Regex("\\byour\\b"), "their").replace(Regex(" to put .*$"), "")
+                "You control your opponent's search. $what — the cards found are exiled, and you may play them"
+            } else prompt,
             context = DecisionContext(
                 sourceId = context.sourceId,
                 sourceName = sourceName,
@@ -562,7 +646,7 @@ class SelectFromCollectionExecutor(
             maxSelections = maxSelections,
             ordered = false,
             cardInfo = cardInfoMap,
-            selectedLabel = effect.selectedLabel,
+            selectedLabel = if (controlledSearch) "Exile — you may play it" else effect.selectedLabel,
             remainderLabel = effect.remainderLabel,
             useTargetingUI = effect.useTargetingUI,
             nonSelectableOptions = nonSelectableCards,
@@ -572,6 +656,7 @@ class SelectFromCollectionExecutor(
             onePerCardName = effect.restrictions.any { it is SelectionRestriction.OnePerCardName },
             onePerBasicLandType = effect.restrictions.any { it is SelectionRestriction.OnePerBasicLandType },
             onePerPower = effect.restrictions.any { it is SelectionRestriction.OnePerPower },
+            onePerManaValue = effect.restrictions.any { it is SelectionRestriction.OnePerManaValue },
             maxTotalManaValue = effect.restrictions
                 .filterIsInstance<SelectionRestriction.TotalManaValueAtMost>()
                 .also {
@@ -607,7 +692,10 @@ class SelectFromCollectionExecutor(
             storedCollections = context.pipeline.storedCollections,
             restrictions = effect.restrictions,
             spellFaces = spellFaces,
-            shownCards = allDisplayCards
+            shownCards = allDisplayCards,
+            // Only a fixed count leaves the answer's size to the hidden cards: "choose up to" and
+            // "any number" sizes are the chooser's own choice, which a later skip may follow.
+            hiddenPoolDeciders = if (effect.selection is SelectionMode.ChooseExactly) hiddenDeciders else emptyList()
         )
 
         return EffectResult.from(state.suspendForDecision(decision, continuation))

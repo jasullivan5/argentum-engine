@@ -7,6 +7,7 @@ import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.CardScript
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.StaticAbility
+import com.wingedsheep.sdk.scripting.effects.Effect
 import com.wingedsheep.sdk.serialization.CardSerialization
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -121,13 +122,15 @@ object CardLinter {
         return findings
     }
 
+    /** Serial name of the effect that turns its source permanent into an Aura (`BecomeAuraEffect`). */
+    private val BECOMES_AURA = setOf("BecomeAura")
+
     /** Serial names of the effects that put mana into a pool (CR 605.1a's "could add mana"). */
     private val MANA_ADDING_EFFECTS = setOf(
         "AddMana",
         "AddColorlessMana",
         "AddManaOfChoice",
         "AddDynamicMana",
-        "AddAnyColorManaSpendOnChosenType",
         "AddOneManaOfEachColorAmong",
     )
 
@@ -359,7 +362,6 @@ object CardLinter {
             else (tree["type"] as? JsonPrimitive)?.contentOrNull in names ||
                 tree.values.any { ownEffectContains(it, names) }
         is JsonArray -> tree.any { ownEffectContains(it, names) }
-        else -> false
     }
 
     /** A serialized ability or card definition rather than a step of the effect being scanned. */
@@ -402,7 +404,8 @@ object CardLinter {
      * Attachability is judged across the whole physical card — either side of a DFC and any
      * [com.wingedsheep.sdk.model.CardFace] counts — so a creature that transforms into an Aura is
      * not flagged for the attach-scope abilities on its other face. Bestow also permits attachment
-     * despite the printed creature type: its alternative cast makes the card an Aura.
+     * despite the printed creature type: its alternative cast makes the card an Aura — and so does
+     * an ability of the card's own that makes it one (`BecomeAuraEffect`, the Fate Reforged Forms).
      */
     private fun checkAttachedScope(
         card: CardDefinition,
@@ -480,7 +483,13 @@ object CardLinter {
             typeLine.isAura || typeLine.isEquipment || typeLine.isFortification ||
                 // A card can carry the target/cost without the subtype; CardValidator reports that
                 // mismatch on its own, and this check has no business double-reporting it.
-                script.auraTarget != null
+                script.auraTarget != null ||
+                // "When this enchantment enters, it becomes an Aura with enchant creature" (the Fate
+                // Reforged Forms): an ability of its own makes the card an Aura, so its printed
+                // "enchanted creature has …" statics apply once that ability attaches it.
+                (script.triggeredAbilities.map { it.effect } + script.activatedAbilities.map { it.effect }).any {
+                    ownEffectContains(lintJson.encodeToJsonElement(Effect.serializer(), it), BECOMES_AURA)
+                }
 
         if (attaches(card.typeLine, card.script) || card.equipCost != null ||
             card.keywordAbilities.any { it is KeywordAbility.Bestow }) return true
@@ -694,6 +703,7 @@ object CardLinter {
         put("GatherCards" to "storeAs", write(Space.COLLECTION))
         put("CaptureControllers" to "storeAs", write(Space.COLLECTION))
         put("StorePlayer" to "storeAs", write(Space.COLLECTION))
+        put("AnyPlayerMayPay" to "storePayerAs", write(Space.COLLECTION))
         put("GatherSubtypes" to "storeAs", write(Space.SUBTYPE_GROUPS))
         put("GatherUntilMatch" to "storeMatch", write(Space.COLLECTION))
         put("GatherUntilMatch" to "storeRevealed", write(Space.COLLECTION))
@@ -701,6 +711,7 @@ object CardLinter {
         put("SelectFromCollection" to "storeRemainder", write(Space.COLLECTION))
         put("ChoosePile" to "storeChosenAs", write(Space.COLLECTION))
         put("ChoosePile" to "storeOtherAs", write(Space.COLLECTION))
+        put("ShufflePile" to "storeAs", write(Space.COLLECTION))
         put("MoveCollection" to "storeMovedAs", write(Space.COLLECTION))
         put("SelectTarget" to "storeAs", write(Space.COLLECTION))
         put("FlipOntoBattlefield" to "storeTouchedAs", write(Space.COLLECTION))
@@ -724,10 +735,14 @@ object CardLinter {
         put("CopyCollectionIntoCollection" to "storeAs", write(Space.COLLECTION))
         put("ForcePlay" to "storePlayedTo", write(Space.COLLECTION))
         put("CastFromCollectionWithoutPayingCost" to "storeCastTo", write(Space.COLLECTION))
+        put("CastAnyNumberFromCollectionWithoutPayingCost" to "storeCastTo", write(Space.COLLECTION))
         put("CounterAllOnStack" to "storeCountAs", write(Space.COLLECTION))
+        put("Counter" to "storeCounteredAs", write(Space.COLLECTION))
         put("Behold" to "storeAs", write(Space.COLLECTION))
         put("ChooseEntity" to "storeAs", write(Space.COLLECTION))
         put("ChooseOnePerCategory" to "storeAs", write(Space.COLLECTION))
+        // Permanents proliferate gave a counter to (Ripples of Potential).
+        put("Proliferate" to "storeAs", write(Space.COLLECTION))
         put("StoreNumber" to "name", write(Space.NUMBER))
         put("FlipCoins" to "storeHeadsAs", write(Space.NUMBER))
         put("FlipCoinsUntilLoss" to "storeWinsAs", write(Space.NUMBER))
@@ -738,7 +753,10 @@ object CardLinter {
         put("Fight" to "excessDamageVariable", write(Space.NUMBER))
         put("DealDamage" to "excessDamageVariable", write(Space.NUMBER))
         put("DealDamage" to "damageDealtVariable", write(Space.NUMBER))
+        put("DealDamage" to "storeDamagedAs", write(Space.COLLECTION))
+        put("DividedDamage" to "storeDamagedAs", write(Space.COLLECTION))
         put("PayCounters" to "storeAmountAs", write(Space.NUMBER))
+        put("RemoveCountersFromAmong" to "storeAmountAs", write(Space.NUMBER))
         put("CollectEvidenceChosenAmount" to "storeAmountAs", write(Space.NUMBER))
         put("ChooseSpellCastThisTurn" to "storeDamageDealtAs", write(Space.NUMBER))
         put("PayManaCostRepeatedly" to "storeCountAs", write(Space.NUMBER))
@@ -761,6 +779,7 @@ object CardLinter {
             "PairWithSource", "EmitChampionedEvent", "EnchantPutOntoBattlefield",
         )) put(type to "from", read(Space.COLLECTION))
         put("GrantCantBeBlockedExceptByCollection" to "collection", read(Space.COLLECTION))
+        put("CopyForOtherPossibleTargets" to "collection", read(Space.COLLECTION))
         put("ChoosePile" to "pileA", read(Space.COLLECTION))
         put("ChoosePile" to "pileB", read(Space.COLLECTION))
         put("ForEachCapturedController" to "collection", read(Space.COLLECTION))
@@ -784,9 +803,11 @@ object CardLinter {
         put("DistributeDamageAmongCollection" to "collectionName", read(Space.COLLECTION))
         put("DistinctEntitiesInCollections" to "collections", read(Space.COLLECTION))
         put("DistinctCardTypesInCollections" to "collections", read(Space.COLLECTION))
+        put("ShufflePile" to "from", read(Space.COLLECTION))
         put("ExcludeOtherCollection" to "otherCollectionName", read(Space.COLLECTION))
         put("VariableReference" to "variableName", read(Space.NUMBER))
         put("NameEqualsChosen" to "variableName", read(Space.CHOSEN))
+        put("CardTypeEqualsChosen" to "variableName", read(Space.CHOSEN))
         put("HasSubtypeFromVariable" to "variableName", read(Space.CHOSEN))
         put("YouControlMostOfChosenType" to "chosenValueKey", read(Space.CHOSEN))
         put(null to "chosenSubtypeKey", read(Space.CHOSEN)) // GroupFilter (no discriminator)
@@ -827,6 +848,8 @@ object CardLinter {
         when {
             type == "RollDice" ->
                 (obj["resultCounts"] as? JsonObject)?.keys.orEmpty().map { Kind.WRITE to (Space.NUMBER to it) }
+            type == "Vote" ->
+                (obj["voteCounts"] as? JsonObject)?.keys.orEmpty().map { Kind.WRITE to (Space.NUMBER to it) }
             type == "ChooseCreatureType" ->
                 listOf(Kind.WRITE to (Space.CHOSEN to "chosenCreatureType"))
             // Paying "Reveal the creature type you chose" publishes the source's secret note into
@@ -912,6 +935,16 @@ object CardLinter {
         "Mayhem" to listOf("MAYHEM_CAST"),
         // Escape (CR 702.138b): an escape-cast permanent is stamped "escaped" (see PermanentEntry).
         "Escape" to listOf("ESCAPED"),
+        // Foretell (CR 702.143c): a spell cast from exile as a foretold card is stamped "foretold"
+        // (see CastSpellHandler.foretoldChoice), read back by Conditions.WasForetold.
+        "Foretell" to listOf("FORETOLD"),
+        // Madness (CR 702.35): a spell cast from exile for its madness cost is stamped "madness
+        // cost was paid" (see CastSpellHandler.madnessChoice), read by Conditions.MadnessCostWasPaid.
+        "Madness" to listOf("MADNESS_CAST"),
+        // Surge (CR 702.117a): a spell cast for its surge cost answers "surge cost was paid" from
+        // its alternative cost and stamps the slot on the permanent it becomes (see PermanentEntry),
+        // read by Conditions.SurgeCostWasPaid.
+        "Surge" to listOf("SURGE_CAST"),
         "BlightVariable" to listOf("BLIGHT_AMOUNT"),
         "BlightOrPay" to listOf("BLIGHT_AMOUNT"),
         // Resolution-time color choices: ChooseColorThen sets EffectContext.chosenColor for its
@@ -1509,11 +1542,21 @@ object CardLinter {
          * Collections the engine seeds for the ability before its effect runs, so a read with no
          * in-card writer is correct, not a silent no-op. `trigger.captured` is the batch-trigger
          * capture (the matching members of a `PermanentsEnteredEvent` batch — Kambal); the engine
-         * populates it when the triggered ability resolves.
+         * populates it when the triggered ability resolves. `trigger.damagedPlayers` is the players a
+         * "deal combat damage to one or more players" batch hit, usually read as its `_count`
+         * (Hordewing Skaab).
          */
-        fun engineSeeded(read: Access): Boolean =
-            read.space == Space.COLLECTION &&
-                read.name == com.wingedsheep.sdk.scripting.effects.IterationSpace.TRIGGER_CAPTURED_COLLECTION
+        fun engineSeeded(read: Access): Boolean {
+            val seeded = listOf(
+                com.wingedsheep.sdk.scripting.effects.IterationSpace.TRIGGER_CAPTURED_COLLECTION,
+                com.wingedsheep.sdk.scripting.effects.IterationSpace.TRIGGER_DAMAGED_PLAYERS,
+            )
+            return when (read.space) {
+                Space.COLLECTION -> read.name in seeded
+                Space.NUMBER -> seeded.any { read.name == "${it}_count" }
+                else -> false
+            }
+        }
 
         for (scope in state.scopes) {
             if (scope.collectionParent != null) continue // merged into parent already

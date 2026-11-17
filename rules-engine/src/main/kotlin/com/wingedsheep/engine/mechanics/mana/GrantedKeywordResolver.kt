@@ -6,6 +6,7 @@ import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
 import com.wingedsheep.engine.state.components.stack.SpellOnStackComponent
 import com.wingedsheep.engine.state.ZoneKey
+import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.CardDefinition
@@ -14,6 +15,7 @@ import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.GrantKeywordToOwnSpells
 import com.wingedsheep.sdk.scripting.KeywordAbility
 import com.wingedsheep.sdk.scripting.predicates.CardPredicate
+import com.wingedsheep.engine.state.components.identity.faceUpCardDefinition
 
 /**
  * Resolves whether a spell being cast effectively has a given keyword, either because it is
@@ -70,7 +72,7 @@ class GrantedKeywordResolver(
             ?.let { cardRegistry.getCard(it.cardDefinitionId) } ?: return null
         return sourceDef.script.staticAbilities
             .filterIsInstance<GrantKeywordToOwnSpells>()
-            .firstOrNull { it.keyword == Keyword.CASUALTY && grantApplies(it, cardDef) { spellZone } }
+            .firstOrNull { it.keyword == Keyword.CASUALTY && grantApplies(it, cardDef, state.projectedState.spellColors(playerId, cardDef.colors, spellId)) { spellZone } }
             ?.keywordParameter
             ?.let { KeywordAbility.Casualty(it) }
     }
@@ -86,18 +88,18 @@ class GrantedKeywordResolver(
         keyword: Keyword,
         spellId: EntityId? = null
     ): EntityId? {
-        findNextSpellRider(state, playerId, cardDef, keyword)?.let { return it }
+        val colors = state.projectedState.spellColors(playerId, cardDef.colors, spellId)
+        findNextSpellRider(state, playerId, cardDef, keyword, colors)?.let { return it }
         val spellZone by lazy(LazyThreadSafetyMode.NONE) { castZone(state, spellId) }
         for (permanentId in state.getBattlefield()) {
             val container = state.getEntity(permanentId) ?: continue
             val controllerId = container.get<ControllerComponent>()?.playerId ?: continue
             if (controllerId != playerId) continue
-            val cardComponent = container.get<CardComponent>() ?: continue
-            val sourceDef = cardRegistry.getCard(cardComponent.cardDefinitionId) ?: continue
+            val sourceDef = container.faceUpCardDefinition(cardRegistry) ?: continue
             for (ability in sourceDef.script.staticAbilities) {
                 if (ability is GrantKeywordToOwnSpells &&
                     ability.keyword == keyword &&
-                    grantApplies(ability, cardDef) { spellZone }
+                    grantApplies(ability, cardDef, colors) { spellZone }
                 ) {
                     return permanentId
                 }
@@ -119,18 +121,18 @@ class GrantedKeywordResolver(
         keyword: Keyword,
         spellId: EntityId? = null
     ): Int {
-        var count = state.pendingNextSpellKeywords.count { riderApplies(it, playerId, cardDef, keyword) }
+        val colors = state.projectedState.spellColors(playerId, cardDef.colors, spellId)
+        var count = state.pendingNextSpellKeywords.count { riderApplies(it, playerId, cardDef, keyword, colors) }
         val spellZone by lazy(LazyThreadSafetyMode.NONE) { castZone(state, spellId) }
         for (permanentId in state.getBattlefield()) {
             val container = state.getEntity(permanentId) ?: continue
             val controllerId = container.get<ControllerComponent>()?.playerId ?: continue
             if (controllerId != playerId) continue
-            val cardComponent = container.get<CardComponent>() ?: continue
-            val sourceDef = cardRegistry.getCard(cardComponent.cardDefinitionId) ?: continue
+            val sourceDef = container.faceUpCardDefinition(cardRegistry) ?: continue
             for (ability in sourceDef.script.staticAbilities) {
                 if (ability is GrantKeywordToOwnSpells &&
                     ability.keyword == keyword &&
-                    grantApplies(ability, cardDef) { spellZone }
+                    grantApplies(ability, cardDef, colors) { spellZone }
                 ) {
                     count++
                 }
@@ -150,32 +152,34 @@ class GrantedKeywordResolver(
         state: GameState,
         playerId: EntityId,
         cardDef: CardDefinition,
-        keyword: Keyword
+        keyword: Keyword,
+        colors: Set<Color>
     ): EntityId? = state.pendingNextSpellKeywords
-        .firstOrNull { riderApplies(it, playerId, cardDef, keyword) }
+        .firstOrNull { riderApplies(it, playerId, cardDef, keyword, colors) }
         ?.sourceId
 
     private fun riderApplies(
         rider: com.wingedsheep.engine.state.PendingNextSpellKeyword,
         playerId: EntityId,
         cardDef: CardDefinition,
-        keyword: Keyword
+        keyword: Keyword,
+        colors: Set<Color>
     ): Boolean = rider.controllerId == playerId && rider.keyword == keyword &&
-        matchesSpellFilter(rider.spellFilter, cardDef)
+        matchesSpellFilter(rider.spellFilter, cardDef, colors)
 
     /** [castZone] is only consulted by a zone-scoped grant, so the zone scan stays off the common path. */
-    private inline fun grantApplies(grant: GrantKeywordToOwnSpells, cardDef: CardDefinition, castZone: () -> Zone?): Boolean =
-        matchesSpellFilter(grant.spellFilter, cardDef) && (grant.fromZone == null || grant.fromZone == castZone())
+    private inline fun grantApplies(grant: GrantKeywordToOwnSpells, cardDef: CardDefinition, colors: Set<Color>, castZone: () -> Zone?): Boolean =
+        matchesSpellFilter(grant.spellFilter, cardDef, colors) && (grant.fromZone == null || grant.fromZone == castZone())
 
     /**
      * Match a spell's [cardDef] against a [GameObjectFilter] using the card's printed
-     * characteristics. Only a narrow set of predicates is supported because spells being cast
+     * characteristics, except [colors]: the spell's actual ones (Mycosynth Lattice). Only a narrow set of predicates is supported because spells being cast
      * don't yet have battlefield state — the caller knows the card, not an entity.
      */
-    private fun matchesSpellFilter(filter: GameObjectFilter, cardDef: CardDefinition): Boolean {
+    private fun matchesSpellFilter(filter: GameObjectFilter, cardDef: CardDefinition, colors: Set<Color>): Boolean {
         // GameObjectFilter.Any / empty predicates match everything.
         if (filter.cardPredicates.isEmpty() && filter.controllerPredicate == null) return true
-        return filter.cardPredicates.all { matchesPredicate(it, cardDef) }
+        return filter.cardPredicates.all { matchesPredicate(it, cardDef, colors) }
     }
 
     /**
@@ -184,11 +188,11 @@ class GrantedKeywordResolver(
      * [GameObjectFilter.InstantOrSorcery] (an `Or` of `IsInstant`/`IsSorcery`) resolve, which
      * is what "instant and sorcery spells you cast have storm" needs.
      */
-    private fun matchesPredicate(predicate: CardPredicate, cardDef: CardDefinition): Boolean =
+    private fun matchesPredicate(predicate: CardPredicate, cardDef: CardDefinition, colors: Set<Color>): Boolean =
         when (predicate) {
-            is CardPredicate.And -> predicate.predicates.all { matchesPredicate(it, cardDef) }
-            is CardPredicate.Or -> predicate.predicates.any { matchesPredicate(it, cardDef) }
-            is CardPredicate.Not -> !matchesPredicate(predicate.predicate, cardDef)
+            is CardPredicate.And -> predicate.predicates.all { matchesPredicate(it, cardDef, colors) }
+            is CardPredicate.Or -> predicate.predicates.any { matchesPredicate(it, cardDef, colors) }
+            is CardPredicate.Not -> !matchesPredicate(predicate.predicate, cardDef, colors)
             CardPredicate.IsCreature -> cardDef.typeLine.isCreature
             CardPredicate.IsNoncreature -> !cardDef.typeLine.isCreature
             CardPredicate.IsArtifact -> cardDef.typeLine.isArtifact
@@ -205,10 +209,12 @@ class GrantedKeywordResolver(
             CardPredicate.IsNonenchantment -> !cardDef.typeLine.isEnchantment
             CardPredicate.IsNonartifact -> !cardDef.typeLine.isArtifact
             CardPredicate.IsToken, CardPredicate.IsNontoken -> true
-            is CardPredicate.HasSubtype -> cardDef.typeLine.subtypes.any { it == predicate.subtype }
-            is CardPredicate.HasAnyOfSubtypes -> cardDef.typeLine.subtypes.any { predicate.subtypes.contains(it) }
-            is CardPredicate.HasColor -> cardDef.colors.contains(predicate.color)
-            CardPredicate.IsColorless -> cardDef.colors.isEmpty()
+            is CardPredicate.HasSubtype -> cardDef.characteristicTypeLine.subtypes.any { it == predicate.subtype }
+            is CardPredicate.HasAnyOfSubtypes -> cardDef.characteristicTypeLine.subtypes.any { predicate.subtypes.contains(it) }
+            is CardPredicate.HasColor -> colors.contains(predicate.color)
+            CardPredicate.IsColorless -> colors.isEmpty()
+            CardPredicate.IsMulticolored -> colors.size >= 2
+            CardPredicate.IsMonocolored -> colors.size == 1
             CardPredicate.IsDoubleFaced -> cardDef.isDoubleFaced
             // Fail closed: an unhandled predicate cannot be evaluated against a
             // CardDefinition alone, so we conservatively refuse to grant the keyword

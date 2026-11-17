@@ -8,6 +8,7 @@ import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.effects.DamageUtils
 import com.wingedsheep.engine.handlers.effects.EffectExecutor
+import com.wingedsheep.engine.handlers.effects.EntersWithReplacements
 import com.wingedsheep.engine.handlers.effects.ReplacementEffectUtils
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.CountersComponent
@@ -59,6 +60,10 @@ class AddCountersExecutor(
         context: EffectContext,
         totalLimit: Int? = null
     ): EffectResult {
+        // Preserve upstream's deferred placement for permanent spells entering with counters.
+        EntersWithReplacements.oweToSpell(state, targetId, counterType, count)
+            ?.let { return EffectResult.success(it, emptyList()) }
+
         if (!state.projectedState.canReceiveCounters(targetId)) {
             return EffectResult.success(state, emptyList())
         }
@@ -91,7 +96,7 @@ class AddCountersExecutor(
 
         return EffectResult.success(
             newState,
-            listOf(CountersAddedEvent(targetId, counterType, modifiedCount, entityName, firstThisTurn, firstOfTypeThisTurn = firstOfTypeThisTurn, placedBy = context.controllerId))
+            listOf(CountersAddedEvent(targetId, counterType, modifiedCount, entityName, firstThisTurn, firstOfTypeThisTurn = firstOfTypeThisTurn, placedBy = context.controllerId, totalCount = current.getCount(counterType) + modifiedCount))
         )
     }
 }

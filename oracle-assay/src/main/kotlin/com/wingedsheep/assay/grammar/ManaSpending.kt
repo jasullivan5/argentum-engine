@@ -313,13 +313,21 @@ object ManaSpending {
         ),
         atom(
             "cast legendary spells",
-            ManaRestriction.LegendarySpellsOnly,
+            ManaRestriction.LegendarySpellsOnly(),
             "cast a legendary spell",
         ),
         atom(
             "cast colorless spells",
-            ManaRestriction.ColorlessSpellsOnly,
+            ManaRestriction.ColorlessSpellsOrAbilitiesOnly(),
             "cast a colorless spell",
+        ),
+        atom(
+            "cast a spell that's one or more colors without {X} in its mana cost",
+            ManaRestriction.ColoredSpellsOnly(withoutXInCost = true),
+        ),
+        atom(
+            "cast a spell that's one or more colors",
+            ManaRestriction.ColoredSpellsOnly(),
         ),
         atom(
             "cast spells with exactly three colors",
@@ -358,7 +366,7 @@ object ManaSpending {
         ),
         atom(
             "turn permanents face up",
-            ManaRestriction.TurnPermanentsFaceUpOnly,
+            ManaRestriction.TurnPermanentsFaceUpOnly(),
             "turn a permanent face up",
         ),
         atom(

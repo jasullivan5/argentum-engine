@@ -6,7 +6,13 @@
 import type React from 'react'
 import { AdminScreen, adminTheme } from './adminUi'
 
-export type AdminArea = 'stats' | 'ai' | 'live' | 'activity' | 'players'
+const AREAS = ['stats', 'ai', 'live', 'activity', 'players'] as const
+export type AdminArea = (typeof AREAS)[number]
+
+/** Each area is also its URL segment: `/admin/<area>`. */
+export function isAdminArea(s: string): s is AdminArea {
+  return (AREAS as readonly string[]).includes(s)
+}
 
 interface HubItem {
   area: AdminArea

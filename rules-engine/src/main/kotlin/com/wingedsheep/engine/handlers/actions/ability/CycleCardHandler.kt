@@ -18,6 +18,7 @@ import com.wingedsheep.engine.handlers.actions.ActionHandler
 import com.wingedsheep.engine.handlers.effects.ZoneTransitionService
 import com.wingedsheep.engine.handlers.effects.drawing.DrawCardsExecutor
 import com.wingedsheep.engine.mechanics.mana.ManaAbilitySideEffectExecutor
+import com.wingedsheep.engine.mechanics.CyclingGrants
 import com.wingedsheep.engine.mechanics.mana.ManaPool
 import com.wingedsheep.sdk.scripting.effects.Effect
 import com.wingedsheep.engine.mechanics.mana.ManaSolver
@@ -28,14 +29,16 @@ import com.wingedsheep.engine.state.ZoneKey
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.player.CardsCycledThisGameComponent
+import com.wingedsheep.engine.state.components.player.CycledThisTurnComponent
 import com.wingedsheep.engine.state.components.player.ManaPoolComponent
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Zone
-import com.wingedsheep.sdk.scripting.KeywordAbility
+import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.scripting.PreventCycling
 import kotlin.reflect.KClass
 import com.wingedsheep.engine.core.Outcome
+import com.wingedsheep.engine.state.components.identity.faceUpCardDefinition
 
 /**
  * Handler for the CycleCard action.
@@ -86,8 +89,7 @@ class CycleCardHandler(
         val cardDef = cardRegistry.getCard(cardComponent.cardDefinitionId)
             ?: return "Card definition not found"
 
-        val cyclingAbility = cardDef.keywordAbilities.filterIsInstance<KeywordAbility.Cycling>()
-            .firstOrNull { it.searchFilter == null }
+        val cyclingAbility = cyclingOption(state, action, cardDef)
             ?: return "This card doesn't have cycling"
 
         // The action is client-supplied: a negative X would underflow the cost substitution.
@@ -97,7 +99,7 @@ class CycleCardHandler(
 
         // Affordability is judged against X=0 when the player hasn't announced X yet — the
         // handler raises the choice, and X=0 is always a legal announcement (CR 107.3a).
-        val effectiveCost = reduced(state, action, cyclingAbility.cost.withXAs(action.xValue ?: 0))
+        val effectiveCost = reduced(state, action, baseCost(state, action, cyclingAbility.cost, action.xValue))
 
         if (action.paymentStrategy is PaymentStrategy.Explicit) {
             for (sourceId in action.paymentStrategy.manaAbilitiesToActivate) {
@@ -124,8 +126,7 @@ class CycleCardHandler(
         val cardDef = cardRegistry.getCard(cardComponent.cardDefinitionId)
             ?: return ExecutionResult.error(state, "Card definition not found")
 
-        val cyclingAbility = cardDef.keywordAbilities.filterIsInstance<KeywordAbility.Cycling>()
-            .firstOrNull { it.searchFilter == null }
+        val cyclingAbility = cyclingOption(state, action, cardDef)
             ?: return ExecutionResult.error(state, "This card doesn't have cycling")
 
         // ---------------------------------------------------------------------
@@ -149,7 +150,11 @@ class CycleCardHandler(
                     com.wingedsheep.engine.core.ChooseNumberDecision(
                         id = decisionId,
                         playerId = action.playerId,
-                        prompt = "Choose X for cycling ${cardComponent.name} (0-$maxX)",
+                        prompt = if (castPermissionUtils?.hasFreeCycling(state, action.playerId) == true) {
+                            "Choose X for cycling ${cardComponent.name} (0-$maxX; X = 0 cycles it for {0})"
+                        } else {
+                            "Choose X for cycling ${cardComponent.name} (0-$maxX)"
+                        },
                         context = com.wingedsheep.engine.core.DecisionContext(
                             sourceId = action.cardId,
                             sourceName = cardComponent.name,
@@ -166,7 +171,7 @@ class CycleCardHandler(
         // X is settled from here on. Substituting it into the cost leaves an ordinary X-free cost,
         // so every payment path below (pool, auto-tap, explicit taps) works unchanged.
         val announcedX = action.xValue?.takeIf { cyclingAbility.cost.hasX }
-        val cyclingCost = reduced(state, action, cyclingAbility.cost.withXAs(announcedX ?: 0))
+        val cyclingCost = reduced(state, action, baseCost(state, action, cyclingAbility.cost, announcedX))
 
         var currentState = state
         val events = mutableListOf<GameEvent>()
@@ -274,13 +279,16 @@ class CycleCardHandler(
         events.addAll(discardResult.events)
 
         // "Cycled a card named X N times this game" (Yidaro, Wandering Monster) — counted before
-        // the event so a "when you cycle" trigger already sees this cycle.
+        // the event so a "when you cycle" trigger already sees this cycle. "For the first time each
+        // turn" (Valiant Rescuer) is read before this cycle marks the player.
+        val firstCycleThisTurn = currentState.getEntity(action.playerId)?.has<CycledThisTurnComponent>() != true
         currentState = currentState.updateEntity(action.playerId) { player ->
             player.with((player.get<CardsCycledThisGameComponent>() ?: CardsCycledThisGameComponent()).record(cardComponent.name))
+                .with(CycledThisTurnComponent)
         }
 
         // Emit cycling event (for cycling triggers like Astral Slide)
-        events.add(CardCycledEvent(action.playerId, action.cardId, cardComponent.name, announcedX))
+        events.add(CardCycledEvent(action.playerId, action.cardId, cardComponent.name, announcedX, firstThisTurn = firstCycleThisTurn))
 
         currentState = currentState.tick()
 
@@ -293,7 +301,9 @@ class CycleCardHandler(
             replacementProcessor = replacementProcessor,
             amountEvaluator = amountEvaluator
         )
-        val drawResult = drawExecutor.executeDraws(currentState, action.playerId, 1)
+        // The draw carries the cycled card, so "if a cycling ability of a nonland card would cause
+        // you to draw" (Unpredictable Cyclone) can match it and refer to "the cycled card".
+        val drawResult = drawExecutor.executeDraws(currentState, action.playerId, 1, cycledCardId = action.cardId)
         if (drawResult.outcome is Outcome.Paused) {
             return ExecutionResult.propagatePause(
                 drawResult.state,
@@ -307,6 +317,23 @@ class CycleCardHandler(
         return ExecutionResult.success(currentState, events)
     }
 
+    /** The printed or granted cycling ability [action] names (`CycleCard.grantedBy`). */
+    private fun cyclingOption(
+        state: GameState,
+        action: CycleCard,
+        cardDef: CardDefinition
+    ): CyclingGrants.CyclingOption? = CyclingGrants.chosenOption(
+        state, action.cardId, cardDef, action.playerId, action.grantedBy, cardRegistry, zones.predicateEvaluator
+    )
+
+    /**
+     * The printed cycling cost with X bound, or {0} under a free-cycling grant (New Perspectives) —
+     * see [CastPermissionUtils.cyclingBaseCost].
+     */
+    private fun baseCost(state: GameState, action: CycleCard, printed: ManaCost, xValue: Int?): ManaCost =
+        castPermissionUtils?.cyclingBaseCost(printed, xValue, state, action.playerId)
+            ?: printed.withXAs(xValue ?: 0)
+
     /**
      * [cost] after the board's activated-ability cost reductions — cycling is an activated ability
      * of the card in hand (CR 702.29a), so Zirda's "abilities you activate" reaches it. Applied to
@@ -318,8 +345,7 @@ class CycleCardHandler(
 
     private fun isCyclingPrevented(state: GameState): Boolean {
         for (entityId in state.getBattlefield()) {
-            val card = state.getEntity(entityId)?.get<CardComponent>() ?: continue
-            val cardDef = cardRegistry.getCard(card.cardDefinitionId) ?: continue
+            val cardDef = state.getEntity(entityId)?.faceUpCardDefinition(cardRegistry) ?: continue
             if (cardDef.script.staticAbilities.any { it is PreventCycling }) {
                 return true
             }

@@ -12,12 +12,17 @@ import kotlin.math.min
  *  - [score] / [scoreBooster] — the bundle's `jm`/`xs`, the archetype-aware path (added in the
  *    main-scorer stage of the port).
  *
+ * Both paths add one term of our own on top of the bundle: [DraftsimSynergy.pickAdjustment], which
+ * prices a card by the payoffs it feeds in the pool (or the fuel it lacks, as a payoff). It reads
+ * [DraftsimSetTables.axes] and is a no-op without them, so the bundle-parity tests still hold.
+ *
  * A scorer is bound to one pool's [tables] (ratings/removal/archetypes). It holds no mutable state;
  * `archColors` and the per-call flags are passed in. Bundle symbols are noted per function.
  */
 class DraftsimScorer(private val tables: DraftsimSetTables) {
 
     private val ops = DraftsimCardOps(tables)
+    private val synergy = DraftsimSynergy(ops)
 
     // ----- constants (SPEC_scoring.md §2) -----
     private companion object {
@@ -35,6 +40,10 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
         const val IX = 3            // real-archetype total threshold
         const val LX = 15           // "early-ish / colors flexible" threshold
         const val BOMB = 3.9        // bomb / splashable-bomb rating cutoff
+        const val DENIAL_FLOOR = 3.0 // rating a passed card must beat before denying it is worth anything (ours)
+        const val DEFAULT_POD = 8   // pod size assumed when the caller doesn't know it (ours)
+        const val COLORLESS_SOURCE_PICK = 3.0 // Wastes the pool's {C} spells still need: a playable's pick (ours)
+        const val SPARE_COLORLESS_PICK = 0.5  // Wastes nothing in the pool needs yet (ours)
 
         // rarity quality bonus (jm) cX
         val RARITY_QUALITY = mapOf("mythic" to 0.15, "rare" to 0.1, "uncommon" to 0.0, "common" to 0.0)
@@ -91,6 +100,7 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
      * sets ship archetype columns, so most sets score here. Higher = better pick.
      */
     fun scoreFallback(card: ScorerCard, pool: List<ScorerCard>): DraftsimCardScore {
+        colorlessBasicScore(card, pool)?.let { return it }
         val acc = Acc()
         val rawRating = ratingFallback(card)
         acc.total += rawRating
@@ -151,8 +161,11 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
             }
         }
 
+        val adjustment = synergy.pickAdjustment(card, pool.filter { !isLand(it) })
+        if (adjustment != null) { acc.total += adjustment.points; acc.emit(adjustment.reason) }
+
         return DraftsimCardScore(
-            total = round2(rawRating + h),
+            total = round2(rawRating + h + (adjustment?.points ?: 0.0)),
             rawRating = rawRating,
             reasons = acc.reasons,
             reasonPoints = acc.points,
@@ -332,8 +345,13 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
         }
     }
 
-    /** `Bm(nonland, arch)`: archetype → colors on ≥3 of its cards (plus colors ≥30% as frequent). */
-    fun archColorMap(nonland: List<ScorerCard>): Map<String, List<String>> {
+    /**
+     * `Bm(nonland, arch)`: archetype → colors on ≥3 of its cards (plus colors ≥30% as frequent), most
+     * tagged first. [maxColors] keeps only that many: the deckbuilder holds a named archetype to its two
+     * deepest colours, since a set whose archetypes are colourless themes (FRA's "Jace Empowerment"
+     * tags cards of all five) would otherwise build three or four colours with no fixing bar.
+     */
+    fun archColorMap(nonland: List<ScorerCard>, maxColors: Int = Int.MAX_VALUE): Map<String, List<String>> {
         if (tables.archetypes.isEmpty()) return emptyMap()
         val perArch = HashMap<String, HashMap<String, Int>>()
         for (card in nonland) {
@@ -345,7 +363,9 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
         }
         return perArch.mapValues { (_, counts) ->
             val top = counts.values.maxOrNull() ?: 0
-            counts.filterValues { it >= 3 || it >= 0.3 * top }.keys.toList()
+            counts.filterValues { it >= 3 || it >= 0.3 * top }.entries
+                .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { DraftsimMana.COLORS.indexOf(it.key) })
+                .take(maxColors).map { it.key }
         }.filterValues { it.isNotEmpty() }
     }
 
@@ -403,6 +423,7 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
         val g = rating(card.name)
 
         // ----- §6.1 early exits & base -----
+        colorlessBasicScore(card, pool)?.let { return it }
         if (isBasic(card)) {
             return DraftsimCardScore(-1.0, 0.0, listOf("Basic land: always available, never draft"), listOf(-1.0))
         }
@@ -440,6 +461,7 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
         // ----- §6.3 EARLY branch (h < ac) -----
         if (h < AC) {
             scoreEarlyBranch(card, nonland, v, h, acc, archColors, topBomb)
+            applySynergy(card, nonland, acc)
             val ctx = earlyDeckContext(nonland, archColors, topBomb)
             return finalize(acc, v, ctx, floorAtZero = true)
         }
@@ -479,12 +501,34 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
         // ----- §6.6 curve -----
         scoreCurve(card, nonland, h, r, w, acc)
         // ----- §6.7 tail -----
-        scoreTail(card, pool, v, acc)
+        scoreTail(card, pool, acc)
+        // ----- synergy (ours, not the bundle's): off unless the tables carry axes -----
+        applySynergy(card, nonland, acc)
 
         val ctx = if (hasArch && (u.getOrNull(0)?.total ?: 0.0) > 0)
             DraftsimDeckContext(u[0].name, secondary?.name)
         else deckArchetypeColors(nonland)
         return finalize(acc, v, ctx, floorAtZero = true)
+    }
+
+    /**
+     * Wastes' pick (ours, not the bundle's). A Limited deck plays only the Wastes it opens or drafts,
+     * so unlike the basics the land station hands out it is a real pick — and the only way a pool's
+     * `{C}` spells get cast ([DraftsimMana.colorlessPips]). Worth [COLORLESS_SOURCE_PICK] while the
+     * pool holds fewer colorless lands than the deck builder plays for its `{C}` spells
+     * ([DraftsimMana.colorlessSourcesWanted]); [SPARE_COLORLESS_PICK]
+     * once it has them, or while nothing needs one. Null for every other card.
+     */
+    private fun colorlessBasicScore(card: ScorerCard, pool: List<ScorerCard>): DraftsimCardScore? {
+        if (!isBasic(card) || !card.makesColorless) return null
+        val wanted = DraftsimMana.colorlessSourcesWanted(pool.filter { !isLand(it) })
+        val held = pool.count { isLand(it) && it.makesColorless }
+        val (total, reason) = when {
+            held < wanted -> COLORLESS_SOURCE_PICK to "Colorless source for your {C} spells ($held of $wanted)"
+            wanted == 0 -> SPARE_COLORLESS_PICK to "Colorless source; no {C} spell needs it yet"
+            else -> SPARE_COLORLESS_PICK to "Colorless source; you have the $wanted your {C} spells need"
+        }
+        return DraftsimCardScore(total, total, listOf(reason), listOf(total))
     }
 
     /** `xs(booster, picks, …)` — score every booster card with [score] (6-arg jm: no forced arch). */
@@ -497,8 +541,69 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
      * `xs` entry: route to the archetype-aware [scoreBooster] when the set ships archetype data, else
      * to the color-only [scoreBoosterFallback] (the common path). Mirrors the bundle's `xs` dispatch.
      */
-    fun scoreBoosterAuto(booster: List<ScorerCard>, picks: List<ScorerCard>): Map<String, DraftsimCardScore> =
-        if (tables.archetypes.isEmpty()) scoreBoosterFallback(booster, picks) else scoreBooster(booster, picks)
+    fun scoreBoosterAuto(
+        booster: List<ScorerCard>,
+        picks: List<ScorerCard>,
+        podSize: Int? = null,
+    ): Map<String, DraftsimCardScore> {
+        val scores = if (tables.archetypes.isEmpty()) scoreBoosterFallback(booster, picks) else scoreBooster(booster, picks)
+        return if (podSize == null) scores else withDenial(booster, picks, scores, podSize)
+    }
+
+    /**
+     * Hate drafting (ours, not the bundle's): take a bomb you won't play instead of passing it,
+     * but only when the card you would otherwise take adds little to your deck.
+     *
+     * Applies only once the pool is past the flexible stage ([LX] nonland cards). Before that, an
+     * off-color bomb is speculation, and the color logic above already prices it. Taking a bomb
+     * then would also pull this pool's color weights toward it.
+     *
+     * The comparison:
+     *  - **forgone**: what the pick you give up is worth over a replacement-level card,
+     *    `rawRating − QJ`.
+     *  - **denial**: how much the bomb is worth to whoever gets it, `rating − DENIAL_FLOOR`, scaled
+     *    by [denialReach], the chance the drafter you pass it to is someone you play.
+     *
+     * When denial is larger, the bomb is ranked just above the planned pick, by the margin between
+     * the two. The pick is unchanged when the planned pick is itself a bomb, or when nothing in the
+     * pack beats it. [podSize] is the number of drafters at the table; non-positive means unknown,
+     * which is treated as a full 8-seat pod (the smallest denial value).
+     */
+    private fun withDenial(
+        booster: List<ScorerCard>,
+        picks: List<ScorerCard>,
+        scores: Map<String, DraftsimCardScore>,
+        podSize: Int,
+    ): Map<String, DraftsimCardScore> {
+        if (picks.count { !isLand(it) } < LX) return scores
+        val take = argmax(booster, scores) ?: return scores
+        if (isBombCard(take)) return scores
+        val takeScore = scores.getValue(take.name)
+        val forgone = max(0.0, takeScore.rawRating - QJ)
+        val reach = denialReach(podSize)
+        val (bomb, denial) = booster
+            .filter { it.name != take.name && isBombCard(it) }
+            .map { it to reach * (ratingOrDefault(it) - DENIAL_FLOOR) }
+            .filter { (_, d) -> d > forgone }
+            .maxByOrNull { (_, d) -> d } ?: return scores
+        val bombScore = scores.getValue(bomb.name)
+        val newTotal = round2(takeScore.total + (denial - forgone))
+        if (newTotal <= bombScore.total) return scores
+        val reason = "Hate draft: keep a bomb from the next drafter"
+        return scores + (bomb.name to bombScore.copy(
+            total = newTotal,
+            reasons = bombScore.reasons + reason,
+            reasonPoints = bombScore.reasonPoints + round2(newTotal - bombScore.total),
+            summary = "Hate draft: ${take.name} (rating ${fmt(takeScore.rawRating)}) adds little to your deck; " +
+                "taking ${bomb.name} keeps it out of an opponent's.",
+        ))
+    }
+
+    /** Chance the drafter you pass to is someone you play: ~1 in 2–3 player pods, falling with size. */
+    private fun denialReach(podSize: Int): Double {
+        val seats = if (podSize <= 0) DEFAULT_POD else podSize
+        return if (seats <= 2) 1.0 else min(1.0, 2.0 / (seats - 1))
+    }
 
     /** The reason with the largest marginal point contribution (the hint layer's dominant reason). */
     fun dominantReason(score: DraftsimCardScore): String? {
@@ -694,12 +799,9 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
 
     // ----- §6.7 tail -----
 
-    private fun scoreTail(card: ScorerCard, pool: List<ScorerCard>, v: Double, acc: Acc) {
-        val price = card.priceUsd
-        if (v < 2 && price != null && price >= 5) {
-            val bonus = when { price >= 20 -> 0.6; price >= 10 -> 0.4; else -> 0.2 }
-            acc.total += bonus; acc.emit("Hate draft ($${fmt(price)})")
-        }
+    private fun scoreTail(card: ScorerCard, pool: List<ScorerCard>, acc: Acc) {
+        // The bundle's price-based "Hate draft" bonus (rare-drafting for resale value) is left out:
+        // it means nothing here. Denying bombs is [withDenial]'s job.
         if (isLegendaryCreature(card)) {
             val copies = pool.count { it.name == card.name }
             when {
@@ -707,6 +809,13 @@ class DraftsimScorer(private val tables: DraftsimSetTables) {
                 copies >= 2 -> { acc.total -= 4; acc.emit("3rd copy; deck caps at 2") }
             }
         }
+    }
+
+    /** [DraftsimSynergy.pickAdjustment] into [acc]; a no-op when the tables carry no synergy axes. */
+    private fun applySynergy(card: ScorerCard, nonland: List<ScorerCard>, acc: Acc) {
+        val adjustment = synergy.pickAdjustment(card, nonland) ?: return
+        acc.total += adjustment.points
+        acc.emit(adjustment.reason)
     }
 
     private fun finalize(acc: Acc, rawRating: Double, ctx: DraftsimDeckContext, floorAtZero: Boolean = false): DraftsimCardScore {

@@ -32,7 +32,6 @@ import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AbilityActivatedEverComponent
 import com.wingedsheep.engine.state.components.battlefield.AbilityActivatedThisTurnComponent
 import com.wingedsheep.engine.state.components.battlefield.BattlefieldEntryTimestampComponent
-import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
 import com.wingedsheep.engine.state.components.identity.DoubleFacedComponent
 import com.wingedsheep.engine.state.components.identity.TextChanges
@@ -43,7 +42,6 @@ import com.wingedsheep.engine.state.components.player.ManaPoolComponent
 import com.wingedsheep.engine.state.components.stack.ActivatedAbilityOnStackComponent
 import com.wingedsheep.engine.state.components.stack.captureEntitySnapshots
 import com.wingedsheep.engine.state.nameVisibleToAll
-import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.AbilityCost
 import com.wingedsheep.sdk.scripting.ActivatedAbility
@@ -113,7 +111,7 @@ class ActivateAbilityHandler(
         validator.validate(state.withPriority(action.playerId), action)?.let { ExecutionResult.error(state, it) }
             ?: executeActivation(state.withPriority(action.playerId), action)
     }
-    private val choicePauses = ActivationChoicePauses(costHandler, manaSolver, targetFinder = targetFinder)
+    private val choicePauses = ActivationChoicePauses(costHandler, manaSolver, targetFinder = targetFinder, castPermissionUtils = castPermissionUtils)
     private val autoTapper = ActivationAutoTapper(manaSolver, manaAbilitySideEffectExecutor)
     private val costPayer = ActivationCostPayer(costHandler, manaSolver, alternativePaymentHandler, autoTapper, predicateEvaluator = conditionEvaluator.predicates)
     private val manaAbilityResolver =
@@ -170,7 +168,7 @@ class ActivateAbilityHandler(
         val activation = when (val announced = announce(state, action)) {
             is Announcement.Announced -> if (lockedCost == null) announced.activation else announced.activation.copy(effectiveCost = lockedCost, effectiveXValue = lockedX)
             is Announcement.Rejected -> return ExecutionResult.error(state, announced.reason)
-        }
+        }.let { choicePauses.withForcedSacrifices(state, it) }
 
         val modal = (activation.ability.effect as? com.wingedsheep.sdk.scripting.effects.ModalEffect)
         if (modal != null && action.chosenModes == null) {
@@ -233,15 +231,23 @@ class ActivateAbilityHandler(
         // The source as it was when the activation began — before a sacrifice or tap cost moves or
         // changes it (a Treasure is gone once paid for) — for the per-turn activation memory.
         val sourceSnapshot = com.wingedsheep.engine.core.activationSourceSnapshot(state, action.sourceId)
-        val payment = when (val paid = costPayer.pay(state, activation, paymentContext)) {
+        val rawPayment = when (val paid = costPayer.pay(state, activation, paymentContext)) {
             is ActivationPaymentOutcome.Paid -> paid.payment
             is ActivationPaymentOutcome.Failed -> return ExecutionResult.error(state, paid.reason)
         }
 
         // 4. Activation is complete: record it for the activation limits.
-        val recorded = com.wingedsheep.engine.core.recordPermanentActivation(
-            recordActivation(payment.state, activation), action.playerId, sourceSnapshot
+        val recordedActivation = com.wingedsheep.engine.core.recordPermanentActivation(
+            recordActivation(rawPayment.state, activation), action.playerId, sourceSnapshot
         )
+        // Choosing the modes of a modal ability is facing a dilemma.
+        val (recorded, dilemmaEvents) = if (modal != null) {
+            com.wingedsheep.engine.mechanics.modal.Dilemmas.face(
+                recordedActivation, action.playerId, activation.sourceName,
+                action.chosenModes.orEmpty().size
+            )
+        } else recordedActivation to emptyList()
+        val payment = if (dilemmaEvents.isEmpty()) rawPayment else rawPayment.copy(events = rawPayment.events + dilemmaEvents)
 
         // Apply text replacement if the source has a TextReplacementComponent
         val effect = if (modal != null && action.chosenModes?.isEmpty() == true) {
@@ -300,9 +306,9 @@ class ActivateAbilityHandler(
             ?: return Announcement.Rejected("Ability not found")
         val ability = abilityLookup.ability
         if (ability.cost == AbilityCost.LoyaltyX && action.xValue != null) {
-            val loyalty = container.get<CountersComponent>()?.getCount(CounterType.LOYALTY) ?: 0
-            if (action.xValue !in 0..loyalty) {
-                return Announcement.Rejected("X must be between 0 and $loyalty")
+            val maxX = castPermissionUtils.maxLoyaltyX(state, action.sourceId, action.playerId)
+            if (action.xValue !in 0..maxX) {
+                return Announcement.Rejected("X must be between 0 and $maxX")
             }
         }
 
@@ -318,6 +324,7 @@ class ActivateAbilityHandler(
         val textReplacement = TextChanges.of(state, action.sourceId)
         val definedXValue = castPermissionUtils.definedXValue(state, ability, action.sourceId, action.playerId)
         val effectiveCost = costTotaller.total(state, action, ability, textReplacement)
+            ?: return Announcement.Rejected(ActivationValidator.PAY_ONLY_WITH_MANA_OF_UNPAYABLE)
 
         // Variable-count "exile/sacrifice one or more permanents you control" cost: X is defined by
         // the payer's cost choice (CR 601.2b — a variable defined by a cost choice is announced as
@@ -333,7 +340,9 @@ class ActivateAbilityHandler(
         val effectiveXValue: Int? = definedXValue
             ?: if (variablePermanentsCost != null && chosenForCost != null)
                 variableCostX(state, variablePermanentsCost, chosenForCost)
-            else action.xValue
+            else action.xValue ?: com.wingedsheep.engine.mechanics.cost.CostDefinedX.announcedByDiscard(
+                state, effectiveCost.extractDiscardXCost(), action.costPayment?.discardedCards
+            )
 
         return Announcement.Announced(
             Activation(
@@ -463,7 +472,7 @@ class ActivateAbilityHandler(
         val source = state.getEntity(action.sourceId)?.get<CardComponent>()
         val binding = targetValidator.bindTargetGroups(
             state, action.targets, requirements, action.playerId,
-            sourceColors = source?.colors.orEmpty(),
+            sourceColors = if (source == null) emptySet() else state.projectedState.colorSetOf(action.sourceId),
             sourceSubtypes = source?.typeLine?.subtypes?.mapTo(mutableSetOf()) { it.value }.orEmpty(),
             sourceId = action.sourceId,
             xValue = activation.effectiveXValue,
@@ -563,6 +572,9 @@ class ActivateAbilityHandler(
             sourceFaceChanges = stateBeforeActivation.getEntity(action.sourceId)
                 ?.get<DoubleFacedComponent>()
                 ?.faceChanges,
+            // "For as long as <source> remains tapped" counts from this moment: an untap before
+            // resolution ends it before it begins (CR 611.2b, Entrancing Lyre ruling).
+            sourceUntapCount = com.wingedsheep.engine.core.untapCount(stateBeforeActivation.getEntity(action.sourceId)),
             // Lock in the activation-time damage division (CR 601.2d) so removal in response
             // can't hand the controller a fresh division at resolution.
             damageDistribution = action.damageDistribution
@@ -581,18 +593,27 @@ class ActivateAbilityHandler(
             outer.mapIndexed { i, req -> req.withCount(binding.counts[i]) } + orderedModeRequirements.flatten()
         } else boundTargetRequirements(stateBeforeActivation, activation)
 
+        val activatedFrom = activationZone(stateBeforeActivation, action.sourceId)
         val stackResult = stackResolver.putActivatedAbility(
             state, abilityOnStack, action.targets,
             targetRequirements = effectiveTargetReqs,
             costsTap = effectiveCost.hasTapCost(),
-            isExhaust = ability.isExhaust,
+            onceOnlyKind = ability.onceOnlyKind,
             cantBeCopied = ability.cantBeCopied,
             isLoyalty = ability.isPlaneswalkerAbility,
-            loyaltyCountersRemoved = when (val cost = ability.cost) {
+            loyaltyCountersRemoved = when (val cost = effectiveCost.extractLoyaltyCost()) {
                 is AbilityCost.Loyalty -> if (cost.change < 0) -cost.change else 0
                 AbilityCost.LoyaltyX -> activation.effectiveXValue ?: 0
                 else -> 0
             },
+            // A source its own cost took out of the zone it was activated from (CR 113.7a) — a
+            // self-sacrifice, a "sacrifice a creature" cost that chose the source, a graveyard card
+            // exiled for its own embalm — matched as it was there: "an ability of a land on the
+            // battlefield" (Harsh Mentor), "an ability of a card in your graveyard" (Neerdiv).
+            sourceLastKnown = activationSourceLastKnown(stateBeforeActivation, state, action.sourceId, activatedFrom) {
+                snapshots.lastKnownSourceSnapshot
+            },
+            sourceZone = activatedFrom,
         )
         var currentState = stackResult.newState
         events.addAll(stackResult.events)
@@ -725,7 +746,7 @@ class ActivateAbilityHandler(
             val repeatStackResult = stackResolver.putActivatedAbility(
                 currentState, repeatAbilityOnStack, action.targets,
                 targetRequirements = effectiveTargetReqs,
-                isExhaust = ability.isExhaust,
+                onceOnlyKind = ability.onceOnlyKind,
             )
             currentState = repeatStackResult.newState
             events.addAll(repeatStackResult.events)

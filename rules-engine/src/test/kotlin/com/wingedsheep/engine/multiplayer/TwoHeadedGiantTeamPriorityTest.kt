@@ -148,7 +148,7 @@ class TwoHeadedGiantTeamPriorityTest : FunSpec({
 
         state.hasPriority(state.priorityPlayerId!!).shouldBeTrue()
         p.filter { it != state.priorityPlayerId }.forEach { state.hasPriority(it).shouldBeFalse() }
-        state.priorityTeam shouldBe listOf(state.priorityPlayerId!!)
+        state.priorityTeam shouldBe listOf(state.priorityPlayerId)
     }
 
     test("Team vs. Team takes individual turns (CR 808.4), so priority stays individual too") {

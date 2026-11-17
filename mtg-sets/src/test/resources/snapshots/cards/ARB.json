@@ -71,6 +71,57 @@
     ]
 }
 
+// Bituminous Blast
+{
+    "name": "Bituminous Blast",
+    "manaCost": "{3}{B}{R}",
+    "typeLine": "Instant",
+    "oracleText": "Cascade (When you cast this spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.)\nBituminous Blast deals 4 damage to target creature.",
+    "keywords": [
+        "CASCADE"
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "DealDamage",
+            "amount": {
+                "type": "Fixed",
+                "amount": 4
+            },
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ],
+        "triggeredAbilities": [
+            {
+                "id": "Bituminous Blast:1",
+                "trigger": "CastThisSpellEvent",
+                "effect": "Cascade",
+                "descriptionOverride": "Cascade"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "34",
+        "rarity": "UNCOMMON",
+        "artist": "Raymond Swanland",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/d/fd6a3c48-b01e-4462-a4a1-8d5009a6a844.jpg?1783942435"
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
 // Bloodbraid Elf
 {
     "name": "Bloodbraid Elf",
@@ -104,6 +155,42 @@
     "colorIdentityOverride": [
         "GREEN",
         "RED"
+    ]
+}
+
+// Enlisted Wurm
+{
+    "name": "Enlisted Wurm",
+    "manaCost": "{4}{G}{W}",
+    "typeLine": "Creature — Wurm",
+    "oracleText": "Cascade (When you cast this spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.)",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "CASCADE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Enlisted Wurm:1",
+                "trigger": "CastThisSpellEvent",
+                "effect": "Cascade",
+                "descriptionOverride": "Cascade"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "68",
+        "rarity": "UNCOMMON",
+        "artist": "Steve Prescott",
+        "flavorText": "A match for any army—even its own.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/6/66605149-3959-4a51-8400-350e6fac2ab2.jpg?1783942427"
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
     ]
 }
 
@@ -157,6 +244,59 @@
         ]
     },
     "colorIdentityOverride": [
+        "WHITE",
+        "BLUE"
+    ]
+}
+
+// Flurry of Wings
+{
+    "name": "Flurry of Wings",
+    "manaCost": "{G}{W}{U}",
+    "typeLine": "Instant",
+    "oracleText": "Create X 1/1 white Bird Soldier creature tokens with flying, where X is the number of attacking creatures.",
+    "script": {
+        "spellEffect": {
+            "type": "CreateToken",
+            "count": {
+                "type": "AggregateBattlefield",
+                "player": "Each",
+                "filter": "creature attacking"
+            },
+            "power": 1,
+            "toughness": 1,
+            "colors": [
+                "WHITE"
+            ],
+            "creatureTypes": [
+                "Bird",
+                "Soldier"
+            ],
+            "keywords": [
+                "FLYING"
+            ],
+            "imageUri": "https://cards.scryfall.io/normal/front/b/7/b7b55dcf-ae63-4b84-8d39-80b5a6de3c1a.jpg?1783942409"
+        }
+    },
+    "metadata": {
+        "collectorNumber": "127",
+        "rarity": "UNCOMMON",
+        "artist": "Matt Cavotta",
+        "flavorText": "\"We are born soldiers. The call to battle is a homecoming.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/b/dbabaf1d-0220-438d-8263-e23d8010fe24.jpg?1783942412",
+        "rulings": [
+            {
+                "date": "2009-05-01",
+                "text": "Flurry of Wings counts the number of creatures that are attacking as it resolves. It doesn't matter how many creatures were originally declared as attackers that turn. It also doesn't matter who controls those creatures, or who or what they're attacking."
+            },
+            {
+                "date": "2009-05-01",
+                "text": "If Flurry of Wings is cast before attackers have been declared or after combat ends, it won't do anything."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
         "WHITE",
         "BLUE"
     ]
@@ -227,6 +367,50 @@
         "WHITE",
         "BLUE",
         "GREEN"
+    ]
+}
+
+// Lorescale Coatl
+{
+    "name": "Lorescale Coatl",
+    "manaCost": "{1}{G}{U}",
+    "typeLine": "Creature — Snake",
+    "oracleText": "Whenever you draw a card, put a +1/+1 counter on this creature.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Lorescale Coatl:1",
+                "trigger": "DrawEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "101",
+        "rarity": "UNCOMMON",
+        "artist": "Greg Staples",
+        "flavorText": "\"The enlightenment I never found in etherium I have found traced in the coatl's scales.\"\n—Ranalus, vedalken heretic",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/8/e81c31c9-d7d7-4b45-893e-7e36d26c645f.jpg?1783942420",
+        "rulings": [
+            {
+                "date": "2020-06-23",
+                "text": "If a spell or ability causes you to put a card into your hand without specifically using the word \"draw,\" it's not a card drawn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "BLUE"
     ]
 }
 
@@ -434,6 +618,225 @@
         "WHITE",
         "BLUE",
         "BLACK"
+    ]
+}
+
+// Thopter Foundry
+{
+    "name": "Thopter Foundry",
+    "manaCost": "{W/B}{U}",
+    "typeLine": "Artifact",
+    "oracleText": "{1}, Sacrifice a nontoken artifact: Create a 1/1 blue Thopter artifact creature token with flying. You gain 1 life.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Thopter Foundry:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomSacrifice",
+                                "filter": "artifact nontoken"
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "CreateToken",
+                            "power": 1,
+                            "toughness": 1,
+                            "colors": [
+                                "BLUE"
+                            ],
+                            "creatureTypes": [
+                                "Thopter"
+                            ],
+                            "keywords": [
+                                "FLYING"
+                            ],
+                            "imageUri": "https://cards.scryfall.io/normal/front/e/e/eef8b4fc-238f-4c1f-ad98-a1769fd44eab.jpg?1783930233",
+                            "artifactToken": true
+                        },
+                        {
+                            "type": "GainLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 1
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "133",
+        "rarity": "UNCOMMON",
+        "artist": "Ralph Horsley",
+        "flavorText": "\"Etherium is limited. Innovation is not.\"\n—Tezzeret",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/2/42b8d797-b01d-49cf-9818-d84bba17029d.jpg?1783942412",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "You may sacrifice Thopter Foundry to pay the cost of its own ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLUE",
+        "BLACK"
+    ]
+}
+
+// Time Sieve
+{
+    "name": "Time Sieve",
+    "manaCost": "{U}{B}",
+    "typeLine": "Artifact",
+    "oracleText": "{T}, Sacrifice five artifacts: Take an extra turn after this one.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Time Sieve:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        "CostTap",
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomSacrifice",
+                                "filter": "artifact",
+                                "count": 5
+                            }
+                        }
+                    ]
+                },
+                "effect": "TakeExtraTurn",
+                "descriptionOverride": "{T}, Sacrifice five artifacts: Take an extra turn after this one."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "31",
+        "rarity": "RARE",
+        "artist": "Franz Vohwinkel",
+        "flavorText": "\"I pray that I am never considered useless or old.\"\n—Sharuum the Hegemon",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/6/c620e565-f5e1-467c-a1d1-8d05228b2f37.jpg?1783942436",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "You may sacrifice Time Sieve as one of the artifacts to pay the cost of its own ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "BLACK"
+    ]
+}
+
+// Trace of Abundance
+{
+    "name": "Trace of Abundance",
+    "manaCost": "{R/W}{G}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant land\nEnchanted land has shroud. (It can't be the target of spells or abilities.)\nWhenever enchanted land is tapped for mana, its controller adds an additional one mana of any color.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantKeyword",
+                "keyword": "SHROUD"
+            },
+            {
+                "type": "AdditionalManaOnTap",
+                "amount": {
+                    "type": "Fixed",
+                    "amount": 1
+                },
+                "anyColor": true
+            }
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "land"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "142",
+        "artist": "Dave Kendall",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/1/6151001a-cf4b-4f95-a986-7181313e2224.jpg?1783942409"
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "GREEN",
+        "WHITE"
+    ]
+}
+
+// Violent Outburst
+{
+    "name": "Violent Outburst",
+    "manaCost": "{1}{R}{G}",
+    "typeLine": "Instant",
+    "oracleText": "Cascade (When you cast this spell, exile cards from the top of your library until you exile a nonland card that costs less. You may cast it without paying its mana cost. Put the exiled cards on the bottom in a random order.)\nCreatures you control get +1/+0 until end of turn.",
+    "keywords": [
+        "CASCADE"
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "ForEach",
+            "space": {
+                "type": "IterationSpace.Group",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                }
+            },
+            "body": {
+                "type": "ModifyStats",
+                "powerModifier": {
+                    "type": "Fixed",
+                    "amount": 1
+                },
+                "toughnessModifier": {
+                    "type": "Fixed",
+                    "amount": 0
+                },
+                "target": "IterationEntity"
+            }
+        },
+        "triggeredAbilities": [
+            {
+                "id": "Violent Outburst:1",
+                "trigger": "CastThisSpellEvent",
+                "effect": "Cascade",
+                "descriptionOverride": "Cascade"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "63",
+        "artist": "Richard Whitters",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/b/1b58856a-f88e-4625-8636-62b5c717b956.jpg?1783942428"
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "GREEN"
     ]
 }
 

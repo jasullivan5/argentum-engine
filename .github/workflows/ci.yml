@@ -27,12 +27,17 @@ jobs:
         include:
           - name: engine            # the engine's own tests (card scenarios are the groups below)
             tasks: ":rules-engine:test"
-          - name: scenarios-old     # card scenarios, sets released up to 2022
-            tasks: >-
-              :mtg-sets:1993-1999:tests:test :mtg-sets:2000-2002:tests:test
-              :mtg-sets:2003-2007:tests:test :mtg-sets:2008-2016:tests:test
-              :mtg-sets:2017-2022:tests:test
-          - name: scenarios-2023-24 # card scenarios, the two biggest recent eras
+          # Card scenarios, one chronological slice of eras per runner. Sized for the corpus once the
+          # remaining sets are finished, not just today's: 2017-2022 is the largest era module and sets
+          # the floor, so no group is planned to outgrow it. Split that era module when it becomes the
+          # long pole (see docs/build-performance-plan.md).
+          - name: scenarios-1993-2002
+            tasks: ":mtg-sets:1993-1999:tests:test :mtg-sets:2000-2002:tests:test"
+          - name: scenarios-2003-16
+            tasks: ":mtg-sets:2003-2007:tests:test :mtg-sets:2008-2016:tests:test"
+          - name: scenarios-2017-22
+            tasks: ":mtg-sets:2017-2022:tests:test"
+          - name: scenarios-2023-24
             tasks: ":mtg-sets:2023:tests:test :mtg-sets:2024:tests:test"
           - name: scenarios-2025-26
             tasks: ":mtg-sets:2025:tests:test :mtg-sets:2026:tests:test"
@@ -58,10 +63,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -80,7 +85,7 @@ jobs:
       # other's save; the second restore-key lets a group bootstrap from any other group's cache
       # (e.g. a fresh `tools` run reuses `engine`'s compiled rules-engine).
       - name: Cache Gradle build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.gradle/build-cache
           key: gradle-build-cache-${{ runner.os }}-${{ matrix.name }}-${{ github.sha }}
@@ -88,10 +93,10 @@ jobs:
             gradle-build-cache-${{ runner.os }}-${{ matrix.name }}-
             gradle-build-cache-${{ runner.os }}-
 
+      # Resets the restored entries' access times so the prune step below can tell which ones this
+      # run read. See .github/scripts/gradle-build-cache.sh.
       - name: Mark cache entries in use
-        run: |
-          mkdir -p "${GRADLE_BUILD_CACHE_DIR}"
-          touch "${RUNNER_TEMP}/cache-marker"
+        run: .github/scripts/gradle-build-cache.sh mark
 
       # FlywayMigrationTest starts postgres:16-alpine through Testcontainers, whose image pull gives up
       # after a fixed timeout (ContainerFetchException). A slow Docker Hub pull mid-suite failed the
@@ -138,15 +143,13 @@ jobs:
           kill "${WATCHDOG_PID}" 2>/dev/null || true
           exit "${STATUS}"
 
-      # Gradle bumps an entry's mtime whenever it reads or writes it, so anything older than the marker
-      # is an entry this group neither used nor produced — carried along from older restores. Without
+      # Drops entries this group neither read nor wrote — carried along from older restores. Without
       # this the saved cache only ever grows (PR entries reached 1.1 GB per group), which is what blew
-      # the 10 GB cap. What is left is exactly what the next run of this group can reuse.
+      # the 10 GB cap. What is left is exactly what the next run of this group can reuse. Reads are
+      # tracked by access time: Gradle doesn't bump mtime on a cache hit, and an mtime-only prune
+      # threw every hit away (see .github/scripts/gradle-build-cache.sh).
       - name: Prune unused cache entries
-        run: |
-          du -sh "${GRADLE_BUILD_CACHE_DIR}" || true
-          find "${GRADLE_BUILD_CACHE_DIR}" -type f ! -newer "${RUNNER_TEMP}/cache-marker" -delete
-          du -sh "${GRADLE_BUILD_CACHE_DIR}" || true
+        run: .github/scripts/gradle-build-cache.sh prune
 
       # The repo's Actions cache is capped at 10 GB and evicts least-recently-used entries past it.
       # Each PR push used to save a fresh copy of every group's cache, so a few busy PRs pushed main's
@@ -187,10 +190,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -199,9 +202,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
 
       - name: Set up Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 26
 
       - name: Build and smoke-test the browser checker
         working-directory: oracle-assay/browser
@@ -220,10 +223,10 @@ jobs:
       GRADLE_BUILD_CACHE_DIR: ${{ github.workspace }}/.gradle/build-cache
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
@@ -237,7 +240,7 @@ jobs:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
       - name: Cache Gradle build outputs
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/.gradle/build-cache
           key: gradle-build-cache-${{ runner.os }}-coverage-${{ github.sha }}
@@ -245,13 +248,15 @@ jobs:
             gradle-build-cache-${{ runner.os }}-coverage-
             gradle-build-cache-${{ runner.os }}-
 
+      - name: Mark cache entries in use
+        run: .github/scripts/gradle-build-cache.sh mark
+
       - name: Generate coverage report
-        run: |
-          mkdir -p "${GRADLE_BUILD_CACHE_DIR}"
-          touch "${RUNNER_TEMP}/cache-marker"
-          ./gradlew koverXmlReport
-          # Same pruning as the test groups: keep only entries this run read or wrote.
-          find "${GRADLE_BUILD_CACHE_DIR}" -type f ! -newer "${RUNNER_TEMP}/cache-marker" -delete
+        run: ./gradlew koverXmlReport
+
+      # Same pruning as the test groups: keep only entries this run read or wrote.
+      - name: Prune unused cache entries
+        run: .github/scripts/gradle-build-cache.sh prune
 
       - name: Extract coverage percentage
         id: coverage
@@ -263,7 +268,7 @@ jobs:
           echo "coverage=$PERCENT" >> $GITHUB_OUTPUT
 
 #      - name: Update coverage badge
-#        uses: schneegans/dynamic-badges-action@v1.7.0
+#        uses: schneegans/dynamic-badges-action@v1.9.0
 #        with:
 #          auth: ${{ secrets.GIST_SECRET }}
 #          gistID: ${{ vars.COVERAGE_GIST_ID }}
@@ -279,12 +284,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
-      - name: Set up Node 22
-        uses: actions/setup-node@v6
+      - name: Set up Node 26
+        uses: actions/setup-node@v7
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
           cache-dependency-path: web-client/package-lock.json
 
@@ -306,10 +311,10 @@ jobs:
   #
   #   steps:
   #     - name: Checkout repository
-  #       uses: actions/checkout@v6
+  #       uses: actions/checkout@v7
   #
   #     - name: Set up JDK 21
-  #       uses: actions/setup-java@v5
+  #       uses: actions/setup-java@v6
   #       with:
   #         distribution: temurin
   #         java-version: 21
@@ -317,10 +322,10 @@ jobs:
   #     - name: Setup Gradle
   #       uses: gradle/actions/setup-gradle@v6
   #
-  #     - name: Set up Node 22
-  #       uses: actions/setup-node@v5
+  #     - name: Set up Node 26
+  #       uses: actions/setup-node@v7
   #       with:
-  #         node-version: 22
+  #         node-version: 26
   #         cache: npm
   #         cache-dependency-path: |
   #           web-client/package-lock.json

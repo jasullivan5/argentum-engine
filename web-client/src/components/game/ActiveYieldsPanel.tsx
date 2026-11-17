@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useGameStore } from '@/store/gameStore.ts'
 import type { ClientYield } from '@/types/gameState'
+import { yieldTags, YIELD_TONE } from './yields'
 
 /**
  * A small fixed panel listing the player's active persistent yields (MTGO right-click yields —
@@ -18,49 +19,75 @@ export function ActiveYieldsPanel() {
 
   return (
     <div
+      role="region"
+      aria-label="Active yields"
       style={{
         position: 'fixed',
-        right: 12,
+        // Clear of the right-hand zone column (deck / graveyard / exile), just above the pass controls.
+        right: 104,
         bottom: 96,
         zIndex: 60,
-        width: 230,
-        background: 'rgba(18, 14, 28, 0.94)',
+        width: 248,
+        background: 'rgba(18, 14, 28, 0.95)',
         border: '1px solid rgba(150, 100, 200, 0.45)',
-        borderRadius: 8,
-        boxShadow: '0 4px 14px rgba(0, 0, 0, 0.5)',
+        borderRadius: 10,
+        boxShadow: '0 6px 18px rgba(0, 0, 0, 0.5)',
         color: '#e0d4f0',
         fontSize: 11,
         overflow: 'hidden',
       }}
     >
-      <div
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        aria-expanded={!collapsed}
+        title="Abilities you've told the game to stop asking about"
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '6px 10px',
+          gap: 8,
+          width: '100%',
+          padding: '7px 10px',
           background: 'rgba(80, 50, 120, 0.4)',
+          border: 'none',
+          color: 'inherit',
+          font: 'inherit',
           cursor: 'pointer',
+          textAlign: 'left',
         }}
-        onClick={() => setCollapsed((c) => !c)}
-        title="Persistent yields you've set"
       >
-        <span style={{ fontWeight: 700 }}>Active yields ({yields.length})</span>
+        <span aria-hidden style={{ color: '#cbb8ff', fontSize: 13, fontWeight: 800, lineHeight: 1 }}>»</span>
+        <span style={{ fontWeight: 700, flex: 1 }}>Active yields</span>
+        <span style={{
+          minWidth: 18,
+          padding: '0 6px',
+          borderRadius: 999,
+          background: 'rgba(160, 130, 240, 0.3)',
+          color: '#e6dcff',
+          fontWeight: 800,
+          textAlign: 'center',
+        }}>
+          {yields.length}
+        </span>
         <span aria-hidden style={{ color: '#b8a8cc' }}>{collapsed ? '▸' : '▾'}</span>
-      </div>
+      </button>
 
       {!collapsed && (
-        <div style={{ maxHeight: '40vh', overflowY: 'auto' }}>
-          {yields.map((y) => (
-            <YieldRow
-              key={`${y.cardDefinitionId}|${y.abilityId}`}
-              entry={y}
-              onRevoke={() => clearAbilityYield(y.cardDefinitionId, y.abilityId)}
-            />
-          ))}
+        <>
+          <div style={{ maxHeight: '40vh', overflowY: 'auto', padding: '2px 0' }}>
+            {yields.map((y) => (
+              <YieldRow
+                key={`${y.cardDefinitionId}|${y.abilityId}`}
+                entry={y}
+                onRevoke={() => clearAbilityYield(y.cardDefinitionId, y.abilityId)}
+              />
+            ))}
+          </div>
           <button
             type="button"
             onClick={() => clearAllYields()}
+            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(200, 80, 70, 0.14)' }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
             style={{
               display: 'block',
               width: '100%',
@@ -71,52 +98,71 @@ export function ActiveYieldsPanel() {
               color: '#ff9a8c',
               cursor: 'pointer',
               font: 'inherit',
+              fontWeight: 600,
               textAlign: 'center',
             }}
           >
-            Clear all yields
+            Clear all — ask me again
           </button>
-        </div>
+        </>
       )}
     </div>
   )
 }
 
-/** Human-readable summary of which yield dimensions are active on one ability. */
-function describe(y: ClientYield): string {
-  const parts: string[] = []
-  if (y.autoAnswer === true) parts.push('always yes')
-  if (y.autoAnswer === false) parts.push('always no')
-  if (y.wholeGame) parts.push('yield (game)')
-  if (y.untilEndOfTurn) parts.push('yield (turn)')
-  return parts.join(', ')
-}
-
 function YieldRow({ entry, onRevoke }: { entry: ClientYield; onRevoke: () => void }) {
+  const tags = yieldTags(entry)
   return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '6px 10px' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '6px 10px' }}>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+        <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={entry.displayName}>
           {entry.displayName}
         </div>
-        <div style={{ color: '#b8a8cc', fontSize: 10 }}>{describe(entry)}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 3 }}>
+          {tags.map((t) => {
+            const tone = YIELD_TONE[t.tone]
+            return (
+              <span
+                key={t.label}
+                title={t.detail}
+                style={{
+                  padding: '0 6px',
+                  borderRadius: 999,
+                  background: tone.bg,
+                  border: `1px solid ${tone.border}`,
+                  color: tone.fg,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  lineHeight: '15px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {t.label}
+              </span>
+            )
+          })}
+        </div>
       </div>
       <button
         type="button"
         onClick={onRevoke}
-        title="Revoke this yield"
+        title="Revoke — ask me again"
+        aria-label={`Revoke yields on ${entry.displayName}`}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(180, 70, 70, 0.45)' }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(150, 60, 60, 0.25)' }}
         style={{
           flexShrink: 0,
-          width: 20,
-          height: 20,
-          lineHeight: '18px',
+          width: 22,
+          height: 22,
+          lineHeight: '20px',
           textAlign: 'center',
-          background: 'rgba(150, 60, 60, 0.3)',
+          background: 'rgba(150, 60, 60, 0.25)',
           border: '1px solid rgba(200, 90, 90, 0.5)',
-          borderRadius: 4,
+          borderRadius: 6,
           color: '#ffc0b0',
           cursor: 'pointer',
           padding: 0,
+          fontSize: 13,
         }}
       >
         ×

@@ -923,6 +923,7 @@ function QuickGameDeckPicker({
   const pendingSecondCommanderRef = useRef<string | null>(null)
   const pendingSideboardRef = useRef<Record<string, number>>({})
   const pendingCompanionRef = useRef<string | null>(null)
+  const pendingFormatRef = useRef<string | null>(null)
   const lastSubmittedKeyRef = useRef<string | null>(null)
   const debounceRef = useRef<number | null>(null)
 
@@ -933,19 +934,21 @@ function QuickGameDeckPicker({
       sideboard?: Record<string, number>,
       secondCommander?: string | null,
       companion?: string | null,
+      deckFormat?: string | null,
     ) => {
       // The commanders, the sideboard and the companion ride in the dedupe key, so swapping any of
       // them on otherwise-identical deck contents still resubmits — editing only the sideboard is a
       // real change.
       const board = sideboard ?? {}
       const key =
-        `${serializeDeck(deckList)}|${commander ?? ''}+${secondCommander ?? ''}|${serializeDeck(board)}|${companion ?? ''}`
+        `${serializeDeck(deckList)}|${commander ?? ''}+${secondCommander ?? ''}|${serializeDeck(board)}|${companion ?? ''}|${deckFormat ?? ''}`
       if (key === lastSubmittedKeyRef.current) return
       pendingDeckRef.current = deckList
       pendingCommanderRef.current = commander ?? null
       pendingSecondCommanderRef.current = secondCommander ?? null
       pendingSideboardRef.current = board
       pendingCompanionRef.current = companion ?? null
+      pendingFormatRef.current = deckFormat ?? null
       if (debounceRef.current !== null) window.clearTimeout(debounceRef.current)
       onSubmitPendingChange(true)
       debounceRef.current = window.setTimeout(() => {
@@ -956,11 +959,12 @@ function QuickGameDeckPicker({
         const pendingSecond = pendingSecondCommanderRef.current
         const pendingSide = pendingSideboardRef.current
         const pendingCompanion = pendingCompanionRef.current
+        const pendingFormat = pendingFormatRef.current
         const pendingKey =
-          `${serializeDeck(pending)}|${pendingCmdr ?? ''}+${pendingSecond ?? ''}|${serializeDeck(pendingSide)}|${pendingCompanion ?? ''}`
+          `${serializeDeck(pending)}|${pendingCmdr ?? ''}+${pendingSecond ?? ''}|${serializeDeck(pendingSide)}|${pendingCompanion ?? ''}|${pendingFormat ?? ''}`
         if (pendingKey === lastSubmittedKeyRef.current) return
         lastSubmittedKeyRef.current = pendingKey
-        submitDeck(pending, pendingCmdr, pendingSide, pendingSecond, pendingCompanion)
+        submitDeck(pending, pendingCmdr, pendingSide, pendingSecond, pendingCompanion, pendingFormat)
       }, 250)
     },
     [submitDeck, onSubmitPendingChange],
@@ -975,15 +979,16 @@ function QuickGameDeckPicker({
       const pendingSecond = pendingSecondCommanderRef.current
       const pendingSide = pendingSideboardRef.current
       const pendingCompanion = pendingCompanionRef.current
+      const pendingFormat = pendingFormatRef.current
       const pendingKey = pending
-        ? `${serializeDeck(pending)}|${pendingCmdr ?? ''}+${pendingSecond ?? ''}|${serializeDeck(pendingSide)}|${pendingCompanion ?? ''}`
+        ? `${serializeDeck(pending)}|${pendingCmdr ?? ''}+${pendingSecond ?? ''}|${serializeDeck(pendingSide)}|${pendingCompanion ?? ''}|${pendingFormat ?? ''}`
         : null
       if (pending && pendingKey !== lastSubmittedKeyRef.current) {
         // Recorded like any other submission, so a remount (StrictMode's, or the picker's) that
         // re-emits the same deck doesn't send it again — once the game has started, that second
         // send lands on a lobby that no longer exists.
         lastSubmittedKeyRef.current = pendingKey
-        submitDeck(pending, pendingCmdr, pendingSide, pendingSecond, pendingCompanion)
+        submitDeck(pending, pendingCmdr, pendingSide, pendingSecond, pendingCompanion, pendingFormat)
       }
     }
   }, [submitDeck])

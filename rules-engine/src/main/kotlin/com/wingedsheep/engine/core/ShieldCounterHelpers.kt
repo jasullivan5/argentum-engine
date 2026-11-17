@@ -147,7 +147,7 @@ fun applyPreventByRemovingCounterToDamage(
     damageAmount: Int,
 ): CounterSpendingShield? {
     val container = state.getEntity(entityId) ?: return null
-    val effects = container.get<ReplacementEffectSourceComponent>()?.replacementEffects ?: return null
+    val effects = state.activeReplacementSource(entityId)?.replacementEffects ?: return null
     val effect = effects.filterIsInstance<PreventDamageByRemovingCounter>().firstOrNull { candidate ->
         val pattern = candidate.appliesTo
         pattern is EventPattern.DamageEvent &&

@@ -12,16 +12,25 @@ internal fun AnswerContinuation.objectReferences(): ObjectReferenceEnvironment? 
     is EffectCopyAuraEntryContinuation -> context.objectReferences
     is EnteringAttackDefenderContinuation -> context.objectReferences
     is EffectCopyEntryContinuation -> context.objectReferences
+    is GrantedEntryCopyOrderContinuation -> when (val replay = replay) {
+        is EffectReplay -> replay.context.objectReferences
+        is AnswerReplay -> replay.suspension.answer.objectReferences()
+        is PlayLandReplay, null -> null
+    }
     is EffectEntryChoiceContinuation -> context.objectReferences
+    is EffectEntryPaymentContinuation -> context.objectReferences
     is EffectDiscardDestinationContinuation -> context.objectReferences
     is EffectDiscardOrderContinuation -> context.objectReferences
+    is KeywordActionOrderContinuation -> context.objectReferences
+    is CostPaymentMillOrderContinuation -> inner.objectReferences
+    is PayOrSufferMillOrderContinuation -> inner.objectReferences
     is CounterUnlessPaysContinuation -> objectReferences
     is MayPayManaContinuation -> effectContext.objectReferences
     is MayPayManaSelectionContinuation -> effectContext.objectReferences
     is MayPayXContinuation -> effectContext.objectReferences
     is MayPayLifeXContinuation -> effectContext.objectReferences
     is CounterUnlessPaysManaSelectionContinuation -> objectReferences
-    is WardTapPermanentsSubCostContinuation -> objectReferences
+    is TapPermanentsSubCostContinuation -> resume.objectReferences()
     is AddDynamicManaContinuation -> objectReferences
     is AddManaPipsContinuation -> objectReferences
     is ChooseNumberForSourceContinuation -> objectReferences
@@ -37,6 +46,7 @@ internal fun AnswerContinuation.objectReferences(): ObjectReferenceEnvironment? 
     is AddCountersUpToContinuation -> objectReferences
     is AddCountersOfChosenKindContinuation -> objectReferences
     is PayCountersContinuation -> objectReferences
+    is RemoveCountersFromAmongContinuation -> objectReferences
     is ChooseSpellCastThisTurnContinuation -> objectReferences
     is MoveChosenCountersToTargetContinuation -> objectReferences
     is AmassContinuation -> objectReferences
@@ -48,7 +58,9 @@ internal fun AnswerContinuation.objectReferences(): ObjectReferenceEnvironment? 
     is PreventDamageFromChosenSourceContinuation -> objectReferences
     is PreventNextDamageLeavingAmountContinuation -> context.objectReferences
     is RedirectDamageSourceContinuation -> objectReferences
+    is DamageReplacementContinuation -> context?.objectReferences
     is OptionalRedirectEffectContinuation -> effectContext.objectReferences
+    is CopyForChosenPossibleTargetContinuation -> effectContext.objectReferences
     is EachPlayerDiscardsOrLoseLifeContinuation -> objectReferences
     is DrawUpToContinuation -> objectReferences
     is StaticDrawReplacementContinuation -> objectReferences
@@ -72,6 +84,7 @@ internal fun AnswerContinuation.objectReferences(): ObjectReferenceEnvironment? 
     is ChooseCardTypeForProtectionContinuation -> objectReferences
     is ChooseColorOrColorlessForProtectionContinuation -> objectReferences
     is EachPlayerChoosesCreatureTypeContinuation -> objectReferences
+    is VoteContinuation -> objectReferences
     is SelectFromCollectionContinuation -> objectReferences
     is MoveCollectionOrderContinuation -> objectReferences
     is SelectTargetPipelineContinuation -> objectReferences
@@ -83,6 +96,7 @@ internal fun AnswerContinuation.objectReferences(): ObjectReferenceEnvironment? 
     is PutOnTopOrBottomContinuation -> objectReferences
     is ReturnFromLinkedExileContinuation -> objectReferences
     is CascadeMayCastContinuation -> objectReferences
+    is CascadePutOntoBattlefieldContinuation -> objectReferences
     is DiscoverMayCastContinuation -> objectReferences
     is CastAnyNumberFromCollectionContinuation -> effectContext.objectReferences
     is ReplacementChoiceContinuation -> context?.objectReferences
@@ -95,9 +109,9 @@ internal fun AnswerContinuation.objectReferences(): ObjectReferenceEnvironment? 
     is ModalContinuation -> objectReferences
     is ModalTargetContinuation -> objectReferences
     is BudgetModalContinuation -> objectReferences
-    is CreateTokenCopyOfChosenContinuation -> objectReferences
+    is CreateTokenCopyOfChosenContinuation -> effectContext.objectReferences
     is CreateTokenCopyAuraHostContinuation -> context.objectReferences
-    is ChooseActionContinuation -> objectReferences
+    is ChooseActionContinuation -> context.objectReferences
     is TriggeredAbilityContinuation -> objectReferences
     is TriggerDamageDistributionContinuation -> objectReferences
     is MayAbilityContinuation -> effectContext.objectReferences
@@ -135,16 +149,25 @@ internal fun AnswerContinuation.withObjectReferences(refs: ObjectReferenceEnviro
     is EffectCopyAuraEntryContinuation -> copy(context = context.copy(objectReferences = refs))
     is EnteringAttackDefenderContinuation -> copy(context = context.copy(objectReferences = refs))
     is EffectCopyEntryContinuation -> copy(context = context.copy(objectReferences = refs))
+    is GrantedEntryCopyOrderContinuation -> copy(replay = when (val replay = replay) {
+        is EffectReplay -> replay.copy(context = replay.context.copy(objectReferences = refs))
+        is AnswerReplay -> replay.copy(suspension = replay.suspension.copy(answer = replay.suspension.answer.withObjectReferences(refs)))
+        is PlayLandReplay, null -> replay
+    })
     is EffectEntryChoiceContinuation -> copy(context = context.copy(objectReferences = refs))
+    is EffectEntryPaymentContinuation -> copy(context = context.copy(objectReferences = refs))
     is EffectDiscardDestinationContinuation -> copy(context = context.copy(objectReferences = refs))
     is EffectDiscardOrderContinuation -> copy(context = context.copy(objectReferences = refs))
+    is KeywordActionOrderContinuation -> copy(context = context.copy(objectReferences = refs))
+    is CostPaymentMillOrderContinuation -> copy(inner = inner.copy(objectReferences = refs))
+    is PayOrSufferMillOrderContinuation -> copy(inner = inner.copy(objectReferences = refs))
     is CounterUnlessPaysContinuation -> copy(objectReferences = refs)
     is MayPayManaContinuation -> copy(effectContext = effectContext.copy(objectReferences = refs))
     is MayPayManaSelectionContinuation -> copy(effectContext = effectContext.copy(objectReferences = refs))
     is MayPayXContinuation -> copy(effectContext = effectContext.copy(objectReferences = refs))
     is MayPayLifeXContinuation -> copy(effectContext = effectContext.copy(objectReferences = refs))
     is CounterUnlessPaysManaSelectionContinuation -> copy(objectReferences = refs)
-    is WardTapPermanentsSubCostContinuation -> copy(objectReferences = refs)
+    is TapPermanentsSubCostContinuation -> copy(resume = resume.withObjectReferences(refs))
     is AddDynamicManaContinuation -> copy(objectReferences = refs)
     is AddManaPipsContinuation -> copy(objectReferences = refs)
     is ChooseNumberForSourceContinuation -> copy(objectReferences = refs)
@@ -160,18 +183,21 @@ internal fun AnswerContinuation.withObjectReferences(refs: ObjectReferenceEnviro
     is AddCountersUpToContinuation -> copy(objectReferences = refs)
     is AddCountersOfChosenKindContinuation -> copy(objectReferences = refs)
     is PayCountersContinuation -> copy(objectReferences = refs)
+    is RemoveCountersFromAmongContinuation -> copy(objectReferences = refs)
     is ChooseSpellCastThisTurnContinuation -> copy(objectReferences = refs)
     is MoveChosenCountersToTargetContinuation -> copy(objectReferences = refs)
     is AmassContinuation -> copy(objectReferences = refs)
     is StormCopyTargetContinuation -> copy(objectReferences = refs)
     is StormCopyModalTargetContinuation -> copy(objectReferences = refs)
     is ChangeSpellTargetContinuation -> copy(objectReferences = refs)
-    is DistributeDamageContinuation -> copy(objectReferences = refs)
+    is DistributeDamageContinuation -> copy(objectReferences = refs, context = context?.copy(objectReferences = refs))
     is DeflectDamageSourceChoiceContinuation -> copy(objectReferences = refs)
     is PreventDamageFromChosenSourceContinuation -> copy(objectReferences = refs)
     is PreventNextDamageLeavingAmountContinuation -> copy(context = context.copy(objectReferences = refs))
     is RedirectDamageSourceContinuation -> copy(objectReferences = refs)
+    is DamageReplacementContinuation -> copy(context = context?.copy(objectReferences = refs))
     is OptionalRedirectEffectContinuation -> copy(effectContext = effectContext.copy(objectReferences = refs))
+    is CopyForChosenPossibleTargetContinuation -> copy(effectContext = effectContext.copy(objectReferences = refs))
     is EachPlayerDiscardsOrLoseLifeContinuation -> copy(objectReferences = refs)
     is DrawUpToContinuation -> copy(objectReferences = refs)
     is StaticDrawReplacementContinuation -> copy(objectReferences = refs)
@@ -195,6 +221,7 @@ internal fun AnswerContinuation.withObjectReferences(refs: ObjectReferenceEnviro
     is ChooseCardTypeForProtectionContinuation -> copy(objectReferences = refs)
     is ChooseColorOrColorlessForProtectionContinuation -> copy(objectReferences = refs)
     is EachPlayerChoosesCreatureTypeContinuation -> copy(objectReferences = refs)
+    is VoteContinuation -> copy(objectReferences = refs)
     is SelectFromCollectionContinuation -> copy(objectReferences = refs)
     is MoveCollectionOrderContinuation -> copy(objectReferences = refs)
     is SelectTargetPipelineContinuation -> copy(objectReferences = refs)
@@ -206,6 +233,7 @@ internal fun AnswerContinuation.withObjectReferences(refs: ObjectReferenceEnviro
     is PutOnTopOrBottomContinuation -> copy(objectReferences = refs)
     is ReturnFromLinkedExileContinuation -> copy(objectReferences = refs)
     is CascadeMayCastContinuation -> copy(objectReferences = refs)
+    is CascadePutOntoBattlefieldContinuation -> copy(objectReferences = refs)
     is DiscoverMayCastContinuation -> copy(objectReferences = refs)
     is CastAnyNumberFromCollectionContinuation -> copy(effectContext = effectContext.copy(objectReferences = refs))
     is ReplacementChoiceContinuation -> copy(context = context?.copy(objectReferences = refs))
@@ -218,9 +246,9 @@ internal fun AnswerContinuation.withObjectReferences(refs: ObjectReferenceEnviro
     is ModalContinuation -> copy(objectReferences = refs)
     is ModalTargetContinuation -> copy(objectReferences = refs)
     is BudgetModalContinuation -> copy(objectReferences = refs)
-    is CreateTokenCopyOfChosenContinuation -> copy(objectReferences = refs)
+    is CreateTokenCopyOfChosenContinuation -> copy(effectContext = effectContext.copy(objectReferences = refs))
     is CreateTokenCopyAuraHostContinuation -> copy(context = context.copy(objectReferences = refs))
-    is ChooseActionContinuation -> copy(objectReferences = refs)
+    is ChooseActionContinuation -> copy(context = context.copy(objectReferences = refs))
     is TriggeredAbilityContinuation -> copy(objectReferences = refs)
     is TriggerDamageDistributionContinuation -> copy(objectReferences = refs)
     is MayAbilityContinuation -> copy(effectContext = effectContext.copy(objectReferences = refs))

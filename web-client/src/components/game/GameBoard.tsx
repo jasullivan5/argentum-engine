@@ -39,7 +39,7 @@ import { usePooledBattlefieldLayout } from './board/usePooledBattlefieldLayout'
 import { CardPreview } from './card'
 import { EmotePicker } from '../tableTalk/EmotePicker'
 import { ChatButton } from '@/components/messages/ChatButton'
-import { TargetingOverlay, ManaColorSelectionOverlay, LifeDisplay, ActiveEffectsBadges, SpeedGauge, DayNightBadge, SubgameBadge, SubgameFrame, ConcedeButton, FullscreenButton, GamePreferencesButton, SpectatorCountBadge, TeamLifeBanner, EliminationNotice } from './overlay'
+import { TargetingOverlay, ManaColorSelectionOverlay, LifeDisplay, ActiveEffectsBadges, SpeedGauge, DayNightBadge, SubgameBadge, SubgameFrame, ConcedeButton, FullscreenButton, GamePreferencesButton, SpectatorCountBadge, TeamLifeBanner, EliminationNotice, AutoAnswerNotice, TriggerOrderNotice } from './overlay'
 import { HelpDrawer, HelpDrawerButton } from '../help/HelpDrawer'
 import { markLearnSignal } from '@/learn/signals'
 import { styles } from './board/styles'
@@ -61,6 +61,7 @@ interface GameBoardProps {
  */
 export function GameBoard({ spectatorMode = false, topOffset = 0 }: GameBoardProps) {
   const blockerDeclarationDescription = useGameStore((s) => s.legalActions.find((a) => a.actionType === 'DeclareBlockers')?.description)
+  const pendingDecision = useGameStore((state) => state.pendingDecision)
   const playerGameState = useGameStore((state) => state.gameState)
   const spectatingState = useGameStore((state) => state.spectatingState)
   const sessionId = useGameStore((state) => state.sessionId)
@@ -705,7 +706,9 @@ export function GameBoard({ spectatorMode = false, topOffset = 0 }: GameBoardPro
         // Mindslaver-style hijack: this client drives the controlled opponent, so it holds
         // priority whenever that opponent does (enables Pass, casting, ability activation).
         (youAreHijacking != null && gameState.priorityPlayerId === youAreHijacking))
-  const canAct = hasPriority && !opponentDecisionStatus
+  // A question answered for us is still a question: nothing else is ours to do until it is.
+  const autoAnswerPending = useGameStore((state) => state.autoAnswerPending)
+  const canAct = hasPriority && !opponentDecisionStatus && !autoAnswerPending
   /**
    * Two-Headed Giant: pair your hand with your ally's in one centered row at the bottom of the
    * screen. Outside a team game (and while spectating) this hands the fan straight back and the
@@ -1253,7 +1256,8 @@ export function GameBoard({ spectatorMode = false, topOffset = 0 }: GameBoardPro
           minWidth: 0,
         }}>
         {(isHijacking || isHijacked || hotseat) && (() => {
-          const actingName = gameState.players.find((p) => p.playerId === gameState.priorityPlayerId)?.name ?? 'active player'
+          const actingSeat = pendingDecision?.playerId ?? gameState.priorityPlayerId
+          const actingName = gameState.players.find((p) => p.playerId === actingSeat)?.name ?? 'active player'
           const text = hotseat
             ? (responsive.isMobile ? `Acting as ${actingName}` : `Hotseat — acting as ${actingName}`)
             : (() => {
@@ -1675,7 +1679,7 @@ export function GameBoard({ spectatorMode = false, topOffset = 0 }: GameBoardPro
           (bottom-right) — always present, the pass disabled when unavailable. One column so the
           pass button and the icon row above it end up exactly the same width; the row's intrinsic
           width wins whenever the priority-mode label ("Full Control") makes it the wider of the two. */}
-      {!spectatorMode && !isEliminatedSpectator && viewingPlayer && !isInManaSelectionMode && !isInCounterDistMode && (() => {
+      {!spectatorMode && !isEliminatedSpectator && viewingPlayer && !isInManaSelectionMode && !isInCounterDistMode && !isInDistributeMode && (() => {
         const passEnabled = canAct && !isHijacked && !isInCombatMode && !isInDistributeMode && !isInCounterDistMode && !isInManaSelectionMode && !delveSelectionState && !tapForPowerSelectionState && !targetingState && !pipelineState
         return (
           <div style={{
@@ -1830,6 +1834,9 @@ export function GameBoard({ spectatorMode = false, topOffset = 0 }: GameBoardPro
       })()}
 
       {isMulti && <EliminationNotice topOffset={effectiveTopOffset} />}
+      {/* Below the elimination notice in a pod, so the two never overlap. */}
+      <AutoAnswerNotice topOffset={effectiveTopOffset + (isMulti ? 36 : 0)} />
+      <TriggerOrderNotice topOffset={effectiveTopOffset + (isMulti ? 36 : 0)} />
 
       {/* Attack-restriction explainer — "attack left/right" (CR 803.1) and similar
           restrictions are invisible on the board itself, so say exactly who can be
@@ -2035,6 +2042,12 @@ export function GameBoard({ spectatorMode = false, topOffset = 0 }: GameBoardPro
 
       {isInCombatMode && combatState?.mode === 'declareBlockers' && (
         <div data-learn="combat-buttons" style={styles.combatButtonContainer}>
+          {blockerDeclarationDescription && blockerDeclarationDescription !== 'Declare blockers' &&
+            blockerDeclarationDescription !== 'Choose blocker piles' && (
+              <span role="status" style={{ color: '#e0e0e0', fontSize: 12, maxWidth: 360 }}>
+                {blockerDeclarationDescription}
+              </span>
+            )}
           {Object.keys(combatState.blockerAssignments).length === 0 ? (
             <>
               <button
@@ -2112,7 +2125,7 @@ export function GameBoard({ spectatorMode = false, topOffset = 0 }: GameBoardPro
                   }}>
                     {isComplete
                       ? `All ${noun} allocated`
-                      : `${distributeRemaining} ${noun} remaining`}
+                      : `${distributeRemaining} ${isCounters && distributeRemaining === 1 ? 'counter' : noun} remaining`}
                   </div>
                   <div style={{
                     color: 'rgba(255, 255, 255, 0.7)',
@@ -2126,8 +2139,9 @@ export function GameBoard({ spectatorMode = false, topOffset = 0 }: GameBoardPro
                   onClick={() => confirmDistribute(distributeState.decisionId)}
                   disabled={!canConfirm}
                   style={{
-                    ...styles.combatButton,
-                    ...(canConfirm ? styles.combatButtonPrimary : {}),
+                    ...styles.combatActionButton,
+                    borderRadius: 6,
+                    border: '1px solid',
                     backgroundColor: canConfirm ? '#16a34a' : '#333',
                     color: canConfirm ? 'white' : '#666',
                     cursor: canConfirm ? 'pointer' : 'not-allowed',

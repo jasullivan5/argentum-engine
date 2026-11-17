@@ -43,13 +43,16 @@ internal class ActivationCostTotaller(
      * ([AbilityCost.OwnManaCost]) — is lowered to a plain mana atom first, so validation, payment
      * and every reduction see one shape. An [AbilityCost.OwnManaCost] whose source has no mana
      * cost stays un-lowered, and `CostHandler` reports it unpayable.
+     *
+     * Null when the ability's `payOnlyWithManaOf` leaves no mana able to pay it (see
+     * [CastPermissionUtils.applyPayOnlyWithManaOf]); the activation is then refused.
      */
     fun total(
         state: GameState,
         action: ActivateAbility,
         ability: ActivatedAbility,
         textReplacement: TextReplacementComponent?,
-    ): AbilityCost {
+    ): AbilityCost? {
         // Apply text-changing effects to cost
         val rawCost = if (textReplacement != null) {
             ability.cost.applyTextReplacement(textReplacement)
@@ -60,7 +63,11 @@ internal class ActivationCostTotaller(
         // A cost naming a mana cost (Merseine's attached permanent's, a granted scavenge's own) is
         // priced first, so the reductions below see the mana they apply to (CR 602.2b, 601.2f).
         val costWithDefinedX = castPermissionUtils.applyDefinedXValue(
-            castPermissionUtils.lowerReferencedManaCost(state, action.sourceId, rawCost),
+            castPermissionUtils.lowerReferencedManaCost(
+                state, action.sourceId,
+                // Carth the Lion's [+1] surcharge nets into the one loyalty payment.
+                castPermissionUtils.applyLoyaltyCostSurcharge(state, rawCost, action.playerId, action.xValue)
+            ),
             ability, state, action.sourceId, action.playerId
         )
         val costAfterConditionalReduction = AbilityCostReduction.applyConditional(
@@ -70,9 +77,10 @@ internal class ActivationCostTotaller(
             costAfterConditionalReduction, ability, state, action.sourceId, action.playerId, action.targets
         )
         val costAfterAbilityReduction = castPermissionUtils.applyActivatedAbilityCostReduction(
-            costAfterGenericReduction, state, action.sourceId, action.playerId, ability.isExhaust, ability.isPowerUp,
+            costAfterGenericReduction, state, action.sourceId, action.playerId, ability.onceOnlyKind,
             ability.isManaAbility, chosenTargetIds = action.targets.filterIsInstance<ChosenTarget.Permanent>().map { it.entityId },
             abilityKeyword = ability.keyword,
+            isLoyaltyAbility = ability.isPlaneswalkerAbility,
         )
         val costAfterEquipReduction = castPermissionUtils.applyEquipCostReduction(
             costAfterAbilityReduction, ability, state, action.playerId, equipTargetIdForCost,
@@ -81,8 +89,11 @@ internal class ActivationCostTotaller(
         val costAfterEquipDiscount = castPermissionUtils.applyFreeFirstEquipDiscount(
             costAfterEquipReduction, ability, state, action.playerId
         )
-        return castPermissionUtils.relaxAbilityCostColorsIfAny(
-            state, action.sourceId, costAfterEquipDiscount, action.playerId
+        return castPermissionUtils.applyPayOnlyWithManaOf(
+            castPermissionUtils.relaxAbilityCostColorsIfAny(
+                state, action.sourceId, costAfterEquipDiscount, action.playerId
+            ),
+            ability, state, action.sourceId, action.playerId
         )
     }
 

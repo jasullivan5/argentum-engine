@@ -1,0 +1,31 @@
+{
+  "player1Name": "Transporter Chief",
+  "player2Name": "Opponent",
+  "player1": {
+    "lifeTotal": 20,
+    "hand": ["Open Communications"],
+    "battlefield": [
+      {"name": "Island"}, {"name": "Island"}, {"name": "Island"}, {"name": "Mountain"},
+      {"name": "Scotty, Miracle Worker"},
+      {"name": "Grizzly Bears"},
+      {"name": "Llanowar Elves", "tapped": true},
+      {"name": "Marooned", "attachedTo": "Llanowar Elves"}
+    ],
+    "graveyard": ["Open Communications", "Lightning Bolt"],
+    "library": ["Island", "Island", "Island", "Island"]
+  },
+  "player2": {
+    "lifeTotal": 20,
+    "hand": [],
+    "battlefield": [],
+    "graveyard": [],
+    "library": ["Island", "Island", "Island"]
+  },
+  "phase": "PRECOMBAT_MAIN",
+  "activePlayer": 1,
+  "priorityPlayer": 1,
+  "player1StopAtSteps": ["PRECOMBAT_MAIN", "POSTCOMBAT_MAIN"],
+  "player2StopAtSteps": [],
+  "player1OpponentStopAtSteps": [],
+  "player2OpponentStopAtSteps": []
+}

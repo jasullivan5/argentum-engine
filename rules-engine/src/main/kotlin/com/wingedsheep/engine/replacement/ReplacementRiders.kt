@@ -1,12 +1,15 @@
 package com.wingedsheep.engine.replacement
 
+import com.wingedsheep.engine.handlers.CapturedObjectBinding
 import com.wingedsheep.engine.core.EffectResult
 import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.core.Outcome
 import com.wingedsheep.engine.event.TriggerContext
 import com.wingedsheep.engine.handlers.EffectContext
 import com.wingedsheep.engine.handlers.PipelineState
+import com.wingedsheep.engine.handlers.effects.EnteringAttackChoice
 import com.wingedsheep.engine.state.GameState
+import com.wingedsheep.engine.state.components.stack.ChosenTarget
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.ExileCounteredSpellInstead
 import com.wingedsheep.sdk.scripting.effects.Effect
@@ -20,7 +23,6 @@ import kotlinx.serialization.Serializable
  * [ExileCounteredSpellInstead.then] ("and you may play that
  * card without paying its mana cost").
  *
- * @property effect the rest of the replacement
  * @property hostId the permanent whose ability applied — the effect's source
  * @property controllerId that permanent's controller when it applied — "you"
  * @property subjectId what the replacement acted on: the permanent or player the damage would have
@@ -31,18 +33,49 @@ import kotlinx.serialization.Serializable
  * @property replacesLifeReduction this rider is a [com.wingedsheep.sdk.scripting.ReplaceLifeReductionToZero]
  *   application whose [subjectId] is the player whose life total was protected; while it is pending,
  *   further reductions of that total are part of the same replaced event
+ * @property replacesGameLoss this rider is a [com.wingedsheep.sdk.scripting.ReplaceGameLossWith]
+ *   application whose [subjectId] is the player who would have lost; while it is pending, further
+ *   reasons that player (or, where players lose as a team, a teammate) would lose in the same
+ *   state-based-action pass are part of the same replaced event
+ * @property sourceDeclined the rest runs without its source: the source is about to leave the
+ *   battlefield through a simultaneous state-based action and its controller chose that over the
+ *   rest moving it ([com.wingedsheep.engine.mechanics.sba.player.GameLossSourceChoiceCheck]), so
+ *   "this creature" in the rest names an object that is gone (CR 400.7) and does nothing
+ * @property effect the rest of the replacement as a card effect; `null` exactly when the rest is
+ *   engine-side ([chooseEnteringAttackTarget])
+ * @property chooseEnteringAttackTarget the rest is CR 508.4's choice of what [subjectId], a creature
+ *   that just entered tapped and attacking through a global replacement, is attacking
+ *   ([com.wingedsheep.engine.handlers.effects.EnteringAttackChoice]); asked of [controllerId]
+ * @property targets what the spell or ability that created the replacement targeted, for a rest
+ *   that names them ("deal that much damage to target creature" — Channel Harm); empty elsewhere
+ * @property namedTargets the same targets by the name the card bound them to (`target(...)`)
+ * @property boundObjects the battlefield objects among [targets] and [namedTargets] with the identity they had when
+ *   the replacement was created: one that has since become a new object names nothing (CR 400.7)
  */
 @Serializable
 data class PendingReplacementRider(
-    val effect: Effect,
+    val effect: Effect?,
     val hostId: EntityId,
     val controllerId: EntityId,
     val subjectId: EntityId,
     val amount: Int = 0,
     val countersRemoved: Int = 0,
     val replacesLifeReduction: Boolean = false,
-    val replacementChain: Set<ReplacementEffectIdentity>? = null
-)
+    val replacesGameLoss: Boolean = false,
+    val sourceDeclined: Boolean = false,
+    val sourceChoiceMade: Boolean = false,
+    val replacementChain: Set<ReplacementEffectIdentity>? = null,
+    val chooseEnteringAttackTarget: Boolean = false,
+    val targets: List<ChosenTarget> = emptyList(),
+    val namedTargets: Map<String, ChosenTarget> = emptyMap(),
+    val boundObjects: List<CapturedObjectBinding> = emptyList(),
+) {
+    init {
+        require((effect == null) == chooseEnteringAttackTarget) {
+            "A replacement rider carries either a card effect or the engine-side entering-attack choice"
+        }
+    }
+}
 
 /**
  * Runs the replacement results queued on [GameState.pendingReplacementRiders].
@@ -75,8 +108,10 @@ object ReplacementRiders {
             if (remaining.isNotEmpty()) current = current.pushContinuation(
                 com.wingedsheep.engine.core.ReplacementRidersContinuation(remaining))
             val previousChain = current.activeReplacementChain
-            val result = execute(current.copy(activeReplacementChain = rider.replacementChain ?: previousChain),
-                rider.effect, contextFor(current, rider))
+            val result = if (rider.chooseEnteringAttackTarget) {
+                EnteringAttackChoice.ask(current, rider.subjectId, rider.controllerId)
+            } else execute(current.copy(activeReplacementChain = rider.replacementChain ?: previousChain),
+                checkNotNull(rider.effect), contextFor(current, rider))
             events += result.events
             current = result.state
             if (result.outcome is Outcome.Paused) return EffectResult.propagatePause(current, events)
@@ -93,9 +128,11 @@ object ReplacementRiders {
 
     private fun contextFor(state: GameState, rider: PendingReplacementRider): EffectContext {
         val subjectIsPlayer = rider.subjectId in state.turnOrder
+        val aligned = liveTargets(state, rider)
         return EffectContext(
             sourceId = rider.hostId,
             controllerId = rider.controllerId,
+            sourceReferenceLost = rider.sourceDeclined,
             triggeringEntityId = rider.subjectId.takeUnless { subjectIsPlayer },
             triggeringPlayerId = rider.subjectId.takeIf { subjectIsPlayer },
             triggerContext = TriggerContext(
@@ -104,9 +141,28 @@ object ReplacementRiders {
                 counterCount = rider.countersRemoved.takeIf { it > 0 }
             ),
             pipeline = PipelineState(
-                storedCollections = mapOf(ExileCounteredSpellInstead.EXILED_CARD to listOf(rider.subjectId))
+                storedCollections = mapOf(ExileCounteredSpellInstead.EXILED_CARD to listOf(rider.subjectId)),
+                namedTargets = rider.namedTargets.mapNotNull { (name, target) -> live(state, rider, target)?.let { name to it } }.toMap(),
             ),
             programOrigin = com.wingedsheep.engine.handlers.effects.composite.EffectProgramInterpreter.startedBy(ReplacementRiders::class),
+            targets = aligned.filterNotNull(),
+            alignedTargets = aligned,
         )
+    }
+
+    /**
+     * [PendingReplacementRider.targets] in their printed positions (and, by [live], its named ones), with a battlefield target that
+     * has become a new object since the replacement was created left empty (CR 400.7): "target
+     * creature" then names nothing, so the rest does nothing to it.
+     */
+    private fun liveTargets(state: GameState, rider: PendingReplacementRider): List<ChosenTarget?> =
+        rider.targets.map { live(state, rider, it) }
+
+    private fun live(state: GameState, rider: PendingReplacementRider, target: ChosenTarget): ChosenTarget? {
+        val id = (target as? ChosenTarget.Permanent)?.entityId
+        val binding = id?.let { i -> rider.boundObjects.firstOrNull { it.entityId == i } }
+        // Only battlefield targets are bound, and every battlefield object has an identity, so a
+        // binding without one names an object that was already gone: nothing to name.
+        return if (binding != null && (binding.objectRef == null || !state.isCurrentObject(binding.objectRef))) null else target
     }
 }

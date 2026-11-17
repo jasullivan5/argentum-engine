@@ -3,8 +3,9 @@
  * shared {@link AdminAuth} — the bootstrap password, or the signed-in admin account's token. These
  * endpoints are only mounted when the server has accounts enabled.
  */
-import type { StatBucket } from './account'
+import type { GameDecks, StatBucket } from './account'
 import { type AdminAuth, adminAuthHeaders } from './adminAuth'
+import { ALL_GAMES, type StatsFilter, filterQuery } from './statsFilter'
 
 export interface GlobalOverview {
   readonly totalGames: number
@@ -13,11 +14,22 @@ export interface GlobalOverview {
   readonly totalTournaments: number
   readonly gamesLast24h: number
   readonly gamesLast7d: number
+  /** Counted games in the filter's period with no AI seat. */
+  readonly gamesVsHumans: number
+  /** Counted games in the filter's period where one person played the AI. */
+  readonly gamesVsAi: number
+  /** Games in the slice no seat's result counts in — a no-show or an instant concession. */
+  readonly notCountedGames: number
 }
 
+/** One bucket of the games-over-time chart; `day` is the bucket's first UTC day (`YYYY-MM-DD`). */
 export interface DailyCount {
   readonly day: string
   readonly count: number
+  /** Of `count`, games with no AI seat. */
+  readonly vsHumans: number
+  /** Of `count`, games where one person played the AI. */
+  readonly vsAi: number
 }
 
 /** One table's row count and on-disk footprint in the accounts database. */
@@ -90,11 +102,19 @@ export interface AdminGamePlayer {
   readonly userId: string | null
   readonly isAi: boolean
   readonly won: boolean
+  /** The seat's deck colours, WUBRG ("" colourless); null when no deck was recorded. */
+  readonly colors: string | null
   readonly location: PlayerLocation | null
+  /** The seat never took an action past the mulligan. */
+  readonly noAction?: boolean
+  /** This seat's result counts toward win/loss stats. */
+  readonly counted?: boolean
 }
 
 /** A recorded game in the admin global game list, with every seat. */
 export interface AdminRecentGame {
+  /** Opens every seat's deck through {@link fetchMatchDecks}. */
+  readonly matchId: number
   readonly gameId: string
   readonly endedAt: string
   readonly gameMode: string | null
@@ -102,6 +122,8 @@ export interface AdminRecentGame {
   readonly players: AdminGamePlayer[]
   readonly winnerName: string | null
   readonly hasReplay: boolean
+  /** True when at least one seat's decklist was recorded. */
+  readonly hasDecks: boolean
   readonly tournamentName: string | null
 }
 
@@ -117,19 +139,30 @@ async function getAdminStats<T>(auth: AdminAuth, path: string): Promise<T> {
   return (await res.json()) as T
 }
 
-export const fetchOverview = (auth: AdminAuth) => getAdminStats<GlobalOverview>(auth, '/overview')
-export const fetchGamesPerDay = (auth: AdminAuth, days = 30) =>
-  getAdminStats<DailyCount[]>(auth, `/games-per-day?days=${days}`)
-export const fetchModeDistribution = (auth: AdminAuth) => getAdminStats<StatBucket[]>(auth, '/modes')
+// The game-derived panels take the dashboard's slice; their period parameter is `period` because
+// games-per-day takes it as `days`.
+const fq = (f: StatsFilter) => filterQuery(f, 'period').replace(/^&/, '?')
+export const fetchOverview = (auth: AdminAuth, f: StatsFilter = ALL_GAMES) =>
+  getAdminStats<GlobalOverview>(auth, `/overview${fq(f)}`)
+/** Games over the dashboard's slice, oldest first and gap-filled; the server sizes the bucket to the span. */
+export interface GamesOverTime {
+  readonly bucket: AiBucket
+  readonly points: DailyCount[]
+}
+export const fetchGamesOverTime = (auth: AdminAuth, f: StatsFilter = ALL_GAMES) =>
+  getAdminStats<GamesOverTime>(auth, `/games-per-day?days=${f.days}${f.vs === 'all' ? '' : `&vs=${f.vs}`}`)
+export const fetchModeDistribution = (auth: AdminAuth, f: StatsFilter = ALL_GAMES) =>
+  getAdminStats<StatBucket[]>(auth, `/modes${fq(f)}`)
 /** Sets played most across recorded tournaments (counted once per tournament that used each set). */
 export const fetchTournamentSets = (auth: AdminAuth) =>
   getAdminStats<StatBucket[]>(auth, '/tournament-sets')
-export const fetchColorDistribution = (auth: AdminAuth) => getAdminStats<StatBucket[]>(auth, '/colors')
+export const fetchColorDistribution = (auth: AdminAuth, f: StatsFilter = ALL_GAMES) =>
+  getAdminStats<StatBucket[]>(auth, `/colors${fq(f)}`)
 export const fetchGeo = (auth: AdminAuth) => getAdminStats<GeoBucket[]>(auth, '/geo')
-export const fetchTopCards = (auth: AdminAuth, limit = 50) =>
-  getAdminStats<CardStat[]>(auth, `/cards?limit=${limit}`)
-export const fetchCardWinRates = (auth: AdminAuth, minDecks = 10, limit = 50) =>
-  getAdminStats<CardWinRate[]>(auth, `/cards/win-rates?minDecks=${minDecks}&limit=${limit}`)
+export const fetchTopCards = (auth: AdminAuth, limit = 50, f: StatsFilter = ALL_GAMES) =>
+  getAdminStats<CardStat[]>(auth, `/cards?limit=${limit}${filterQuery(f, 'period')}`)
+export const fetchCardWinRates = (auth: AdminAuth, minDecks = 10, limit = 50, f: StatsFilter = ALL_GAMES) =>
+  getAdminStats<CardWinRate[]>(auth, `/cards/win-rates?minDecks=${minDecks}&limit=${limit}${filterQuery(f, 'period')}`)
 /** Per-table row counts + sizes. Exact counts server-side, so fetch on demand rather than polling. */
 export const fetchDatabaseStats = (auth: AdminAuth) => getAdminStats<DatabaseStats>(auth, '/database')
 export const fetchTournaments = (auth: AdminAuth, limit = 50) =>
@@ -189,6 +222,12 @@ export interface AiVsHumanReport {
   /** Oldest first, gap-filled. `start` is the bucket's first UTC day; `aiChanges` counts engine AI changes merged in it. */
   readonly series: { readonly start: string; readonly record: AiRecord; readonly aiChanges: number }[]
   readonly byMode: { readonly gameMode: string | null; readonly format: string | null; readonly record: AiRecord }[]
+  /** The most-played modes (at most six), each with its own series on the same buckets as `series`. */
+  readonly seriesByMode: {
+    readonly gameMode: string | null
+    readonly format: string | null
+    readonly series: { readonly start: string; readonly record: AiRecord }[]
+  }[]
   /** Newest deployed build first. `newAiChanges`: AI changes it added over the build before it (null = unknown). */
   readonly byBuild: {
     readonly version: string
@@ -204,18 +243,107 @@ export interface AiVsHumanReport {
     readonly changes: AiChange[]
   }
   /** Latest games, oldest first. */
-  readonly recent: { readonly endedAt: string; readonly gameMode: string | null; readonly format: string | null; readonly outcome: AiMatchOutcome }[]
+  readonly recent: AiRecentGame[]
   /** Humans who played the AI most, from the human's side. */
-  readonly topHumans: {
-    readonly name: string
-    readonly isGuest: boolean
-    readonly games: number
-    readonly wins: number
-    readonly losses: number
-    readonly draws: number
-  }[]
+  readonly topHumans: AiHumanRecord[]
+  /** AI-vs-human games in the range left out of every figure: the person never took an action. */
+  readonly notCounted?: number
+  /** The filter the report was computed under, with the humans it left out. */
+  readonly filter: {
+    readonly gameMode: string | null
+    readonly format: string | null
+    readonly setCode: string | null
+    readonly excludeTopHumans: number
+    readonly excludedHumans: AiHumanRecord[]
+    /** Games in the range the human exclusions dropped. */
+    readonly excludedGames: number
+  }
+  /** The values each filter can take, counted over the whole range before any filter applies. */
+  readonly options: {
+    readonly modes: { readonly gameMode: string | null; readonly format: string | null; readonly games: number }[]
+    readonly sets: { readonly code: string; readonly name: string | null; readonly games: number }[]
+    readonly gamesWithoutSet: number
+  }
 }
 
-/** The AI's record against humans over the last `days` days (0 = all time). */
-export const fetchAiVsHuman = (auth: AdminAuth, days: number, bucket: 'day' | 'week' | 'month') =>
-  getAdminStats<AiVsHumanReport>(auth, `/ai-vs-human?days=${days}&bucket=${bucket}`)
+/** One AI-vs-human game: who sat in it, with which colours, and how it went. */
+export interface AiRecentGame {
+  /** Opens every seat's deck through {@link fetchMatchDecks}. */
+  readonly matchId: number
+  readonly endedAt: string
+  readonly gameMode: string | null
+  readonly format: string | null
+  readonly outcome: AiMatchOutcome
+  readonly humans: AiRecentHuman[]
+  /** Each AI seat's deck colours (WUBRG, "" colourless); null when none was recorded. */
+  readonly aiColors: (string | null)[]
+  /** The game id to open the replay with; null when no replay was stored. */
+  readonly replayGameId: string | null
+}
+
+export interface AiRecentHuman {
+  /** The {@link AiHumanRecord.key} this seat belongs to. */
+  readonly key: string
+  readonly name: string
+  readonly isGuest: boolean
+  readonly won: boolean
+  readonly colors: string | null
+}
+
+/** One human's games against the AI in a slice, newest first. */
+export interface AiHumanGames {
+  /** Their record over the slice; null when they have no games in it. */
+  readonly human: AiHumanRecord | null
+  readonly games: AiRecentGame[]
+}
+
+/** A human's record against the AI, from the human's side. */
+export interface AiHumanRecord {
+  /** Pass back as `excludeHuman` to leave this player out. */
+  readonly key: string
+  readonly name: string
+  readonly isGuest: boolean
+  readonly games: number
+  readonly wins: number
+  readonly losses: number
+  readonly draws: number
+}
+
+/** Narrows the AI-vs-humans report to a slice of the games. */
+export interface AiVsHumanFilter {
+  readonly gameMode: string | null
+  readonly format: string | null
+  readonly setCode: string | null
+  /** `AiHumanRecord.key`s whose games are left out. */
+  readonly excludeHumans: readonly string[]
+  /** Leave out the N humans with the most games in the slice. */
+  readonly excludeTopHumans: number
+}
+
+/** The AI's record against humans over the last `days` days (0 = all time), narrowed by `filter`. */
+export function fetchAiVsHuman(auth: AdminAuth, days: number, bucket: 'day' | 'week' | 'month', filter?: AiVsHumanFilter) {
+  const params = new URLSearchParams({ days: String(days), bucket })
+  if (filter?.gameMode) params.set('gameMode', filter.gameMode)
+  if (filter?.format) params.set('format', filter.format)
+  if (filter?.setCode) params.set('set', filter.setCode)
+  for (const key of filter?.excludeHumans ?? []) params.append('excludeHuman', key)
+  if (filter?.excludeTopHumans) params.set('excludeTopHumans', String(filter.excludeTopHumans))
+  return getAdminStats<AiVsHumanReport>(auth, `/ai-vs-human?${params.toString()}`)
+}
+
+/**
+ * One human's games against the AI over the last `days` days (0 = all time), under the filter's
+ * mode/format/set slice — the same games their row in `topHumans` counts.
+ */
+export function fetchAiHumanGames(auth: AdminAuth, key: string, days: number, filter?: AiVsHumanFilter) {
+  const params = new URLSearchParams({ key, days: String(days) })
+  if (filter?.gameMode) params.set('gameMode', filter.gameMode)
+  if (filter?.format) params.set('format', filter.format)
+  if (filter?.setCode) params.set('set', filter.setCode)
+  return getAdminStats<AiHumanGames>(auth, `/ai-vs-human/player-games?${params.toString()}`)
+}
+
+/** Every seat's recorded deck for one match, AI seats first. */
+export function fetchMatchDecks(auth: AdminAuth, matchId: number) {
+  return getAdminStats<GameDecks>(auth, `/matches/${matchId}/decks`)
+}

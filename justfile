@@ -133,6 +133,23 @@ arena A B GAMES="300" SET="BLB" SEED="20260727" ARTIFACT_DIR="":
         -DarenaGameTimeoutSec=${ARENA_GAME_TIMEOUT_SEC:-600} \
         -Dargentum.ai.apprentice.dir={{ARTIFACT_DIR}}
 
+# Deck strength of the synergy-aware sealed build: from each seeded pool, the Draftsim build with the
+# pool's synergy reading vs the same build without it, played LIVE vs LIVE with seats swapped. Pools
+# whose two builds come out identical are skipped (they can't differ). e.g. just arena-synergy-decks 200 BLB
+[group: 'ai']
+arena-synergy-decks GAMES="200" SET="BLB" SEED="20260727":
+    scripts/gradle-locked :ai:test --tests "*.SynergyDeckBenchmark" -Dbenchmark=true -DarenaSynergyDecks=true \
+        -DarenaGames={{GAMES}} -DarenaSet={{SET}} -DarenaSeed={{SEED}} \
+        -DarenaGameTimeoutSec=${ARENA_GAME_TIMEOUT_SEC:-600}
+
+# How many colours the AI's limited builds run: PODS eight-seat AI drafts and PODS*8 sealed pools of
+# SET, built by the AI's deckbuilder, read for identity / main / splash colour counts. No games played.
+# e.g. just deck-colours 10 FRA
+[group: 'ai']
+deck-colours PODS="10" SET="FRA" SEED="20261102":
+    scripts/gradle-locked :ai:test --tests "*.DeckColourBenchmark" -Dbenchmark=true -DdeckColours=true \
+        -DdeckColourPods={{PODS}} -DdeckColourSet={{SET}} -DdeckColourSeed={{SEED}}
+
 # Rebuild the summary of an arena or arena-pod run from its results directory (or results.csv) —
 # the way to read a run that was killed or never finished. A partial report says PARTIAL up top.
 [group: 'ai']
@@ -162,6 +179,58 @@ ai-game-logs GAMES="24" SEED="20261009" AGENT="live" SEATS="2" ATTACK="LEFT":
 ai-replay-logs DIR:
     scripts/gradle-locked :game-server:test --tests "*.ReplayLogExport" -Dbenchmark=true -DreplayLog=true \
         -DreplayLogDir="$(cd "{{DIR}}" && pwd)"
+
+# Which cards can't the AI read? Runs the AI's static card readers (target polarity, card intent,
+# combat reach, end-of-turn timing, escalate pickers) over every card in the corpus and groups what
+# they miss by SDK effect type. Writes ai/build/reports/ai-reading-audit/{report.md,summary.tsv,cards.tsv}.
+# How to read it: docs/ai/reading-audit.md.
+[group: 'ai']
+ai-reading-audit:
+    scripts/gradle-locked :ai:test --tests "*.AiReadingAuditBenchmark" -Dbenchmark=true -DaiReadingAudit=true \
+        -DaiReadingAuditDir={{justfile_directory()}}/ai/build/reports/ai-reading-audit
+
+# How the engine AI covers specific cards: what its readers understand, its draft pick rating and
+# where that comes from (flags a card no table rates, so the AI guesses from the effect heuristic),
+# its board value in play, and what it thinks the card is for. Separate names with "|":
+#   just ai-card "Serra Angel|Icy Manipulator"
+[group: 'ai']
+ai-card NAMES:
+    scripts/gradle-locked :ai:test --tests "*.AiCardReport" --rerun -q -DaiCard="{{NAMES}}" \
+        -DaiCardOut={{justfile_directory()}}/ai/build/reports/ai-card.txt
+    @cat {{justfile_directory()}}/ai/build/reports/ai-card.txt
+
+# Re-bless the AI card-reading ratchet's baseline (ai/src/test/resources/ai-reading-baseline.tsv) to
+# record a card that brings an effect type the AI can't read yet. Coverage gains need no re-bless in a
+# PR: the ai-reading-baseline workflow locks them in on main after merge.
+# AiReadingRatchetTest (in :ai:test) fails when it is behind; docs/ai/reading-audit.md, "The ratchet".
+[group: 'ai']
+ai-reading-baseline:
+    scripts/gradle-locked :ai:test --tests "*.AiReadingRatchetTest" --rerun \
+        -DaiReadingBaseline={{justfile_directory()}}/ai/src/test/resources/ai-reading-baseline.tsv
+
+# Refresh the vendored Draftsim pick-rating tables (ai/src/main/resources/draftai/) from Draftsim's
+# current draft-app bundle. MODE=check diffs without writing; MODE=write regenerates. BUNDLE takes a
+# saved index-*.js or HAR instead of fetching https://draftsim.com/draft/. First-party tables are
+# never written — see scripts/draftsim/README.md.
+[group: 'ai']
+draftsim-refresh MODE="check" BUNDLE="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    work="$(mktemp -d)"
+    trap 'rm -rf "$work"' EXIT
+    bundle="{{BUNDLE}}"
+    if [ -z "$bundle" ]; then
+        js="$(curl -fsSL https://draftsim.com/draft/ | grep -oE '/draft-app/dist/assets/index-[A-Za-z0-9_-]+\.js' | head -1)"
+        [ -n "$js" ] || { echo "no index-*.js on https://draftsim.com/draft/ -- page layout changed?" >&2; exit 1; }
+        bundle="$work/$(basename "$js")"
+        curl -fsSL -o "$bundle" "https://draftsim.com$js"
+    fi
+    python3 -I scripts/draftsim/extract_from_bundle.py "$bundle" "$work/extract"
+    case "{{MODE}}" in
+        check) python3 -I scripts/draftsim/import_draftsim_sets.py "$work/extract" --check ;;
+        write) python3 -I scripts/draftsim/import_draftsim_sets.py "$work/extract" ;;
+        *) echo "MODE must be check or write" >&2; exit 2 ;;
+    esac
 
 # ECL apprentice promotion ladder. Artifacts are installed outside the repository and selected with
 # -Dargentum.ai.apprentice.dir; missing or invalid files safely use the production evaluator.
@@ -257,6 +326,15 @@ install-gradle-init:
 prune-worktrees DAYS="7" *ARGS:
     scripts/prune-worktree-builds.sh --days {{DAYS}} {{ARGS}}
 
+# Removes a worktree only when it has been idle for --hours (1), its HEAD is in origin/main or a merged PR, it has no
+# uncommitted or untracked change, and no running java/gradle process references it. Branches stay.
+#   just remove-merged-worktrees            # what would go, and why the rest stay
+#   just remove-merged-worktrees --apply           # remove them (idle 1h+; --hours N to widen)
+# Remove worktrees whose work already landed (DRY RUN unless --apply)
+[group: 'env']
+remove-merged-worktrees *ARGS:
+    scripts/remove-merged-worktrees.sh {{ARGS}}
+
 # `org.gradle.daemon.idletimeout` covers only the Gradle daemon; the Kotlin compile daemon is a
 # separate 6g JVM that outlives it. Reaps idle, orphaned (worktree deleted) and sick (GC-thrashing)
 # daemons; scripts/gradle-locked runs it automatically. Never touches kotlin-lsp.
@@ -323,6 +401,12 @@ commander-staples *ARGS:
 [group: 'ai']
 assay-loop MODEL="" FOCUS="":
     scripts/assay-loop "{{MODEL}}" "{{FOCUS}}"
+
+# Waits out subscription usage limits; stop with `touch .claude/loop-runs/ai-reading.stop`.
+# Teach the AI to read the effect types `ai-reading-audit` flags, one group per PR: ai-reading-loop [model] [focus]
+[group: 'ai']
+ai-reading-loop MODEL="" FOCUS="":
+    scripts/ai-reading-loop "{{MODEL}}" "{{FOCUS}}"
 
 # Report implemented vs missing cards for a set (e.g., just card-status --set BLB --list)
 [group: 'build']
@@ -781,7 +865,7 @@ e2e-trace TRACE:
 # Watch an AI vs AI match in a headed browser. Params (all optional):
 #   MODEL1, MODEL2   — LLM model ids; pass "" "" for built-in engine AIs (no LLM calls)
 #   SETS             — set code or comma-separated list, e.g. "BLB" or "ONS,LGN,SCG"
-#   HEURISTIC        — "true" (fast heuristic deck build) or "false" (LLM deck build)
+#   SKIP_LLM_DECK    — "true" (fast Draftsim deck build) or "false" (LLM deck build)
 #   PROFILE          — "true" enables React render profiler; report prints at the end
 # Examples:
 #   just watch-ai-match                                      # default BLB match with LLMs
@@ -790,9 +874,9 @@ e2e-trace TRACE:
 #   just watch-ai-match "" "" "ONS,LGN,SCG"                  # engine-vs-engine Onslaught block
 #   just watch-ai-match "" "" "BLB" "true" "true"            # engine-vs-engine BLB with profiler
 [group: 'e2e']
-[doc("AI vs AI match in a headed browser — params: MODEL1 MODEL2 SETS HEURISTIC PROFILE (pass \"\" \"\" for engine-vs-engine)")]
-watch-ai-match MODEL1="z-ai/glm-5.1" MODEL2="qwen/qwen3.6-plus" SETS="BLB" HEURISTIC="true" PROFILE="false":
-    cd e2e-scenarios && AI_MATCH=true AI_MODEL_P1={{MODEL1}} AI_MODEL_P2={{MODEL2}} AI_HEURISTIC_DECK={{HEURISTIC}} AI_SET_CODES={{SETS}} PROFILE={{PROFILE}} SKIP_WEB_SERVER=true npx playwright test tests/general/ai-match --headed
+[doc("AI vs AI match in a headed browser — params: MODEL1 MODEL2 SETS SKIP_LLM_DECK PROFILE (pass \"\" \"\" for engine-vs-engine)")]
+watch-ai-match MODEL1="z-ai/glm-5.1" MODEL2="qwen/qwen3.6-plus" SETS="BLB" SKIP_LLM_DECK="true" PROFILE="false":
+    cd e2e-scenarios && AI_MATCH=true AI_MODEL_P1={{MODEL1}} AI_MODEL_P2={{MODEL2}} AI_SKIP_LLM_DECK={{SKIP_LLM_DECK}} AI_SET_CODES={{SETS}} PROFILE={{PROFILE}} SKIP_WEB_SERVER=true npx playwright test tests/general/ai-match --headed
 
 # Watch an engine-vs-engine AI match using two fixed pre-built decks. Sealed pool +
 # deckbuilding are skipped entirely. Each deck JSON is a `{ "Card Name": count }` object;

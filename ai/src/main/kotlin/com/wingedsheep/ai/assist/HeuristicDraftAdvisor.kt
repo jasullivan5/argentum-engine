@@ -3,9 +3,9 @@ package com.wingedsheep.ai.assist
 import com.wingedsheep.ai.engine.LimitedPickScorer
 
 /**
- * Default draft engine. Scores every card in the pack with the same color-aware
- * [LimitedPickScorer] the AI bot uses, so a player's suggestion matches what a bot in their seat
- * would take. Instant and free — no model or network call.
+ * Keyword-heuristic draft engine: scores every card in the pack with the color-aware
+ * [LimitedPickScorer]. Instant and free — no model or network call. The AI bot picks with the
+ * Draftsim scorer instead, so [DraftsimDraftAdvisor] is the one that matches what a bot would take.
  */
 object HeuristicDraftAdvisor : DraftAdvisor {
     override val id = "heuristic"

@@ -23,6 +23,11 @@ import kotlinx.serialization.Serializable
  * body pauses for a decision mid-iteration, the engine resumes the remaining
  * iterations after the decision (one shared continuation frame for all spaces).
  *
+ * An atomic [DealDamageEffect] body over Targets, TargetsOf, Players, Collection or Group is one
+ * simultaneous damage instruction: all amounts and sources are read before replacing any damage.
+ * Replacement choices replay the entire instruction; damage/excess number outputs sum its recipients.
+ * A composite body remains a sequence per item, including any intervening instructions or choices.
+ *
  * Each variant documents its per-iteration context binding and whether pipeline
  * `storedCollections` are wiped per iteration (wiping is right for "fresh sub-pipeline
  * per player/target", wrong for "apply to each gathered card").
@@ -167,6 +172,15 @@ sealed interface IterationSpace {
          * (Kambal, Profiteering Mayor). The engine seeds this collection when the triggered ability resolves.
          */
         const val TRIGGER_CAPTURED_COLLECTION = "trigger.captured"
+
+        /**
+         * Well-known [Collection] name under which a "deal combat damage to one or more players"
+         * batch trigger seeds the players it damaged (`OneOrMoreDealCombatDamageToPlayerEvent` with
+         * `toOneOrMorePlayers`). "The number of opponents dealt damage this way" is
+         * `DynamicAmounts.playersDealtDamageThisWay()` (its `_count`); "those players" is
+         * `Player.InCollection(TRIGGER_DAMAGED_PLAYERS)` (Hordewing Skaab).
+         */
+        const val TRIGGER_DAMAGED_PLAYERS = "trigger.damagedPlayers"
     }
 }
 
@@ -255,9 +269,7 @@ data class ForEachEffect(
  * "Deal X damage to that permanent all creatures an opponent controls".
  */
 private fun renderGroupDescription(innerText: String, filter: GroupFilter, noRegenerate: Boolean): String {
-    // Strip the leading "all " from the filter description so we can splice it in
-    // after "each".
-    val each = "each ${filter.description.removePrefix("all ").trimStart()}"
+    val each = filter.eachDescription
     val rewritten = if (innerText.contains(ITERATION_ENTITY_NOUN, ignoreCase = true)) {
         innerText.replace(ITERATION_ENTITY_NOUN, each, ignoreCase = true)
     } else {
@@ -306,6 +318,25 @@ fun ForEachPlayerCollectingEffect(
     collectCollections: Map<String, String>
 ): ForEachEffect = ForEachEffect(
     IterationSpace.Players(players),
+    effects.asBody(),
+    collectCollections
+)
+
+/**
+ * Run a sub-pipeline once per battlefield entity matching [filter] (snapshotted before any
+ * iteration, the visited entity bound as [EffectTarget.IterationEntity]) and append selected
+ * collection outputs across every iteration — the group twin of [ForEachPlayerCollectingEffect].
+ * [collectCollections] maps each body-local output name to the aggregate name exposed to
+ * following effects, so one follow-up acts on every member at once ("flip a coin for each
+ * creature … destroy each creature whose coin comes up tails": Rakdos, the Showstopper).
+ */
+@Suppress("FunctionName")
+fun ForEachInGroupCollectingEffect(
+    filter: GroupFilter,
+    effects: List<Effect>,
+    collectCollections: Map<String, String>
+): ForEachEffect = ForEachEffect(
+    IterationSpace.Group(filter),
     effects.asBody(),
     collectCollections
 )

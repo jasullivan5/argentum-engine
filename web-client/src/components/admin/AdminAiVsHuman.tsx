@@ -7,7 +7,15 @@
  * Only games with at least one AI seat and one human seat count. Win rates are over decisive games
  * (draws excluded) and always carry a 95% interval: a week of eight games says much less than a week
  * of eighty, and the band is what stops a lucky week reading as progress.
+ *
+ * The headline trend is only as honest as the game mix behind it: a shift toward a harder mode, one set,
+ * or a few strong regulars moves it without the AI changing at all. So the screen slices — by mode,
+ * set, and with the busiest humans left out — and shows each mode's own trend and the mix over time.
+ *
+ * Every number opens onto the games behind it: the recent games list, the recent-form pips and each
+ * human in the humans table lead to the decks that were played (see {@link AiVsHumanGames}).
  */
+import { NotCountedNote } from '@/components/stats/StatsFilterBar'
 import { useEffect, useMemo, useState } from 'react'
 import type React from 'react'
 import {
@@ -24,11 +32,21 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { type AiChange, type AiMatchOutcome, type AiRecord, type AiVsHumanReport, fetchAiVsHuman } from '@/api/adminStats'
+import {
+  type AiChange,
+  type AiHumanRecord,
+  type AiMatchOutcome,
+  type AiRecord,
+  type AiVsHumanFilter,
+  type AiVsHumanReport,
+  fetchAiVsHuman,
+} from '@/api/adminStats'
 import type { AdminAuth } from '@/api/adminAuth'
 import { pageStyles } from '@/components/ui/PageShell'
 import { GITHUB_REPOSITORY_URL } from '@/utils/links'
 import { gameModeLabel } from './statFormat'
+import { useAdminParam } from './adminNav'
+import { GameList, HumanGamesModal, MatchDecksModal } from './AiVsHumanGames'
 import { AdminScreen, Panel, StatCard, Table, cellStyle } from './adminUi'
 import css from './aiVsHuman.module.css'
 
@@ -66,24 +84,42 @@ function initialRange(): Range {
   }
 }
 
+const NO_FILTER: AiVsHumanFilter = { gameMode: null, format: null, setCode: null, excludeHumans: [], excludeTopHumans: 0 }
+
+const isFiltered = (f: AiVsHumanFilter) =>
+  f.gameMode != null || f.setCode != null || f.excludeHumans.length > 0 || f.excludeTopHumans > 0
+
 export function AdminAiVsHuman({ auth, onBack }: { auth: AdminAuth; onBack: () => void }) {
   const [range, setRange] = useState<Range>(initialRange)
+  const [filter, setFilter] = useState<AiVsHumanFilter>(NO_FILTER)
+  /** Names of individually left-out humans, so their chip still reads when the slice has none of their games. */
+  const [excludedNames, setExcludedNames] = useState<Record<string, string>>({})
   const [report, setReport] = useState<AiVsHumanReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [gameParam, openGame, closeGame] = useAdminParam('game')
+  const [humanParam, openHuman, closeHuman] = useAdminParam('human')
+  const openMatchId = gameParam != null && /^\d+$/.test(gameParam) ? Number(gameParam) : null
+  const onOpenGame = (matchId: number) => openGame(String(matchId))
 
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     setError(null)
-    fetchAiVsHuman(auth, range.days, range.bucket)
+    fetchAiVsHuman(auth, range.days, range.bucket, filter)
       .then((r) => !cancelled && setReport(r))
       .catch((e: unknown) => !cancelled && setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => !cancelled && setLoading(false))
     return () => {
       cancelled = true
     }
-  }, [auth, range])
+  }, [auth, range, filter])
+
+  const excludeHuman = (h: AiHumanRecord) => {
+    setExcludedNames((names) => ({ ...names, [h.key]: h.name }))
+    setFilter((f) => (f.excludeHumans.includes(h.key) ? f : { ...f, excludeHumans: [...f.excludeHumans, h.key] }))
+  }
+  const pickMode = (gameMode: string | null, format: string | null) => setFilter((f) => ({ ...f, gameMode, format }))
 
   const pickRange = (r: Range) => {
     setRange(r)
@@ -121,27 +157,90 @@ export function AdminAiVsHuman({ auth, onBack }: { auth: AdminAuth; onBack: () =
     >
       <div className={css.root} data-loading={loading && report != null}>
         {error && <p className={css.error} role="alert">{error}</p>}
+        {report != null && (
+          <FilterBar
+            report={report}
+            filter={filter}
+            excludedNames={excludedNames}
+            onChange={setFilter}
+            onPickMode={pickMode}
+          />
+        )}
+        {report != null && (report.notCounted ?? 0) > 0 && (
+          <p style={cellStyle.muted}>
+            <NotCountedNote count={report.notCounted ?? 0} /> in this range: the person never took an action, so
+            the AI’s “win” says nothing about how it plays.
+          </p>
+        )}
         {report == null ? (
           !error && <Panel><p style={cellStyle.muted}>Loading…</p></Panel>
         ) : report.overall.games === 0 ? (
           <Panel>
             <div className={css.empty}>
-              <p className={css.emptyTitle}>No AI-vs-human games {range.days ? `in the last ${range.label}` : 'yet'}</p>
-              <p className={css.emptyText}>
-                A game counts once it has at least one AI seat and one human seat — a Quick Game against the AI,
-                or a tournament or pod with an AI filling a seat.
-              </p>
+              {isFiltered(filter) ? (
+                <>
+                  <p className={css.emptyTitle}>No games in this slice</p>
+                  <p className={css.emptyText}>
+                    Nothing in the {range.days ? `last ${range.label}` : 'record'} matches these filters.{' '}
+                    <button type="button" className={css.linkButton} onClick={() => setFilter(NO_FILTER)}>
+                      Clear filters
+                    </button>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className={css.emptyTitle}>No AI-vs-human games {range.days ? `in the last ${range.label}` : 'yet'}</p>
+                  <p className={css.emptyText}>
+                    A game counts once it has at least one AI seat and one human seat — a Quick Game against the AI,
+                    or a tournament or pod with an AI filling a seat — and the person took an action in it. Games
+                    between AI seats are never counted.
+                  </p>
+                </>
+              )}
             </div>
           </Panel>
         ) : (
-          <ReportView report={report} range={range} />
+          <ReportView
+            report={report}
+            range={range}
+            onExcludeHuman={excludeHuman}
+            onPickMode={pickMode}
+            onOpenGame={onOpenGame}
+            onOpenHuman={openHuman}
+          />
         )}
       </div>
+      {humanParam && (
+        <HumanGamesModal
+          auth={auth}
+          humanKey={humanParam}
+          days={range.days}
+          rangeLabel={range.label}
+          filter={filter}
+          onOpenGame={onOpenGame}
+          onClose={closeHuman}
+        />
+      )}
+      {openMatchId != null && <MatchDecksModal auth={auth} matchId={openMatchId} onClose={closeGame} />}
     </AdminScreen>
   )
 }
 
-function ReportView({ report, range }: { report: AiVsHumanReport; range: Range }) {
+function ReportView({
+  report,
+  range,
+  onExcludeHuman,
+  onPickMode,
+  onOpenGame,
+  onOpenHuman,
+}: {
+  report: AiVsHumanReport
+  range: Range
+  onExcludeHuman: (h: AiHumanRecord) => void
+  onPickMode: (gameMode: string | null, format: string | null) => void
+  onOpenGame: (matchId: number) => void
+  onOpenHuman: (key: string) => void
+}) {
   const { overall } = report
   /** A bucket picked on the trend chart narrows the AI-changes list to it. */
   const [selectedBucket, setSelectedBucket] = useState<string | null>(null)
@@ -182,6 +281,8 @@ function ReportView({ report, range }: { report: AiVsHumanReport; range: Range }
           onSelectBucket={(b) => setSelectedBucket((cur) => (cur === b ? null : b))}
         />
       </Panel>
+
+      {report.seriesByMode.length > 1 && <ModeTrendsPanel report={report} onPickMode={onPickMode} />}
 
       <AiChangesPanel
         report={report}
@@ -230,13 +331,22 @@ function ReportView({ report, range }: { report: AiVsHumanReport; range: Range }
       </div>
 
       <div className={css.twoCol}>
-        <Panel title="Recent form" subtitle={`The last ${report.recent.length} games, oldest to newest`} action={<OutcomeLegend />}>
-          <RecentForm recent={report.recent} />
+        <Panel
+          title="Recent form"
+          subtitle={`The last ${report.recent.length} games, oldest to newest · click one for its decks`}
+          action={<OutcomeLegend />}
+        >
+          <RecentForm recent={report.recent} onOpenGame={onOpenGame} />
         </Panel>
-        <Panel title="Humans vs the AI" subtitle="The players who have faced the AI most in this range">
-          <HumansTable humans={report.topHumans} />
+        <Panel
+          title="Humans vs the AI"
+          subtitle="The players who have faced the AI most in this range — open one for their games and decks, or leave them out to see the AI without them"
+        >
+          <HumansTable humans={report.topHumans} onExclude={onExcludeHuman} onOpen={onOpenHuman} />
         </Panel>
       </div>
+
+      <RecentGamesPanel recent={report.recent} onOpenGame={onOpenGame} onOpenHuman={onOpenHuman} />
 
       <p className={css.footnote}>
         Counts every recorded game with at least one AI seat and one human seat. Win rates are over decisive games — a
@@ -418,7 +528,7 @@ function TrendCharts({
     })
   }, [report.series, trendWindow.size])
   const tick = (d: string) => tickLabel(d, report.bucket)
-  const select = (state: { activeLabel?: string | number } | null) => {
+  const select = (state: { activeLabel?: string | number | undefined } | null) => {
     if (state?.activeLabel != null) onSelectBucket(String(state.activeLabel))
   }
   const selectedLine = selectedBucket && (
@@ -839,7 +949,39 @@ function ForestRows({ rows }: { rows: ForestRow[] }) {
 
 const OUTCOME_TEXT = { AI: 'AI won', HUMAN: 'Human won', DRAW: 'Draw' } as const
 
-function RecentForm({ recent }: { recent: AiVsHumanReport['recent'] }) {
+/** Rows of the recent-games list shown before "Show all". */
+const RECENT_PREVIEW = 8
+
+function RecentGamesPanel({
+  recent,
+  onOpenGame,
+  onOpenHuman,
+}: {
+  recent: AiVsHumanReport['recent']
+  onOpenGame: (matchId: number) => void
+  onOpenHuman: (key: string) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const newestFirst = useMemo(() => [...recent].reverse(), [recent])
+  const shown = expanded ? newestFirst : newestFirst.slice(0, RECENT_PREVIEW)
+  return (
+    <Panel
+      title="Recent games"
+      subtitle="Newest first — open a game to compare the decks both sides brought, or a player for all their games"
+      action={
+        newestFirst.length > RECENT_PREVIEW ? (
+          <button type="button" className={css.linkButton} onClick={() => setExpanded((v) => !v)}>
+            {expanded ? `Show latest ${RECENT_PREVIEW}` : `Show all ${newestFirst.length}`}
+          </button>
+        ) : undefined
+      }
+    >
+      <GameList games={shown} onOpenGame={onOpenGame} onOpenHuman={onOpenHuman} />
+    </Panel>
+  )
+}
+
+function RecentForm({ recent, onOpenGame }: { recent: AiVsHumanReport['recent']; onOpenGame: (matchId: number) => void }) {
   const lastTen = recent.slice(-10)
   const lastTenAi = lastTen.filter((g) => g.outcome === 'AI').length
   const lastTenHuman = lastTen.filter((g) => g.outcome === 'HUMAN').length
@@ -852,8 +994,19 @@ function RecentForm({ recent }: { recent: AiVsHumanReport['recent'] }) {
           const { primary, variant } = gameModeLabel(g.gameMode, g.format)
           const label = `${new Date(g.endedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })} · ${
             variant ? `${primary} › ${variant}` : primary
-          } · ${OUTCOME_TEXT[g.outcome]}`
-          return <span key={i} role="listitem" className={css.pip} data-outcome={g.outcome} title={label} aria-label={label} />
+          } · ${OUTCOME_TEXT[g.outcome]}${g.humans.length ? ` vs ${g.humans.map((h) => h.name).join(', ')}` : ''}`
+          return (
+            <span key={g.matchId ?? i} role="listitem">
+              <button
+                type="button"
+                className={css.pip}
+                data-outcome={g.outcome}
+                title={`${label} — click for the decks`}
+                aria-label={`${label}. Open the decks`}
+                onClick={() => onOpenGame(g.matchId)}
+              />
+            </span>
+          )
         })}
       </div>
       <div className={css.formFoot}>
@@ -914,17 +1067,32 @@ function streakText(outcome: AiMatchOutcome): string {
   return outcome === 'AI' ? 'AI wins in a row' : outcome === 'HUMAN' ? 'Human wins in a row' : 'Draws in a row'
 }
 
-function HumansTable({ humans }: { humans: AiVsHumanReport['topHumans'] }) {
+function HumansTable({
+  humans,
+  onExclude,
+  onOpen,
+}: {
+  humans: AiVsHumanReport['topHumans']
+  onExclude: (h: AiHumanRecord) => void
+  onOpen: (key: string) => void
+}) {
   if (humans.length === 0) return <p style={cellStyle.muted}>No human players in this range.</p>
   return (
-    <Table head={['Player', 'Games', 'W–L–D', 'Beats the AI']}>
+    <Table head={['Player', 'Games', 'W–L–D', 'Beats the AI', '']}>
       {humans.map((h) => {
         const decisive = h.wins + h.losses
         const rate = decisive === 0 ? null : h.wins / decisive
         return (
-          <tr key={`${h.isGuest ? 'g' : 'u'}:${h.name}`}>
+          <tr key={h.key}>
             <td style={cellStyle.td}>
-              <span style={{ color: '#f1f3f9' }}>{h.name}</span>
+              <button
+                type="button"
+                className={css.playerLink}
+                onClick={() => onOpen(h.key)}
+                title={`${h.name}'s games against the AI, with their decks`}
+              >
+                {h.name}
+              </button>
               {h.isGuest && <span className={css.guest}>guest</span>}
             </td>
             <td style={cellStyle.tdNum}>{h.games}</td>
@@ -939,10 +1107,400 @@ function HumansTable({ humans }: { humans: AiVsHumanReport['topHumans'] }) {
                 {rate == null ? '—' : pct(rate)}
               </span>
             </td>
+            <td style={cellStyle.tdNum}>
+              <button
+                type="button"
+                className={css.excludeButton}
+                onClick={() => onExclude(h)}
+                title={`Leave out every game ${h.name} played`}
+                aria-label={`Leave out ${h.name}`}
+              >
+                Leave out
+              </button>
+            </td>
           </tr>
         )
       })}
     </Table>
+  )
+}
+
+// ============================================================================
+// Filters: slice the games by mode, set, and the humans in them
+// ============================================================================
+
+/** How many of the busiest humans the "leave out" control can drop. */
+const TOP_HUMAN_CHOICES = [0, 1, 2, 3, 5]
+
+const modeKey = (gameMode: string | null, format: string | null) => `${gameMode ?? ''}~${format ?? ''}`
+
+function modeText(gameMode: string | null, format: string | null): string {
+  const { primary, variant } = gameModeLabel(gameMode, format)
+  return variant ? `${primary} › ${variant}` : primary
+}
+
+function FilterBar({
+  report,
+  filter,
+  excludedNames,
+  onChange,
+  onPickMode,
+}: {
+  report: AiVsHumanReport
+  filter: AiVsHumanFilter
+  excludedNames: Record<string, string>
+  onChange: (f: AiVsHumanFilter) => void
+  onPickMode: (gameMode: string | null, format: string | null) => void
+}) {
+  const { modes, sets, gamesWithoutSet } = report.options
+  const selectedMode = filter.gameMode == null ? '' : modeKey(filter.gameMode, filter.format)
+  // A filter value the range no longer has still shows, so the select never silently reads "All".
+  const modeOptions =
+    selectedMode && !modes.some((m) => modeKey(m.gameMode, m.format) === selectedMode)
+      ? [...modes, { gameMode: filter.gameMode, format: filter.format, games: 0 }]
+      : modes
+  const setOptions =
+    filter.setCode && !sets.some((s) => s.code === filter.setCode) ? [...sets, { code: filter.setCode, name: null, games: 0 }] : sets
+  const { excludedHumans, excludedGames } = report.filter
+  const recordByKey = new Map(excludedHumans.map((h) => [h.key, h]))
+  const topExcluded = excludedHumans.filter((h) => !filter.excludeHumans.includes(h.key))
+  const active = isFiltered(filter)
+
+  return (
+    <div className={css.filters} role="group" aria-label="Filter the games">
+      <label className={css.filterField}>
+        <span className={css.filterLabel}>Mode</span>
+        <select
+          className={css.select}
+          value={selectedMode}
+          onChange={(e) => {
+            const m = modeOptions.find((o) => modeKey(o.gameMode, o.format) === e.target.value)
+            onPickMode(m?.gameMode ?? null, m?.format ?? null)
+          }}
+        >
+          <option value="">All modes</option>
+          {modeOptions
+            .filter((m) => m.gameMode != null)
+            .map((m) => (
+              <option key={modeKey(m.gameMode, m.format)} value={modeKey(m.gameMode, m.format)}>
+                {modeText(m.gameMode, m.format)} ({m.games.toLocaleString()})
+              </option>
+            ))}
+        </select>
+      </label>
+      <label className={css.filterField}>
+        <span className={css.filterLabel}>Set</span>
+        <select
+          className={css.select}
+          value={filter.setCode ?? ''}
+          onChange={(e) => onChange({ ...filter, setCode: e.target.value || null })}
+          disabled={setOptions.length === 0}
+          title={`${gamesWithoutSet.toLocaleString()} games in this range have no set — quick games, constructed and cubes`}
+        >
+          <option value="">{setOptions.length === 0 ? 'No set-based games' : 'All sets'}</option>
+          {setOptions.map((s) => (
+            <option key={s.code} value={s.code}>
+              {s.name ? `${s.name} (${s.code})` : s.code} · {s.games.toLocaleString()}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className={css.filterField}>
+        <span className={css.filterLabel}>Leave out</span>
+        <select
+          className={css.select}
+          value={filter.excludeTopHumans}
+          onChange={(e) => onChange({ ...filter, excludeTopHumans: Number(e.target.value) })}
+        >
+          {TOP_HUMAN_CHOICES.map((n) => (
+            <option key={n} value={n}>
+              {n === 0 ? 'Nobody' : n === 1 ? 'The busiest human' : `The ${n} busiest humans`}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      {(filter.excludeHumans.length > 0 || topExcluded.length > 0) && (
+        <div className={css.filterChips}>
+          {filter.excludeHumans.map((key) => {
+            const h = recordByKey.get(key)
+            const name = h?.name ?? excludedNames[key] ?? key
+            return (
+              <button
+                key={key}
+                type="button"
+                className={css.excludeChip}
+                onClick={() => onChange({ ...filter, excludeHumans: filter.excludeHumans.filter((k) => k !== key) })}
+                title={h ? `${h.games} games, ${h.wins}–${h.losses}–${h.draws} against the AI` : 'No games in this slice'}
+              >
+                Without {name}
+                <span aria-hidden>✕</span>
+                <span className={css.srOnly}>Count {name} again</span>
+              </button>
+            )
+          })}
+          {topExcluded.map((h) => (
+            <span key={h.key} className={css.excludeChipStatic} title={`${h.games} games, ${h.wins}–${h.losses}–${h.draws} against the AI`}>
+              Without {h.name}
+            </span>
+          ))}
+          <span className={css.filterNote}>
+            {excludedGames.toLocaleString()} game{excludedGames === 1 ? '' : 's'} left out
+          </span>
+        </div>
+      )}
+
+      {active && (
+        <button type="button" className={css.linkButton} onClick={() => onChange(NO_FILTER)}>
+          Clear filters
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ============================================================================
+// Per mode: each mode's own trend, and how the mix of modes moved
+// ============================================================================
+
+/**
+ * Mix colours: a validated categorical set for the dark panel, kept clear of the AI red and human
+ * blue. The four most-played modes of the range own a colour (by the unfiltered ranking, so a filter
+ * never repaints a mode); the rest fold into Other.
+ */
+const MIX_COLORS = ['#c98500', '#9085e9', '#d95926', '#199e70']
+const MIX_OTHER = '#4a5063'
+
+function ModeTrendsPanel({
+  report,
+  onPickMode,
+}: {
+  report: AiVsHumanReport
+  onPickMode: (gameMode: string | null, format: string | null) => void
+}) {
+  const trendWindow = TREND_WINDOW[report.bucket]
+  const colorByMode = useMemo(() => {
+    const map = new Map<string, string>()
+    report.options.modes.slice(0, MIX_COLORS.length).forEach((m, i) => map.set(modeKey(m.gameMode, m.format), MIX_COLORS[i] as string))
+    return map
+  }, [report.options.modes])
+
+  const multiples = useMemo(
+    () =>
+      report.seriesByMode.map((m) => {
+        const points = m.series.map(({ start }, i) => {
+          let ai = 0
+          let human = 0
+          for (const { record: w } of m.series.slice(Math.max(0, i - trendWindow.size + 1), i + 1)) {
+            ai += w.aiWins
+            human += w.humanWins
+          }
+          const interval = wilson(ai, ai + human)
+          return {
+            start,
+            trend: interval ? (ai / (ai + human)) * 100 : null,
+            band: interval ? ([interval[0] * 100, interval[1] * 100] as [number, number]) : null,
+            decisive: ai + human,
+          }
+        })
+        const total = m.series.reduce(
+          (acc, { record: r }) => ({ ai: acc.ai + r.aiWins, human: acc.human + r.humanWins, games: acc.games + r.games }),
+          { ai: 0, human: 0, games: 0 },
+        )
+        return { ...m, key: modeKey(m.gameMode, m.format), points, total }
+      }),
+    [report.seriesByMode, trendWindow.size],
+  )
+
+  // The mix: each bucket's games split by mode — owned colours, then everything else as Other.
+  const { mix, mixKeys } = useMemo(() => {
+    const keys = multiples.filter((m) => colorByMode.has(m.key)).map((m) => m.key)
+    const rows = report.series.map(({ start, record }, i) => {
+      const row: Record<string, number | string> = { start }
+      let counted = 0
+      for (const m of multiples) {
+        const n = m.series[i]?.record.games ?? 0
+        if (colorByMode.has(m.key)) {
+          row[m.key] = n
+          counted += n
+        }
+      }
+      row.other = record.games - counted
+      row.total = record.games
+      return row
+    })
+    return { mix: rows, mixKeys: keys }
+  }, [multiples, report.series, colorByMode])
+  const labelByKey = new Map(multiples.map((m) => [m.key, modeText(m.gameMode, m.format)]))
+  const hasOther = mix.some((r) => (r.other as number) > 0)
+  const tick = (d: string) => tickLabel(d, report.bucket)
+
+  return (
+    <Panel
+      title="By game mode over time"
+      subtitle={`Each mode's own ${trendWindow.label} trend — a falling headline with flat modes is the mix moving, not the AI · click one to filter to it`}
+    >
+      <div className={css.multiples}>
+        {multiples.map((m) => {
+          const decisive = m.total.ai + m.total.human
+          return (
+            <button
+              key={m.key}
+              type="button"
+              className={css.multiple}
+              onClick={() => onPickMode(m.gameMode, m.format)}
+              aria-label={`Filter to ${modeText(m.gameMode, m.format)}`}
+            >
+              <span className={css.multipleHead}>
+                <span className={css.multipleTitle}>
+                  {colorByMode.has(m.key) && (
+                    <span className={css.swatch} style={{ background: colorByMode.get(m.key) }} aria-hidden />
+                  )}
+                  {modeText(m.gameMode, m.format)}
+                </span>
+                <span className={css.multipleRate}>{decisive === 0 ? '—' : pct(m.total.ai / decisive)}</span>
+              </span>
+              <span className={css.multipleSub}>
+                {m.total.games.toLocaleString()} game{m.total.games === 1 ? '' : 's'} · {m.total.ai}–{m.total.human}
+              </span>
+              <ResponsiveContainer width="100%" height={96}>
+                <ComposedChart data={m.points} margin={{ top: 6, right: 4, bottom: 0, left: 4 }}>
+                  <XAxis dataKey="start" hide />
+                  <YAxis domain={[0, 100]} hide />
+                  <ReferenceLine y={50} stroke={AXIS} strokeDasharray="4 4" strokeWidth={1} />
+                  <Area dataKey="band" stroke="none" fill={AI} fillOpacity={0.16} isAnimationActive={false} activeDot={false} />
+                  <Line dataKey="trend" stroke={AI} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={false} />
+                  <Tooltip
+                    content={<MultipleTooltip bucket={report.bucket} windowLabel={trendWindow.label} />}
+                    cursor={{ stroke: 'rgba(255,255,255,0.25)' }}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </button>
+          )
+        })}
+      </div>
+
+      <div className={css.mixHead}>
+        <p className={css.subchartLabel}>Game mix — share of each {report.bucket.toLowerCase()}'s games</p>
+        <div className={css.legend}>
+          {mixKeys.map((k) => (
+            <span key={k} className={css.legendItem}>
+              <span className={css.swatch} style={{ background: colorByMode.get(k) }} />
+              {labelByKey.get(k)}
+            </span>
+          ))}
+          {hasOther && (
+            <span className={css.legendItem}>
+              <span className={css.swatch} style={{ background: MIX_OTHER }} />
+              Other
+            </span>
+          )}
+        </div>
+      </div>
+      <ResponsiveContainer width="100%" height={120}>
+        <BarChart data={mix} stackOffset="expand" margin={{ top: 0, right: 12, bottom: 0, left: -12 }} barCategoryGap="18%">
+          <XAxis dataKey="start" stroke={AXIS} fontSize={11} tickFormatter={tick} minTickGap={24} tickLine={false} />
+          <YAxis
+            stroke={AXIS}
+            fontSize={10}
+            ticks={[0, 0.5, 1]}
+            tickFormatter={(v: number) => `${Math.round(v * 100)}%`}
+            tickLine={false}
+            axisLine={false}
+            width={48}
+          />
+          <Tooltip
+            content={<MixTooltip bucket={report.bucket} labelByKey={labelByKey} colorByMode={colorByMode} />}
+            cursor={{ fill: 'rgba(255,255,255,0.06)' }}
+          />
+          {mixKeys.map((k) => (
+            <Bar key={k} dataKey={k} stackId="mix" fill={colorByMode.get(k)} stroke="rgba(10,12,20,0.95)" strokeWidth={1} isAnimationActive={false} />
+          ))}
+          {hasOther && (
+            <Bar dataKey="other" stackId="mix" fill={MIX_OTHER} stroke="rgba(10,12,20,0.95)" strokeWidth={1} isAnimationActive={false} />
+          )}
+        </BarChart>
+      </ResponsiveContainer>
+    </Panel>
+  )
+}
+
+function MultipleTooltip({
+  active,
+  payload,
+  bucket,
+  windowLabel,
+}: {
+  active?: boolean
+  payload?: { payload?: { start: string; trend: number | null; band: [number, number] | null; decisive: number } }[]
+  bucket: AiVsHumanReport['bucket']
+  windowLabel: string
+}) {
+  const p = active ? payload?.[0]?.payload : undefined
+  if (!p) return null
+  return (
+    <div className={css.tooltip}>
+      <div className={css.tooltipTitle}>{tooltipTitle(p.start, bucket)}</div>
+      {p.trend == null ? (
+        <div className={css.tooltipMuted}>No decisive games in the {windowLabel} window</div>
+      ) : (
+        <>
+          <div className={css.tooltipRow}>
+            {windowLabel} trend <b>{Math.round(p.trend)}%</b>
+          </div>
+          {p.band && (
+            <div className={css.tooltipRow}>
+              95% interval <b>{Math.round(p.band[0])}–{Math.round(p.band[1])}%</b>
+            </div>
+          )}
+          <div className={css.tooltipMuted}>over {p.decisive} decisive games</div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function MixTooltip({
+  active,
+  payload,
+  bucket,
+  labelByKey,
+  colorByMode,
+}: {
+  active?: boolean
+  payload?: { dataKey?: string | number; payload?: Record<string, number | string> }[]
+  bucket: AiVsHumanReport['bucket']
+  labelByKey: Map<string, string>
+  colorByMode: Map<string, string>
+}) {
+  const row = active ? payload?.[0]?.payload : undefined
+  if (!row) return null
+  const total = Number(row.total ?? 0)
+  return (
+    <div className={css.tooltip}>
+      <div className={css.tooltipTitle}>{tooltipTitle(String(row.start), bucket)}</div>
+      {total === 0 ? (
+        <div className={css.tooltipMuted}>No games</div>
+      ) : (
+        [...(payload ?? [])].reverse().map((entry) => {
+          const key = String(entry.dataKey)
+          const n = Number(row[key] ?? 0)
+          if (n === 0) return null
+          return (
+            <div key={key} className={css.tooltipRow}>
+              <span className={css.tooltipKey}>
+                <span className={css.swatch} style={{ background: key === 'other' ? MIX_OTHER : colorByMode.get(key) }} />
+                {key === 'other' ? 'Other' : labelByKey.get(key)}
+              </span>
+              <b>
+                {n} · {pct(n / total)}
+              </b>
+            </div>
+          )
+        })
+      )}
+    </div>
   )
 }
 

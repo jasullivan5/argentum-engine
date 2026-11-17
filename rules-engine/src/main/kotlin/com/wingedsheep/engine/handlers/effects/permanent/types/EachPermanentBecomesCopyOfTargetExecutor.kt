@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.handlers.effects.permanent.types
 
+import com.wingedsheep.engine.state.components.identity.ownCardUnderTextExchange
 import com.wingedsheep.engine.state.components.identity.copiableCardComponent
 import com.wingedsheep.engine.state.components.identity.recordCopyLayer
 import com.wingedsheep.engine.handlers.effects.copy.withCopyIdentity
@@ -13,6 +14,7 @@ import com.wingedsheep.engine.handlers.effects.EffectExecutor
 import com.wingedsheep.engine.handlers.effects.LkiPolicy
 import com.wingedsheep.engine.handlers.effects.lkiPolicyFor
 import com.wingedsheep.engine.handlers.effects.lkiSnapshotFor
+import com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
 import com.wingedsheep.engine.handlers.effects.copy.CopyExceptionApplier
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
@@ -67,17 +69,27 @@ class EachPermanentBecomesCopyOfTargetExecutor(
         effect: EachPermanentBecomesCopyOfTargetEffect,
         context: EffectContext
     ): EffectResult {
-        val targetId = context.resolveTarget(effect.target, state)
+        // The copy source is *read*, not acted on (CR 707.2): resolve it as a value read so a
+        // source that has left the battlefield — Permeating Mass dying to the same combat damage
+        // its trigger saw — still names the object whose last-known copiable values it copies.
+        val sourceReference = effect.target as? EffectTarget.SingleEntity
+        val targetId = (sourceReference?.let { TargetResolutionUtils.resolveEntity(it, context, state) }
+            ?: context.resolveTarget(effect.target, state))
             ?: return EffectResult.success(state)
+        val sourceLost = TargetResolutionUtils.isLostObject(effect.target, context, state)
 
         // "Becomes a copy of the exiled creature" (Curie, Emergent Intelligence) names a permanent
-        // a cost already moved off the battlefield: it is copied as it last existed there
-        // (CR 608.2h, CR 707.2) — what it was copying, not the card now in exile — from the
-        // snapshot the departure captured, which also outlives a token that ceased to exist.
+        // a cost already moved off the battlefield, and "become copies of that creature" (Absorb
+        // Identity) a target an earlier instruction of this resolution bounced: either is copied as
+        // it last existed there (CR 608.2h, CR 707.2) — what it was copying, not the card now in
+        // exile or hand — from the snapshot the departure captured, which also outlives a token
+        // that ceased to exist.
         val departedCopiable = (effect.target as? EffectTarget.SingleEntity)
-            ?.takeIf { targetId !in state.getBattlefield() && lkiPolicyFor(it) == LkiPolicy.LIVE_THEN_LKI }
+            ?.takeIf { (sourceLost || targetId !in state.getBattlefield()) && lkiPolicyFor(it) != LkiPolicy.LIVE_ONLY }
             ?.let { context.lkiSnapshotFor(it, targetId)?.copiableCard }
 
+        // A source that became a new object with no last-known record to read has nothing to copy.
+        if (departedCopiable == null && sourceLost) return EffectResult.success(state)
         val targetCard = departedCopiable
             ?: state.getEntity(targetId)?.copiableCardComponent()
             ?: return EffectResult.success(state)
@@ -116,7 +128,7 @@ class EachPermanentBecomesCopyOfTargetExecutor(
         // "For as long as this Equipment remains attached to it" (Blade of Shared Souls): the copy
         // is keyed to the source's attachment. A permanent the source is no longer attached to by
         // resolution gets nothing — the duration has already ended (CR 611.2b).
-        val attachedSourceId = if (effect.duration == Duration.WhileSourceAttachedToAffected) {
+        val attachedSourceId = if (effect.duration.isAttachmentKeyed()) {
             context.sourceId?.takeIf { it in state.getBattlefield() }
                 ?: return EffectResult.success(state)
         } else null
@@ -134,7 +146,9 @@ class EachPermanentBecomesCopyOfTargetExecutor(
         // coincident with a paired "return it at the beginning of the next end step" trigger —
         // Niko, Light of Hope), and `UntilYourNextTurn` (reverted after the controller's next
         // untap step — Absorbing Man, Taskmaster), and `WhileSourceAttachedToAffected` (reverted by
-        // `AttachedCopyExpiryCheck` once the source stops being attached — Blade of Shared Souls).
+        // `AttachedCopyExpiryCheck` once the source stops being attached — Blade of Shared Souls), and
+        // `WhileSourceAttached` (the same, except the check moves the copy to the source's new host —
+        // Metamorphic Alteration).
         // Anything else degrades to permanent.
         var newState = state
         val events = mutableListOf<com.wingedsheep.engine.core.GameEvent>()
@@ -201,7 +215,7 @@ internal fun becomeCopyInPlace(
     // If this permanent is already a copy, keep the existing pre-copy snapshot
     // so a chain of copy effects still reverts to the printed identity on exit.
     val existingCopyOf = container.get<CopyOfComponent>()
-    val originalCardSnapshot = existingCopyOf?.originalCardComponent ?: container.get<com.wingedsheep.engine.state.components.identity.FlippedComponent>()?.unflippedCard ?: currentCard
+    val originalCardSnapshot = existingCopyOf?.originalCardComponent ?: container.ownCardUnderTextExchange() ?: container.get<com.wingedsheep.engine.state.components.identity.FlippedComponent>()?.unflippedCard ?: currentCard
     val originalDefinitionId =
         existingCopyOf?.originalCardDefinitionId ?: currentCard.cardDefinitionId
 
@@ -223,7 +237,7 @@ internal fun becomeCopyInPlace(
             Duration.UntilYourNextTurn -> updated = updated.with(
                 RevertCopyAtYourNextTurnComponent(controllerId)
             )
-            Duration.WhileSourceAttachedToAffected -> if (attachedSourceId != null) {
+            Duration.WhileSourceAttachedToAffected, Duration.WhileSourceAttached -> if (attachedSourceId != null) {
                 updated = updated.with(CopyWhileAttachedComponent(attachedSourceId))
             }
             else -> {}
@@ -231,3 +245,7 @@ internal fun becomeCopyInPlace(
         updated
     }
 }
+
+/** The copy durations keyed to the effect's source staying attached — `AttachedCopyExpiryCheck`'s. */
+internal fun Duration.isAttachmentKeyed(): Boolean =
+    this == Duration.WhileSourceAttachedToAffected || this == Duration.WhileSourceAttached

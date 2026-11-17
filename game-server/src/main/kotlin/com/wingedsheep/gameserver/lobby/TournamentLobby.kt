@@ -332,6 +332,12 @@ class TournamentLobby(
     var pickTimeSeconds: Int = 45,    // Draft only; 0 = no time limit (see [hasPickTimer])
     var picksPerRound: Int = 1,       // Draft only: cards to pick each round (1 or 2); 2 is the default for new Draft / Commander Draft lobbies (see LobbyHandler.handleCreateTournamentLobby)
     var gamesPerMatch: Int = 3,
+    /**
+     * Games per tournament match: 1, or 3 for a best-of-three won by the first to two game wins.
+     * Between the games of a best-of-three the players may sideboard ([allowsSideboarding]).
+     * Independent of [gamesPerMatch], which is how many times each pair meets.
+     */
+    var bestOf: Int = 1,
     var isPublic: Boolean = false,
     /**
      * Optional deck-construction format (Standard, Modern, Commander, …) used to restrict which
@@ -362,6 +368,13 @@ class TournamentLobby(
      * false to enforce paper-Commander singleton rules. Ignored by non-commander formats.
      */
     var allowDuplicates: Boolean = true,
+    /**
+     * Whether a Limited deck is capped at [MAX_COPIES_PER_CARD] copies of any non-basic card. Off by
+     * default: in Limited you may play every copy you drafted or opened — the pool is the only
+     * limit. Pool Play ([isCubePoolPlay]) always keeps the cap, since its pool has no copy count,
+     * and premade decks are constructed, so they always keep it too.
+     */
+    var limitedCopyLimit: Boolean = false,
     /**
      * The host's 1v1 Commander life tuning (Brawl 25 vs. classic Commander 30) for Commander Draft
      * / Sealed formats. A multiplayer table ignores it — read [effectiveCommanderPreset], which is
@@ -425,6 +438,8 @@ class TournamentLobby(
      * (CR 407.3). Never on together with [ranked] — the handlers clear one when the other is set.
      */
     var playingForAnte: Boolean = false,
+    /** When the lobby opened, for the public list's newest-first order. Not persisted: a restored lobby restarts its clock. */
+    val createdAt: Long = System.currentTimeMillis(),
 ) {
     var cube: ResolvedCube? = null
         private set
@@ -450,6 +465,12 @@ class TournamentLobby(
 
     /** Whether this lobby actually runs as Pool Play — the single source of that truth. */
     val isCubePoolPlay: Boolean get() = isCube && cubePoolPlay && format == TournamentFormat.SEALED
+
+    /**
+     * The per-card copy cap a pool-built deck is held to (basic lands exempt), or null when the
+     * pool's own copy count is the only limit. Pool Play always caps — its pool has no count.
+     */
+    val limitedCopyCap: Int? get() = MAX_COPIES_PER_CARD.takeIf { isCubePoolPlay || limitedCopyLimit }
 
     private var cubeBoosterGenerator: BoosterGenerator? = null
     private var cubeDealer: CubeDealer? = null
@@ -585,9 +606,14 @@ class TournamentLobby(
      * attacks any opponent, the way Commander is played, and any other pod attacks left — one
      * neighbour keeps a big table from ganging up on whoever is ahead. The default follows the Rules
      * axis, so switching to Commander moves an untouched lobby with it.
+     *
+     * A team game (2HG / Team vs. Team) always attacks any opponent: teammates sit next to each
+     * other, so under attack left/right a player's only "neighbour" can be their own teammate and
+     * they could attack no one. The lobby doesn't offer the choice there either.
      */
     var attackMode: com.wingedsheep.sdk.core.AttackMode
-        get() = chosenAttackMode
+        get() = if (isTeamGame) com.wingedsheep.sdk.core.AttackMode.MULTIPLE
+            else chosenAttackMode
             ?: if (usesCommanderRules) com.wingedsheep.sdk.core.AttackMode.MULTIPLE
             else com.wingedsheep.sdk.core.AttackMode.LEFT
         set(value) { chosenAttackMode = value }
@@ -757,6 +783,15 @@ class TournamentLobby(
         private set
 
     /**
+     * Since when no human seat has been connected, or null while one is. Kept by
+     * [com.wingedsheep.gameserver.session.ZombieSessionSweeper] and read by
+     * [com.wingedsheep.gameserver.session.AbandonedLobbyPolicy]; not persisted — a restart restarts
+     * the clock.
+     */
+    @Volatile
+    var unattendedSince: java.time.Instant? = null
+
+    /**
      * Basic lands available for deck building: the set's standard art, one printing per type. Shown
      * to the player while building and stamped onto the submitted deck, so both agree.
      */
@@ -920,12 +955,55 @@ class TournamentLobby(
         players[playerId] = LobbyPlayerState(identity = identity)
         identity.currentLobbyId = lobbyId
 
-        if (hostPlayerId == null) {
+        // A human joining a lobby whose host seat fell to an AI takes it back: an AI never
+        // starts or configures a lobby, so leaving it as host strands everyone waiting.
+        if (hostPlayerId == null || (!identity.isAi && !hostIsHuman)) {
             hostPlayerId = playerId
         }
 
         return playerId
     }
+
+    /** True while at least one seat belongs to a human player. */
+    val hasHumanPlayers: Boolean get() = players.values.any { !it.identity.isAi }
+
+    private val hostIsHuman: Boolean
+        get() = hostPlayerId?.let { players[it] }?.identity?.isAi == false
+
+    /**
+     * Pick a new host after the current one left: a human when one remains, else any seat (an
+     * AI-only tournament still needs a host id to drive it). [players] is a hash map, so "first"
+     * is arbitrary — the human preference is what keeps the lobby startable.
+     */
+    private fun reassignHost() {
+        hostPlayerId = players.entries.firstOrNull { !it.value.identity.isAi }?.key
+            ?: players.keys.firstOrNull()
+    }
+
+    /**
+     * Hand the host seat to a human if an AI holds it while humans are seated — repairs lobbies
+     * that reached that state before host transfer preferred humans. Returns true if it changed.
+     */
+    fun repairHost(): Boolean {
+        if (hostIsHuman || !hasHumanPlayers) return false
+        reassignHost()
+        return true
+    }
+
+    /**
+     * A lobby still gathering players that no human sits in any more. Nobody can start it, so
+     * it should be closed rather than left advertising open seats behind an AI "host".
+     */
+    val isAbandonedByHumans: Boolean
+        get() = state == LobbyState.WAITING_FOR_PLAYERS && !hasHumanPlayers
+
+    /**
+     * Release every seat's lobby pointer ahead of closing the lobby. Returns the AI identities,
+     * which exist only for this lobby and should be unregistered by the caller.
+     */
+    fun vacateSeats(): List<PlayerIdentity> = players.values.map { it.identity }.onEach {
+        if (it.currentLobbyId == lobbyId) it.currentLobbyId = null
+    }.filter { it.isAi }
 
     /**
      * Remove a player from the lobby (for disconnection).
@@ -940,9 +1018,7 @@ class TournamentLobby(
         if (state == LobbyState.WAITING_FOR_PLAYERS) {
             players.remove(playerId)
             // Transfer host if the host left
-            if (hostPlayerId == playerId) {
-                hostPlayerId = players.keys.firstOrNull()
-            }
+            if (hostPlayerId == playerId) reassignHost()
         }
         // During tournament, the player state remains in `players` but their identity
         // is disconnected - they can rejoin using the lobby code
@@ -957,9 +1033,7 @@ class TournamentLobby(
         playerState.identity.currentLobbyId = null
 
         // Transfer host if the host left
-        if (hostPlayerId == playerId) {
-            hostPlayerId = players.keys.firstOrNull()
-        }
+        if (hostPlayerId == playerId) reassignHost()
     }
 
     /**
@@ -994,7 +1068,7 @@ class TournamentLobby(
      * Only the host can trigger this. Valid for SEALED and COMMANDER_SEALED formats.
      */
     /** Automatic only for a single Jumpstart set using ordinary limited rules. */
-    val jumpstartEligible: Boolean get() = !isCube && setCodes.size == 1 && setCodes.single() in setOf("JMP", "J22") &&
+    val jumpstartEligible: Boolean get() = !isCube && setCodes.size == 1 && setCodes.single() in com.wingedsheep.gameserver.jumpstart.JumpstartPacks.SUPPORTED_SETS &&
         !usesCommanderRules && format in setOf(TournamentFormat.SEALED, TournamentFormat.DRAFT)
     val isJumpstart: Boolean get() = jumpstartEligible && useJumpstart
     // Settings can switch sets before starting; cache by set rather than freezing the first choice.
@@ -1841,9 +1915,12 @@ class TournamentLobby(
         // PREMADE_DECKS (constructed) there is no pool, so the explicit client sideboard is kept.
         // Pool Play's "pool" is the whole cube, so deriving would seed a 300+ card SIDEBOARD zone
         // (and hand wish effects the entire cube) — it gets a fifteen-card wishboard of cube cards
-        // the deck doesn't play instead, the constructed-sized sideboard of CR 100.4a.
+        // the deck doesn't play instead, the constructed-sized sideboard of CR 100.4a. A Jumpstart
+        // deck is exactly its two packs and plays without a sideboard, so it gets no basic-land
+        // supply either.
         val effectiveSideboard = when {
             isPremade -> sideboard
+            isJumpstart -> emptyMap()
             isCubePoolPlay -> Wishboard.build(playerState.cardPool, exclude = deckList.keys)
             else -> SideboardDerivation.fromPool(playerState.cardPool, deckList)
         }
@@ -2104,11 +2181,14 @@ class TournamentLobby(
                 pickTimeSeconds = pickTimeSeconds,
                 picksPerRound = picksPerRound,
                 gamesPerMatch = gamesPerMatch,
+                bestOf = bestOf,
+                allowsSideboarding = allowsSideboarding,
                 isPublic = isPublic,
                 deckFormat = deckFormat?.name,
                 rules = rules.name,
                 deckSizeMin = deckSizeMin,
                 allowDuplicates = allowDuplicates,
+                limitedCopyLimit = limitedCopyLimit,
                 commanderPreset = commanderPreset.name,
                 chaosBoosters = chaosBoosters,
                 includedSetProducts = includedSetProducts.mapValues { (_, ids) -> ids.sorted() },
@@ -2159,13 +2239,13 @@ class TournamentLobby(
     }
 
     /**
-     * Limited deck validation: min 40 cards, every card present in the player's pool, no more copies
-     * than the pool holds, and a hard 4-of cap. Basic lands are exempt throughout (they're supplied,
-     * not drafted).
+     * Limited deck validation: min 40 cards, every card present in the player's pool, and no more
+     * copies than the pool holds — plus the 4-of cap when the host turned on [limitedCopyLimit].
+     * Basic lands are exempt throughout (they're supplied, not drafted).
      *
      * In Pool Play ([isCubePoolPlay]) copies are unlimited: the pool is the whole cube and every
      * player has the same one, so "how many copies did you open" is not a constraint — only
-     * membership in the cube and the 4-of cap survive.
+     * membership in the cube and the 4-of cap survive (see [limitedCopyCap]).
      */
     private fun validateDeck(pool: List<CardDefinition>, deckList: Map<String, Int>): String? {
         val totalCards = deckList.values.sum()
@@ -2174,7 +2254,7 @@ class TournamentLobby(
         }
 
         val poolCounts = pool
-            .filterNot { it.typeLine.isBasicLand }
+            .filterNot { it.typeLine.isFreelyAddedBasicLand }
             .groupingBy { it.name }
             .eachCount()
 
@@ -2200,13 +2280,87 @@ class TournamentLobby(
                 return "Not enough copies of $cardName in pool (have $availableInPool, trying to use $count)"
             }
 
-            // Enforce 4-copy limit
-            if (count > MAX_COPIES_PER_CARD) {
-                return "Cannot have more than $MAX_COPIES_PER_CARD copies of $cardName (have $count)"
+            val cap = limitedCopyCap
+            if (cap != null && count > cap) {
+                return "Cannot have more than $cap copies of $cardName (have $count)"
             }
         }
 
         return null
+    }
+
+    // =========================================================================
+    // Sideboarding between the games of a match (CR 100.4)
+    // =========================================================================
+
+    /**
+     * Whether players may change their deck between the games of a best-of-N match. Every format
+     * with a sideboard may: Limited (the unplayed pool is the sideboard, CR 100.4b), Pool Play (its
+     * wishboard) and premade decks (the sideboard they brought). Jumpstart decks are exactly the two
+     * chosen packs, and Commander decks are held to identity and singleton rules the between-games
+     * screen doesn't edit, so those play every game with the registered deck.
+     */
+    val allowsSideboarding: Boolean get() = !isJumpstart && !usesCommanderRules
+
+    /**
+     * Why [deckList] can't be [playerId]'s deck for the next game of the match, or null when it can.
+     *
+     * Limited decks pass the same check a submission does — every card from the pool, basic lands
+     * free. A premade deck may only trade cards with the sideboard it was registered with: the deck
+     * and sideboard together are a fixed set of cards (CR 100.4a), so nothing enters from outside.
+     */
+    fun matchDeckError(playerId: EntityId, deckList: Map<String, Int>): String? {
+        if (!allowsSideboarding) return "Decks can't be changed between games in this format"
+        val playerState = players[playerId] ?: return "Player not in lobby"
+        val registered = playerState.submittedDeck ?: return "No registered deck"
+        val deck = deckList.filterValues { it > 0 }
+        if (format == TournamentFormat.PREMADE_DECKS) {
+            val available = (registered.keys + playerState.submittedSideboard.keys).associateWith { name ->
+                (registered[name] ?: 0) + (playerState.submittedSideboard[name] ?: 0)
+            }
+            for ((name, count) in deck) {
+                val have = available[name] ?: 0
+                if (count > have) {
+                    return if (have == 0) "$name isn't in your deck or sideboard"
+                    else "Only $have ${if (have == 1) "copy" else "copies"} of $name between your deck and sideboard"
+                }
+            }
+            return validatePremadeDeck(deck)
+        }
+        return validateDeck(playerState.cardPool, deck)
+    }
+
+    /**
+     * The sideboard that goes with [deckList] for [playerId] — everything they could have played but
+     * didn't. Derived the same way submission derives it (pool − deck, CR 100.4b), or, for a premade
+     * deck, registered deck + sideboard − this deck.
+     */
+    fun sideboardFor(playerId: EntityId, deckList: Map<String, Int>): Map<String, Int> {
+        val playerState = players[playerId] ?: return emptyMap()
+        val registered = playerState.submittedDeck ?: return playerState.submittedSideboard
+        if (deckList == registered) return playerState.submittedSideboard
+        return when {
+            format == TournamentFormat.PREMADE_DECKS -> {
+                val names = registered.keys + playerState.submittedSideboard.keys
+                names.associateWith { name ->
+                    (registered[name] ?: 0) + (playerState.submittedSideboard[name] ?: 0) - (deckList[name] ?: 0)
+                }.filterValues { it > 0 }
+            }
+            isCubePoolPlay -> Wishboard.build(playerState.cardPool, exclude = deckList.keys)
+            else -> SideboardDerivation.fromPool(playerState.cardPool, deckList)
+        }
+    }
+
+    /**
+     * The sideboard the between-games screen lays out for [playerId] to bring cards in from: their
+     * [sideboardFor] minus, in Limited, the free basic-land supply ([SideboardDerivation]). The
+     * screen offers basics on + / − steppers of their own, so listing the supply's fifty as
+     * sideboard cards too would show them twice and cap a free resource at ten.
+     */
+    fun sideboardingWallFor(playerId: EntityId, deckList: Map<String, Int>): Map<String, Int> {
+        val sideboard = sideboardFor(playerId, deckList)
+        if (format == TournamentFormat.PREMADE_DECKS) return sideboard
+        return sideboard.filterKeys { !SideboardDerivation.isSuppliedBasic(it) }
     }
 
     sealed interface DeckSubmissionResult {

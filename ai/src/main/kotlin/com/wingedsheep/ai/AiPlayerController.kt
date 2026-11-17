@@ -6,6 +6,7 @@ import com.wingedsheep.ai.llm.MulliganInfo
 import com.wingedsheep.engine.core.DecisionResponse
 import com.wingedsheep.engine.core.GameAction
 import com.wingedsheep.engine.core.PendingDecision
+import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.view.ClientGameState
 import com.wingedsheep.engine.view.LegalActionInfo
 import com.wingedsheep.sdk.model.EntityId
@@ -44,6 +45,23 @@ interface AiPlayerController {
      */
     fun setDeckList(deckList: Map<String, Int>, archetype: String? = null)
 
+    /**
+     * Where to read each opponent's registered decklist (card name → copies), by player id; null
+     * for a seat with no list. The engine AI may know its opponents' full decklists — a deliberate
+     * design decision — and reads them as it needs them, since a seat is wired before every
+     * opponent has registered a deck. Server-side only: nothing read here reaches a client.
+     * Controllers that make no use of it ignore it.
+     */
+    fun setOpponentDeckListSource(source: (EntityId) -> Map<String, Int>?) {}
+
+    /**
+     * Whether this seat wants to act in a priority window the server's smart auto-pass would pass
+     * for it — the opponent's upkeep, where an instant-speed cast ban covers their whole turn
+     * ([com.wingedsheep.ai.engine.knowledge.CastBanWindow]). Asked only at a window the server is
+     * about to auto-pass; false keeps the auto-pass. Controllers with no such window keep the default.
+     */
+    fun wantsPriority(state: GameState): Boolean = false
+
     // =========================================================================
     // Draft Picking
     // =========================================================================
@@ -56,6 +74,8 @@ interface AiPlayerController {
      * @param packNumber Which pack (1-based, e.g., 1, 2, or 3).
      * @param pickNumber Which pick within the pack (1-based).
      * @param picksRequired How many cards to pick (usually 1).
+     * @param podSize Drafters at the table, or null when unknown. A small pod makes denying the
+     *   next drafter a bomb worth more, since they are likely an opponent.
      * @return List of card names to pick.
      */
     fun chooseDraftPick(
@@ -64,7 +84,8 @@ interface AiPlayerController {
         packNumber: Int,
         pickNumber: Int,
         picksRequired: Int = 1,
-        passDirection: String = "LEFT"
+        passDirection: String = "LEFT",
+        podSize: Int? = null,
     ): List<String>
 
     /**

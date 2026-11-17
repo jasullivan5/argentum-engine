@@ -3707,8 +3707,13 @@
             {
                 "id": "Forbidden Orchard:2",
                 "trigger": {
-                    "type": "LandTappedForMana",
-                    "player": "You"
+                    "type": "PermanentTappedForMana",
+                    "player": "You",
+                    "permanentFilter": {
+                        "cardPredicates": [
+                            "IsLand"
+                        ]
+                    }
                 },
                 "effect": {
                     "type": "CreateToken",
@@ -8472,7 +8477,8 @@
                     },
                     "revealed": true
                 },
-                "ShuffleLibrary"
+                "ShuffleLibrary",
+                "EmitLibrarySearchedEvent"
             ]
         }
     },
@@ -11675,7 +11681,7 @@
             },
             {
                 "type": "TransformPermanent",
-                "setSubtypes": [
+                "setCreatureSubtypes": [
                     "Demon",
                     "Spirit"
                 ]

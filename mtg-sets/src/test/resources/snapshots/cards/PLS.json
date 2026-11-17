@@ -1460,6 +1460,69 @@
     ]
 }
 
+// Phyrexian Tyranny
+{
+    "name": "Phyrexian Tyranny",
+    "manaCost": "{U}{B}{R}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever a player draws a card, that player loses 2 life unless they pay {2}.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Phyrexian Tyranny:1",
+                "trigger": {
+                    "type": "DrawEvent",
+                    "player": "Each"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "PayOrSuffer",
+                    "cost": {
+                        "type": "PayAtom",
+                        "atom": {
+                            "type": "AtomMana",
+                            "cost": "{2}"
+                        }
+                    },
+                    "suffer": {
+                        "type": "LoseLife",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 2
+                        },
+                        "target": {
+                            "type": "PlayerRef",
+                            "player": "TriggeringPlayer"
+                        }
+                    },
+                    "player": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "118",
+        "rarity": "RARE",
+        "artist": "Kev Walker",
+        "flavorText": "\"He is Yawgmoth's reward to me. I shall kill him a hundred times a day.\"\n—Crovax, to Ertai",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/8/e8440ca8-73ca-462b-a735-f6fb3d0de603.jpg?1783945604",
+        "rulings": [
+            {
+                "date": "2004-10-04",
+                "text": "If more than one card is drawn at a time, this triggers for each card drawn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "BLACK",
+        "RED"
+    ]
+}
+
 // Pygmy Kavu
 {
     "name": "Pygmy Kavu",
@@ -1494,6 +1557,80 @@
         "artist": "Greg Staples",
         "flavorText": "\"We could learn a lot by watching the little ones,\" said Agnate. \"Define 'little,'\" replied Grizzlegom.",
         "imageUri": "https://cards.scryfall.io/normal/front/b/3/b31c69ec-feb5-430a-a3e9-3a6f3fb8ee1c.jpg"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Quirion Dryad
+{
+    "name": "Quirion Dryad",
+    "manaCost": "{1}{G}",
+    "typeLine": "Creature — Dryad",
+    "oracleText": "Whenever you cast a spell that's white, blue, black, or red, put a +1/+1 counter on this creature.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Quirion Dryad:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "spellFilter": {
+                        "cardPredicates": [
+                            {
+                                "type": "Or",
+                                "predicates": [
+                                    {
+                                        "type": "HasColor",
+                                        "color": "WHITE"
+                                    },
+                                    {
+                                        "type": "HasColor",
+                                        "color": "BLUE"
+                                    },
+                                    {
+                                        "type": "HasColor",
+                                        "color": "BLACK"
+                                    },
+                                    {
+                                        "type": "HasColor",
+                                        "color": "RED"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "89",
+        "rarity": "RARE",
+        "artist": "Don Hazeltine",
+        "flavorText": "\"Never underestimate the ability of natural forces to adapt to unnatural influences.\"\n—Molimo, maro-sorcerer",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/6/f6841ae6-b15f-488e-9cae-2cc5ec668278.jpg?1783945611",
+        "rulings": [
+            {
+                "date": "2020-06-23",
+                "text": "An ability that triggers when a player casts a spell resolves before the spell that caused it to trigger. It resolves even if that spell is countered."
+            },
+            {
+                "date": "2020-06-23",
+                "text": "If you cast a spell that's more than one color, Quirion Dryad's ability triggers just once."
+            }
+        ]
     },
     "colorIdentityOverride": [
         "GREEN"

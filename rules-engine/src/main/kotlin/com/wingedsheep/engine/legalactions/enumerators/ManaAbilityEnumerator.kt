@@ -1,5 +1,6 @@
 package com.wingedsheep.engine.legalactions.enumerators
 
+import com.wingedsheep.engine.handlers.actions.ability.hasTapCost
 import com.wingedsheep.engine.state.LifePaymentPurpose
 
 import com.wingedsheep.engine.mechanics.cost.SharedCreatureTypeTapCost
@@ -36,7 +37,6 @@ import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.TimingRule
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.engine.handlers.PredicateContext
-import com.wingedsheep.sdk.scripting.effects.AddAnyColorManaSpendOnChosenTypeEffect
 import com.wingedsheep.sdk.scripting.effects.AddColorlessManaEffect
 import com.wingedsheep.sdk.scripting.effects.AddManaEffect
 import com.wingedsheep.sdk.scripting.effects.AddManaOfChoiceEffect
@@ -81,7 +81,7 @@ class ManaAbilityEnumerator(
 
             // PreventActivatedAbilities (Cursed Totem etc.) blocks mana abilities too —
             // per ruling, "Cursed Totem stops players from activating mana abilities of
-            // creatures." A `nonManaAbilitiesOnly` lock (Sharkey) exempts mana abilities,
+            // creatures." A `NON_MANA` lock (Sharkey) exempts mana abilities,
             // so pass abilityIsManaAbility = true here.
             if (context.castPermissionUtils.isActivationPrevented(state, entityId, abilityIsManaAbility = true)) continue
 
@@ -89,7 +89,7 @@ class ManaAbilityEnumerator(
             // matching permanents for the affected player — "can't activate abilities of …".
             if (context.castPermissionUtils.isActivationPreventedForPlayer(state, entityId, playerId, abilityIsManaAbility = true)) continue
 
-            val entityLostAllAbilities = projected.hasLostAllAbilities(entityId)
+            val entityLostManaAbilities = projected.hasLostManaAbilities(entityId)
 
             // By definition id, not name: a renamed copy (CR 707.9 — Absorbing Man copying a mana
             // rock "except his name is Absorbing Man") keeps its printed name but presents the
@@ -124,7 +124,7 @@ class ManaAbilityEnumerator(
             // suppressed) — this includes intrinsic basic-land-subtype abilities: a Plains hit by
             // Imprisoned in the Moon keeps its "Plains" subtype (CR 205.4b types/subtypes are
             // untouched by ability removal) but per ruling "loses any intrinsic mana abilities
-            // associated with them", so `entityLostAllAbilities` must be checked before falling
+            // associated with them", so `entityLostManaAbilities` must be checked before falling
             // back to the intrinsic-subtype inference.
             val classLevel = container.get<com.wingedsheep.engine.state.components.battlefield.ClassLevelComponent>()?.currentLevel
             val ownManaAbilities = when {
@@ -133,9 +133,9 @@ class ManaAbilityEnumerator(
                 // land's basic types also grants the type's intrinsic mana ability (CR 305.7),
                 // which survives the same effect's ability removal — so the land still taps for
                 // its new color. Intrinsic mana from a printed/unchanged subtype does NOT survive
-                // (Imprisoned in the Moon), which the plain `entityLostAllAbilities` branch keeps.
-                entityLostAllAbilities && projected.hasBasicLandTypesSetByEffect(entityId) -> intrinsicManaAbilities
-                entityLostAllAbilities -> emptyList()
+                // (Imprisoned in the Moon), which the plain `entityLostManaAbilities` branch keeps.
+                entityLostManaAbilities && projected.hasBasicLandTypesSetByEffect(entityId) -> intrinsicManaAbilities
+                entityLostManaAbilities -> emptyList()
                 intrinsicManaAbilities.isNotEmpty() -> intrinsicManaAbilities
                 cardDef == null -> emptyList()
                 else -> cardDef.script.effectiveActivatedAbilities(classLevel).filter { it.isManaAbility && it.activateFromZone == Zone.BATTLEFIELD }
@@ -191,6 +191,10 @@ class ManaAbilityEnumerator(
                 when (effectiveCost) {
                     is AbilityCost.Tap -> {
                         if (!context.costUtils.canPayTapCost(state, entityId)) affordable = false
+                    }
+                    // "Sacrifice this: Add …" — unpayable while no cost may sacrifice the source.
+                    is AbilityCost.SacrificeSelf -> {
+                        if (!com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality.canSacrificeForCost(state, entityId)) affordable = false
                     }
                     is AbilityCost.TapAttachedCreature -> {
                         if (!context.costUtils.canPayTapAttachedCreatureCost(state, entityId)) affordable = false
@@ -340,6 +344,9 @@ class ManaAbilityEnumerator(
                                     }
                                 }
                                 is AbilityCost.SacrificeSelf -> {
+                                    if (!com.wingedsheep.engine.mechanics.cost.SacrificeCostLegality.canSacrificeForCost(state, entityId)) {
+                                        affordable = false; break
+                                    }
                                     sacrificeTargets = listOf(entityId)
                                 }
                                 is AbilityCost.TapAttachedCreature -> {
@@ -425,10 +432,9 @@ class ManaAbilityEnumerator(
                         minX = if (hasNonManaX) ability.minimumXValue else 0,
                         additionalCostInfo = costInfo,
                         requiresManaColorChoice = (ability.effect is AddManaOfChoiceEffect ||
-                            ability.effect is AddAnyColorManaSpendOnChosenTypeEffect ||
                             (ability.effect is CompositeEffect &&
                                 (ability.effect as CompositeEffect).effects.any {
-                                    it is AddManaOfChoiceEffect || it is AddAnyColorManaSpendOnChosenTypeEffect
+                                    it is AddManaOfChoiceEffect
                                 })) &&
                             // Spectral Searchlight: the chosen player picks the color as the
                             // ability resolves, so the activator isn't asked up front.
@@ -454,7 +460,7 @@ class ManaAbilityEnumerator(
     /**
      * The combined [com.wingedsheep.sdk.scripting.MultiplyManaOnSourceTap] factor for [entityId]
      * (Virtue of Strength: 3), for labelling only — the authoritative scaling happens in
-     * `ActivateAbilityHandler` (manual tap) and `ManaSolver` (auto-tap). Instances multiply
+     * `ActivatedManaAbilityResolver` (manual tap) and `ManaSolver` (auto-tap). Instances multiply
      * together, matching both of those.
      */
     private fun sourceTapManaMultiplier(
@@ -498,9 +504,10 @@ class ManaAbilityEnumerator(
             }
         }
 
-        // Multiplied output (Virtue of Strength) — label what the tap will actually produce, so
-        // the button reads "{T}: Add {G}{G}{G}" rather than the printed "{T}: Add {G}".
-        val manaMultiplier = sourceTapManaMultiplier(state, entityId, context)
+        // Multiplied output (Virtue of Strength, Nyxbloom Ancient) — label what the tap will
+        // actually produce, so the button reads "{T}: Add {G}{G}{G}" rather than the printed
+        // "{T}: Add {G}". Only abilities with {T} in their cost are "tapping for mana".
+        val manaMultiplier = if (ability.cost.hasTapCost()) sourceTapManaMultiplier(state, entityId, context) else 1
         if (manaMultiplier > 1) {
             val symbol = when {
                 effect is AddManaEffect && effect.amount is DynamicAmount.Fixed -> "{${effect.color.symbol}}"
@@ -516,6 +523,9 @@ class ManaAbilityEnumerator(
                 val total = baseAmount * manaMultiplier
                 if (total > 0) return "${ability.cost.description}: Add ${symbol.repeat(total)}"
             }
+            // Any other shape (a choice of color, a combination, each color among …) keeps its
+            // printed text and says how much more it makes.
+            return "${ability.description} (×$manaMultiplier)"
         }
 
         val amount = when (effect) {

@@ -74,6 +74,10 @@ data class AssignUnblockedToCreatureContinuation(
  * @property sourceId The spell/ability that is dealing the damage
  * @property controllerId The player who controls the effect
  * @property targets The targets that damage can be distributed among
+ * @property effect The divided-damage effect that asked, when one did: the answer is replayed
+ *   through its executor as an announced division (with [context]), so whatever the effect stores
+ *   ("creatures dealt damage this way") is stored on this path too. Null for the untargeted
+ *   collection division, which deals the answer directly.
  */
 @Serializable
 data class DistributeDamageContinuation(
@@ -81,6 +85,8 @@ data class DistributeDamageContinuation(
     val controllerId: EntityId,
     val targets: List<EntityId>,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
+    val effect: com.wingedsheep.sdk.scripting.effects.DividedDamageEffect? = null,
+    val context: com.wingedsheep.engine.handlers.EffectContext? = null,
 ) : AnswerContinuation
 
 /**
@@ -168,6 +174,11 @@ data class PreventDamageFromChosenSourceContinuation(
      * damage, rounded down — Dark Sphere. Ignored otherwise.
      */
     val halvePreventedDamage: Boolean = false,
+    /**
+     * With [silenceChosenSource], only the chosen source's **combat** damage is prevented —
+     * "prevent all combat damage a creature of your choice would deal this turn" (Ajani's Aid).
+     */
+    val combatOnly: Boolean = false,
     val objectReferences: com.wingedsheep.engine.handlers.ObjectReferenceEnvironment = com.wingedsheep.engine.handlers.ObjectReferenceEnvironment(),
 ) : AnswerContinuation
 
@@ -223,6 +234,10 @@ data class RedirectDamageSourceContinuation(
 data class BlockerPilesContinuation(
     val blockingPlayer: EntityId,
     val attackers: List<EntityId>,
+    val choosingPlayer: EntityId = blockingPlayer,
+    val remainingPlayers: List<EntityId> = emptyList(),
+    val chosenPiles: List<List<EntityId>> = emptyList(),
+    val separateChoices: Boolean = false,
 ) : AnswerContinuation
 
 @Serializable
@@ -231,6 +246,10 @@ data class BlockerPileRestrictionChoiceContinuation(
     val attackers: List<EntityId>,
     val candidates: Map<EntityId, List<EntityId>>,
     val assignmentCount: Int,
+    val choosingPlayer: EntityId = blockingPlayer,
+    val remainingPlayers: List<EntityId> = emptyList(),
+    val chosenBlocks: Map<EntityId, List<EntityId>> = emptyMap(),
+    val separateChoices: Boolean = false,
 ) : AnswerContinuation
 
 /** Carries the resolved amount and source object identities across the source-choice decision. */
@@ -243,4 +262,15 @@ data class PreventNextDamageLeavingAmountContinuation(
     val scope: com.wingedsheep.sdk.scripting.effects.PreventionScope,
     val duration: com.wingedsheep.sdk.scripting.Duration,
     val choices: List<com.wingedsheep.engine.handlers.effects.combat.ChosenDamageSource>
+) : AnswerContinuation
+
+/** Replays the simultaneous combat damage batch after one replacement-order choice. */
+@Serializable
+data class CombatDamageReplacementContinuation(
+    val choiceKey: String,
+    val optionKeys: List<String>,
+    val firstStrike: Boolean = false,
+    val numberMax: Int? = null,
+    val numberPrefix: String? = null,
+    val numberMin: Int = 0,
 ) : AnswerContinuation

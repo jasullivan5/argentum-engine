@@ -54,7 +54,14 @@ class CreateAuraTokenExecutor(
             ?.takeIf { it in state.getBattlefield() }
             ?: return EffectResult.success(state)
 
-        val tokenControllerId = context.controllerId
+        // "Created under your control instead" (Crafty Cutpurse) before any other token
+        // replacement; the Role's "you control" checks below then read the new controller.
+        val tokenControllerId = when (val redirect = TokenCreationReplacementHelper.redirectController(
+            state, context.controllerId, context, effect, zones.predicateEvaluator
+        )) {
+            is TokenControllerRedirect.Resolved -> redirect.controllerId
+            is TokenControllerRedirect.Ask -> return redirect.result
+        }
         val tokenComponent = CardComponent(
             cardDefinitionId = effect.tokenName,
             name = effect.tokenName,
@@ -75,6 +82,22 @@ class CreateAuraTokenExecutor(
             tokenId, tokenComponent, hostId, tokenControllerId
         )
         if (!legal) return EffectResult.success(state)
+
+        // "If one or more tokens would be created under your control, that many … are created
+        // instead" (Holo-Engineer): the substitutes aren't Auras, so they enter unattached and no
+        // existing Role is displaced (CR 303.7a only answers a Role actually entering).
+        TokenCreationReplacementHelper.substituteIfReplaced(
+            state, tokenComponent, tokenControllerId, 1, context, effect,
+            zones.predicateEvaluator, staticAbilityHandler, cardRegistry,
+        )?.let { return it }
+
+        // A battlefield-entry replacement sends it elsewhere instead — judged before a Role it
+        // would displace is touched, since a Role that never enters displaces nothing.
+        val entryProbe = stateWithId.withEntity(
+            tokenId, ComponentContainer.of(tokenComponent, TokenComponent, ControllerComponent(tokenControllerId))
+        )
+        TokenEntryRedirect.divert(entryProbe, tokenId, state, zones.predicateEvaluator, cardRegistry)
+            ?.let { return EffectResult.success(it.state, listOf(it.event)) }
 
         val events = mutableListOf<GameEvent>()
         var newState = stateWithId

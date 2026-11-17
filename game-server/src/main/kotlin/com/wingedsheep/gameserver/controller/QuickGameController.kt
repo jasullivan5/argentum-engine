@@ -3,6 +3,7 @@ package com.wingedsheep.gameserver.controller
 import com.wingedsheep.gameserver.lobby.QuickGameLobby
 import com.wingedsheep.gameserver.lobby.QuickGameLobbyRepository
 import com.wingedsheep.gameserver.repository.GameRepository
+import com.wingedsheep.gameserver.session.SessionRegistry
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.RestController
 class QuickGameController(
     private val lobbyRepository: QuickGameLobbyRepository,
     private val gameRepository: GameRepository,
+    private val sessionRegistry: SessionRegistry,
 ) {
 
     data class PublicQuickGameDTO(
@@ -27,7 +29,16 @@ class QuickGameController(
         val maxPlayers: Int,
         val setCode: String?,
         val hostName: String?,
-        val format: String? = null
+        val format: String? = null,
+        /** The host's account avatar id, or null for a guest — drawn beside "Hosted by". */
+        val hostAvatar: String? = null,
+        /** Seated players in join order, host first. */
+        val playerNames: List<String> = emptyList(),
+        val twoHeadedGiant: Boolean = false,
+        val ranked: Boolean = false,
+        val momirBasic: Boolean = false,
+        /** Seconds the lobby has been open, measured on the server so client clock skew can't distort it. */
+        val openSeconds: Long = 0,
     )
 
     data class LiveQuickGameDTO(
@@ -40,9 +51,14 @@ class QuickGameController(
 
     @GetMapping("/public")
     fun listPublic(): ResponseEntity<List<PublicQuickGameDTO>> {
+        val now = System.currentTimeMillis()
         val publicLobbies = lobbyRepository.findAll()
             .filter { lobby -> lobby.isPublic && !lobby.vsAi && !lobby.started && !lobby.isFull }
             .sortedBy { it.lobbyId }
+        // Quick-game seats carry no avatar of their own; the connected identity does.
+        val avatarsByPlayerId = if (publicLobbies.isEmpty()) emptyMap() else
+            sessionRegistry.getAllIdentities().associate { it.playerId to it.avatar }
+        val dtos = publicLobbies
             .map { lobby ->
                 val host = lobby.players.firstOrNull { !it.isAi }
                 PublicQuickGameDTO(
@@ -52,10 +68,16 @@ class QuickGameController(
                     maxPlayers = lobby.maxPlayers,
                     setCode = lobby.setCode ?: host?.setCode,
                     hostName = host?.playerName,
-                    format = lobby.format?.name
+                    format = lobby.format?.name,
+                    hostAvatar = host?.let { avatarsByPlayerId[it.playerId] },
+                    playerNames = lobby.players.filter { !it.isAi }.map { it.playerName },
+                    twoHeadedGiant = lobby.twoHeadedGiant,
+                    ranked = lobby.ranked,
+                    momirBasic = lobby.momirBasic,
+                    openSeconds = (now - lobby.createdAt).coerceAtLeast(0) / 1000,
                 )
             }
-        return ResponseEntity.ok(publicLobbies)
+        return ResponseEntity.ok(dtos)
     }
 
     /**

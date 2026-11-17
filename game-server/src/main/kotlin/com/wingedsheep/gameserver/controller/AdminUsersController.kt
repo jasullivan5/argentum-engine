@@ -4,15 +4,17 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import com.wingedsheep.gameserver.auth.AdminAuthService
 import com.wingedsheep.gameserver.auth.UserAdminService
 import com.wingedsheep.gameserver.persistence.DeckRepository
-import com.wingedsheep.gameserver.persistence.MatchResultRepository
 import com.wingedsheep.gameserver.stats.CardStat
 import com.wingedsheep.gameserver.stats.GameDeckCard
+import com.wingedsheep.gameserver.stats.GameFilter
 import com.wingedsheep.gameserver.stats.GameHistoryEntry
 import com.wingedsheep.gameserver.stats.HeadToHead
 import com.wingedsheep.gameserver.stats.StatBucket
 import com.wingedsheep.gameserver.stats.StatsQueryService
 import com.wingedsheep.gameserver.stats.UserTournamentEntry
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -43,12 +45,9 @@ class AdminUsersController(
     private val adminAuth: AdminAuthService,
     private val statsQuery: StatsQueryService,
     private val userAdmin: UserAdminService,
-    private val matchResults: MatchResultRepository,
     private val decks: DeckRepository,
 ) {
     private val json = Json { ignoreUnknownKeys = true }
-
-    data class StatsDto(val games: Long, val wins: Long, val losses: Long, val winRate: Double)
 
     /** One of the account's saved decks, enriched so the admin deck viewer renders it the polished way. */
     data class AdminDeckDto(
@@ -69,7 +68,7 @@ class AdminUsersController(
         @JsonProperty("isAdmin") val isAdmin: Boolean,
         val avatar: String?,
         val createdAt: String,
-        val stats: StatsDto,
+        val stats: com.wingedsheep.gameserver.stats.PlayerRecord,
         val colors: List<StatBucket>,
         val modes: List<StatBucket>,
         val opponents: List<HeadToHead>,
@@ -85,24 +84,29 @@ class AdminUsersController(
      */
     data class SetAdminBody(@JsonProperty("isAdmin") val isAdmin: Boolean)
 
+    /** The roster; `vs` / `days` slice the games and wins columns (see [GameFilter]). */
     @GetMapping
     fun list(
         @RequestHeader("X-Admin-Password", required = false) password: String?,
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
+        @RequestParam(required = false) vs: String?,
+        @RequestParam(required = false) days: Int?,
     ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
-        ResponseEntity.ok(statsQuery.allUsersWithStats())
+        ResponseEntity.ok(statsQuery.allUsersWithStats(GameFilter.of(vs, days)))
     }
 
+    /** One account's profile and stats; `vs` / `days` slice everything game-derived. */
     @GetMapping("/{id}")
     fun detail(
         @PathVariable id: UUID,
         @RequestHeader("X-Admin-Password", required = false) password: String?,
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
+        @RequestParam(required = false) vs: String?,
+        @RequestParam(required = false) days: Int?,
     ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
         val user = userAdmin.get(id)
             ?: return@guard ResponseEntity.status(404).body(mapOf("error" to "User not found"))
-        val games = matchResults.countGamesForUser(id)
-        val wins = matchResults.countWinsForUser(id)
+        val filter = GameFilter.of(vs, days)
         ResponseEntity.ok(
             UserDetailDto(
                 id = user.id!!,
@@ -111,18 +115,13 @@ class AdminUsersController(
                 isAdmin = user.isAdmin,
                 avatar = user.avatar,
                 createdAt = user.createdAt.toString(),
-                stats = StatsDto(
-                    games = games,
-                    wins = wins,
-                    losses = games - wins,
-                    winRate = if (games > 0) wins.toDouble() / games else 0.0,
-                ),
-                colors = statsQuery.colorBreakdown(id),
-                modes = statsQuery.modeBreakdown(id),
-                opponents = statsQuery.headToHead(id),
-                topCards = statsQuery.topCardsForUser(id, 20),
+                stats = statsQuery.playerRecord(id, filter),
+                colors = statsQuery.colorBreakdown(id, filter),
+                modes = statsQuery.modeBreakdown(id, filter),
+                opponents = statsQuery.headToHead(id, filter),
+                topCards = statsQuery.topCardsForUser(id, 20, filter),
                 tournaments = statsQuery.tournamentHistory(id, 25),
-                recentGames = statsQuery.recentGames(id, 25, 0),
+                recentGames = statsQuery.recentGames(id, 25, 0, filter),
             )
         )
     }
@@ -149,12 +148,15 @@ class AdminUsersController(
         @PathVariable id: UUID,
         @RequestParam(defaultValue = "25") limit: Int,
         @RequestParam(defaultValue = "0") offset: Int,
+        @RequestParam(required = false) vs: String?,
+        @RequestParam(required = false) days: Int?,
         @RequestHeader("X-Admin-Password", required = false) password: String?,
         @RequestHeader(HttpHeaders.AUTHORIZATION, required = false) authorization: String?,
     ): ResponseEntity<Any> = adminAuth.guard(password, authorization) {
-        val entries = statsQuery.recentGames(id, limit.coerceIn(1, 100), offset.coerceAtLeast(0))
+        val filter = GameFilter.of(vs, days)
+        val entries = statsQuery.recentGames(id, limit.coerceIn(1, 100), offset.coerceAtLeast(0), filter)
         ResponseEntity.ok()
-            .header("X-Total-Count", statsQuery.recentGamesCount(id).toString())
+            .header("X-Total-Count", statsQuery.recentGamesCount(id, filter).toString())
             .body(entries)
     }
 
@@ -193,23 +195,40 @@ class AdminUsersController(
                 name = row.name,
                 format = row.format,
                 updatedAt = row.updatedAt.toString(),
-                cards = statsQuery.enrichDeck(deckCardCounts(row.data)),
+                cards = storedDeck(row.data).let { statsQuery.enrichDeck(it.cards, it.printings) },
             )
         }
         ResponseEntity.ok(dtos)
     }
 
-    /** Extract the `name -> copies` card map from a stored SharedDeck JSON body (commander included). */
-    private fun deckCardCounts(body: String): Map<String, Int> = runCatching {
+    /** A stored SharedDeck JSON body's cards (commanders included) and the printings it pins them to. */
+    private data class StoredDeck(val cards: Map<String, Int>, val printings: Map<String, String>)
+
+    /**
+     * Extract the `name -> copies` card map from a stored SharedDeck JSON body, with the commanders
+     * (which live in the command zone, CR 903.6a, and aren't in `cards`) added so the deck the admin
+     * sees matches what the player built — and each card's pinned printing (`printings`, plus the
+     * commanders' own pins) as `"SET-CN"`, so the viewer shows the art the player chose.
+     */
+    private fun storedDeck(body: String): StoredDeck = runCatching {
         val root = json.parseToJsonElement(body).jsonObject
         val cards = LinkedHashMap<String, Int>()
         root["cards"]?.jsonObject?.forEach { (name, count) ->
             count.jsonPrimitive.intOrNull?.let { if (it > 0) cards[name] = it }
         }
-        // The commander lives in the command zone (CR 903.6a) and isn't in `cards` — include it so the
-        // deck the admin sees matches what the player built.
-        root["commander"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
-            ?.let { cards.putIfAbsent(it, 1) }
-        cards
-    }.getOrDefault(emptyMap())
+        val printings = LinkedHashMap<String, String>()
+        fun printingOf(ref: JsonElement?): String? {
+            val obj = ref as? JsonObject ?: return null
+            val set = obj["setCode"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return null
+            val cn = obj["collectorNumber"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: return null
+            return "$set-$cn"
+        }
+        (root["printings"] as? JsonObject)?.forEach { (name, ref) -> printingOf(ref)?.let { printings[name] = it } }
+        for ((nameKey, printingKey) in listOf("commander" to "commanderPrinting", "secondCommander" to "secondCommanderPrinting")) {
+            val name = root[nameKey]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() } ?: continue
+            cards.putIfAbsent(name, 1)
+            printingOf(root[printingKey])?.let { printings[name] = it }
+        }
+        StoredDeck(cards, printings)
+    }.getOrDefault(StoredDeck(emptyMap(), emptyMap()))
 }

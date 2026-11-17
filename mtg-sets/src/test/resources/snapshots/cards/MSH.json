@@ -1434,7 +1434,7 @@
                         ],
                         "controllerPredicate": "ControlledByYou"
                     },
-                    "perAttackedPlayer": true
+                    "attackedPlayer": "Each"
                 },
                 "binding": "ANY",
                 "effect": {
@@ -1607,7 +1607,11 @@
                                                 "filter": "basicland"
                                             },
                                             "storeAs": "gathered0",
-                                            "search": true
+                                            "search": true,
+                                            "searcher": {
+                                                "type": "ControllerOf",
+                                                "targetDescription": "target"
+                                            }
                                         },
                                         {
                                             "type": "SelectFromCollection",
@@ -1638,7 +1642,8 @@
                                         {
                                             "type": "ShuffleLibrary",
                                             "target": "TargetController"
-                                        }
+                                        },
+                                        "EmitLibrarySearchedEvent"
                                     ]
                                 },
                                 "decisionMaker": "TargetController",
@@ -5104,7 +5109,7 @@
                         "filter": "permanent ctrl:you"
                     }
                 },
-                "placedByYou": true
+                "placer": "You"
             }
         ]
     },
@@ -8183,7 +8188,7 @@
                     "type": "Fixed",
                     "amount": 3
                 },
-                "powerUpOnly": true
+                "onceOnlyKind": "POWER_UP"
             }
         ]
     },
@@ -10318,7 +10323,7 @@
                 "trigger": {
                     "type": "BecomesTargetEvent",
                     "byYou": true,
-                    "includePlayerTargets": true,
+                    "playerTargets": "Any",
                     "abilitiesOnly": true
                 },
                 "binding": "ANY",
@@ -13050,7 +13055,7 @@
                 "isPowerUp": true
             }
         ],
-        "mayStartOnBattlefield": true
+        "beginOnBattlefield": {}
     },
     "metadata": {
         "collectorNumber": "148",
@@ -13639,7 +13644,8 @@
                                 "filter": "basicland"
                             },
                             "storeAs": "gathered0",
-                            "search": true
+                            "search": true,
+                            "searcher": "TargetPlayer"
                         },
                         {
                             "type": "SelectFromCollection",
@@ -18331,9 +18337,12 @@
                         "baseFilter": "creature"
                     },
                     "id": "t0",
-                    "totalManaValueAtMost": {
-                        "type": "Fixed",
-                        "amount": 6
+                    "totalAtMost": {
+                        "property": "MANA_VALUE",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 6
+                        }
                     }
                 }
             },
@@ -20268,7 +20277,8 @@
                             ]
                         }
                     },
-                    "storeAs": "gathered0"
+                    "storeAs": "gathered0",
+                    "search": true
                 },
                 {
                     "type": "SelectFromCollection",
@@ -21550,7 +21560,7 @@
             {
                 "chapter": 1,
                 "effect": {
-                    "type": "GrantNextSpellFreeCast",
+                    "type": "GrantFreeCastThisTurn",
                     "spellFilter": {
                         "cardPredicates": [
                             {

@@ -1,5 +1,7 @@
 package com.wingedsheep.ai.draftsim
 
+import io.kotest.matchers.ints.shouldBeGreaterThanOrEqual
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
@@ -11,7 +13,6 @@ private data class RCard(
     override val colorIdentity: List<String> = emptyList(),
     override val cmc: Double = DraftsimMana.cmc(manaCost),
     override val rarity: String? = "common",
-    override val priceUsd: Double? = null,
 ) : ScorerCard
 
 class DraftsimManabaseColorTest : FunSpec({
@@ -134,5 +135,41 @@ class DraftsimManabaseColorTest : FunSpec({
         // The locked cards span W/U/B/R/G — completion commits to them and the label matches the manabase.
         build.colors.toSet() shouldBe setOf("R", "U", "G", "W")
         build.basicsNeeded.keys shouldBe setOf("R", "U", "G", "W")
+    }
+
+    // 2026-11-01: a near mono-white BLB deck whose only red cards were Mabel ({1}{R}{W}) and Agate
+    // Assault ({2}{R}) — its R/W hybrids cast off Plains — ran six Mountains. Two one-pip cards are a
+    // splash: four sources, the rest Plains.
+    test("a colour only two cards strictly need gets a splash's sources, not a main colour's") {
+        var n = 0
+        fun pc(name: String, cost: String, type: String, colors: List<String>) =
+            DraftsimPoolCard(RCard(name, cost, type, colors, colors), "light-${n++}")
+        val pool = (1..19).map { pc("White $it", "{${it % 4}}{W}", "Creature — Soldier", listOf("W")) } +
+            pc("Mabel", "{1}{R}{W}", "Legendary Creature — Mouse Soldier", listOf("R", "W")) +
+            pc("Agate Assault", "{2}{R}", "Sorcery", listOf("R")) +
+            pc("Guardmouse A", "{3}{R/W}", "Creature — Mouse Soldier", listOf("R", "W")) +
+            pc("Guardmouse B", "{3}{R/W}", "Creature — Mouse Soldier", listOf("R", "W"))
+        val build = DraftsimDeckBuilder(DraftsimData.tablesFor(emptyList()))
+            .buildDecks(pool, mode = "sealed", forced = pool.map { it.instanceId }.toSet()).single()
+
+        val mountains = build.basicsNeeded["R"] ?: 0
+        (mountains in 3..4) shouldBe true
+        build.basicsNeeded.values.sum() shouldBe 17
+    }
+    // 2026-11-01 review: a KHM red-green sealed deck ran eight one-pip green cards on six Forests,
+    // because a colour's floor only ever looked at its hungriest card.
+    test("a second colour many cards need gets a main colour's sources even when every pip is single") {
+        var n = 0
+        fun pc(name: String, cost: String, type: String, colors: List<String>) =
+            DraftsimPoolCard(RCard(name, cost, type, colors, colors), "main-${n++}")
+        val pool = (1..15).map { pc("Red $it", if (it % 3 == 0) "{2}{R}{R}" else "{${it % 4}}{R}", "Creature — Warrior", listOf("R")) } +
+            (1..8).map { pc("Green $it", "{${1 + it % 4}}{G}", "Creature — Elf", listOf("G")) }
+        val build = DraftsimDeckBuilder(DraftsimData.tablesFor(emptyList()))
+            .buildDecks(pool, mode = "sealed", forced = pool.map { it.instanceId }.toSet()).single()
+
+        withClue("basics were ${build.basicsNeeded}") {
+            (build.basicsNeeded["G"] ?: 0) shouldBeGreaterThanOrEqual 7
+            build.basicsNeeded.values.sum() shouldBe 17
+        }
     }
 })

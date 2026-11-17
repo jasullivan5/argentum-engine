@@ -28,7 +28,31 @@ export const DECK_FORMATS: ReadonlyArray<{ value: string; label: string }> = [
   { value: 'brawl', label: 'Brawl' },
   { value: 'standard_brawl', label: 'Standard Brawl' },
   { value: 'premodern', label: 'Premodern' },
+  { value: 'highlander', label: 'Highlander' },
+  { value: 'canadian_highlander', label: 'Canadian Highlander' },
 ]
+
+/**
+ * Formats that allow one copy of each non-basic card: the commander shapes and the two Highlander
+ * formats. Mirrors the server's per-format copy cap so the deckbuilder's `+` stops at 1; the
+ * server's validation stays the authority.
+ */
+const SINGLETON_FORMATS: ReadonlySet<string> = new Set([
+  'COMMANDER', 'BRAWL', 'STANDARD_BRAWL', 'HIGHLANDER', 'CANADIAN_HIGHLANDER',
+])
+
+/**
+ * Size of the deck the server auto-builds for a non-commander format: the Highlander formats'
+ * 100-card singleton, otherwise constructed's 60.
+ */
+export function autoBuiltDeckSize(formatUpper: string | null): number {
+  const f = formatUpper?.toUpperCase()
+  return f === 'HIGHLANDER' || f === 'CANADIAN_HIGHLANDER' ? 100 : 60
+}
+
+export function isSingletonFormat(formatUpper: string | null): boolean {
+  return formatUpper !== null && SINGLETON_FORMATS.has(formatUpper.toUpperCase())
+}
 
 /** Maps an upper-case format code (STANDARD, MODERN, …) to its display label. */
 export function labelForFormat(formatUpper: string): string {

@@ -14,8 +14,10 @@ import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.scripting.AbilityId
 import com.wingedsheep.sdk.scripting.ActivationRestriction
 import com.wingedsheep.sdk.scripting.GameObjectFilter
+import com.wingedsheep.sdk.scripting.OnceOnlyAbilityKind
 import com.wingedsheep.sdk.scripting.ReduceActivatedAbilityCost
 import com.wingedsheep.sdk.scripting.filters.unified.GroupFilter
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
 import io.kotest.assertions.withClue
@@ -23,7 +25,6 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldStartWith
-import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 
 /**
  * Feature tests for the **Power-up** keyword (CR 702.193) — "Power-up — [Cost]: [Effect]" means
@@ -47,7 +48,7 @@ import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
  * it does not bind the rest of the turn that created it, it binds *both* players during the extra
  * turn (enumerator and handler alike), it reaches a power-up activated from outside the battlefield
  * (the command zone, whose enumerator is separate), it lifts when that turn ends, and it never
- * applies at all when a `PreventExtraTurns` source means there is no extra turn to bind.
+ * applies at all when a `SkipExtraTurns` source means there is no extra turn to bind.
  */
 class PowerUpKeywordScenarioTest : ScenarioTestBase() {
 
@@ -103,12 +104,12 @@ class PowerUpKeywordScenarioTest : ScenarioTestBase() {
             ability = ReduceActivatedAbilityCost(
                 filter = GroupFilter(GameObjectFilter.Creature.youControl(), excludeSelf = true),
                 amount = DynamicAmount.Fixed(3),
-                powerUpOnly = true
+                onceOnlyKind = OnceOnlyAbilityKind.POWER_UP
             )
         }
     }
 
-    /** A plain (non power-up) activated ability, to prove `powerUpOnly` does not discount it. */
+    /** A plain (non power-up) activated ability, to prove `onceOnlyKind = POWER_UP` does not discount it. */
     private val plainActivator = card("Steady Technician") {
         manaCost = "{1}{U}"
         typeLine = "Creature — Human Scientist"
@@ -184,7 +185,7 @@ class PowerUpKeywordScenarioTest : ScenarioTestBase() {
 
     /**
      * A power-up activated from the **command zone** — the one enumerator
-     * (`CommandZoneAbilityEnumerator`) the other tests here never reach, since every printed
+     * (`ZoneActivatedAbilityEnumerator(Zone.COMMAND)`) the other tests here never reach, since every printed
      * power-up activates from the battlefield. Shaped like the Momir Basic avatar: a Vanguard card
      * with `activateFromZone = Zone.COMMAND`, which is how a card gets into the command zone with
      * an activated ability at all.
@@ -417,7 +418,7 @@ class PowerUpKeywordScenarioTest : ScenarioTestBase() {
                     ?.getCount(CounterType.PLUS_ONE_PLUS_ONE) shouldBe 1
             }
 
-            test("a powerUpOnly static stacks with power-up's own reduction (CR 601.2f)") {
+            test("a POWER_UP-only static stacks with power-up's own reduction (CR 601.2f)") {
                 val game = scenario()
                     .withPlayers("Player", "Opponent")
                     .withCardOnBattlefield(1, "Temporal Conqueror", enteredThisTurn = true)
@@ -432,7 +433,7 @@ class PowerUpKeywordScenarioTest : ScenarioTestBase() {
                 }
             }
 
-            test("a powerUpOnly static leaves an ordinary activated ability at full price") {
+            test("a POWER_UP-only static leaves an ordinary activated ability at full price") {
                 val game = scenario()
                     .withPlayers("Player", "Opponent")
                     .withCardOnBattlefield(1, "Steady Technician")
@@ -446,7 +447,7 @@ class PowerUpKeywordScenarioTest : ScenarioTestBase() {
                     it.action.let { a -> a is ActivateAbility && a.abilityId == technicianAbilityId }
                 }
                 withClue("the technician's ability must be offered") { action shouldNotBe null }
-                withClue("powerUpOnly gates on the ability, so a plain one keeps its printed cost") {
+                withClue("onceOnlyKind gates on the ability, so a plain one keeps its printed cost") {
                     action!!.description shouldStartWith "{5}{U}{U}{U}:"
                 }
             }
@@ -554,7 +555,7 @@ class PowerUpKeywordScenarioTest : ScenarioTestBase() {
                     .withCardInCommandZone(1, "Timeline Avatar")
                     .build()
 
-                withClue("control: CommandZoneAbilityEnumerator offers it while nothing is locked") {
+                withClue("control: the command-zone enumerator offers it while nothing is locked") {
                     game.actionFor(1, avatarAbilityId) shouldNotBe null
                 }
 
@@ -575,20 +576,23 @@ class PowerUpKeywordScenarioTest : ScenarioTestBase() {
                 }
             }
 
-            test("no extra turn (Ugin's Nexus) means no lockout either") {
+            test("an extra turn skipped by Ugin's Nexus as it would begin means no lockout either") {
                 val game = lockoutScenario()
                     .withCardOnBattlefield(1, "Ugin's Nexus")
                     .build()
                 game.takeLockedExtraTurn()
 
-                withClue("PreventExtraTurns stops the extra turn — no skip is handed out") {
-                    game.state.getEntity(game.player2Id)?.has<SkipNextTurnComponent>() shouldBe false
+                withClue("the extra turn is created normally — it is skipped only when it would begin") {
+                    game.state.getEntity(game.player2Id)?.get<SkipNextTurnComponent>()?.extraTurnBypasses shouldBe 1
                 }
-                withClue("and with no 'that turn' to bind, nothing is stamped") {
+                withClue("and its lockout is applied when that turn begins, so nothing is stamped yet") {
                     game.state.powerUpRestrictedTurns shouldBe emptySet<Int>()
                 }
 
                 game.crossIntoNextTurn()
+                withClue("with the extra turn skipped, no lockout was ever stamped") {
+                    game.state.powerUpRestrictedTurns shouldBe emptySet<Int>()
+                }
                 withClue("the opponent's turn comes as normal") {
                     game.state.activePlayerId shouldBe game.player2Id
                 }

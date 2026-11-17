@@ -1,3 +1,243 @@
+// Arachnogenesis
+{
+    "name": "Arachnogenesis",
+    "manaCost": "{2}{G}",
+    "typeLine": "Instant",
+    "oracleText": "Create X 1/2 green Spider creature tokens with reach, where X is the number of creatures attacking you. Prevent all combat damage that would be dealt this turn by non-Spider creatures.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "AggregateBattlefield",
+                        "player": "Each",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsCreature"
+                            ],
+                            "statePredicates": [
+                                {
+                                    "type": "IsAttackingPlayer",
+                                    "player": "Controller"
+                                }
+                            ]
+                        }
+                    },
+                    "power": 1,
+                    "toughness": 2,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Spider"
+                    ],
+                    "keywords": [
+                        "REACH"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/e/8/e8efa0fc-e710-44f8-8128-485c2d43cc9e.jpg?1783938018"
+                },
+                {
+                    "type": "PreventDamageShield",
+                    "scope": "CombatOnly",
+                    "direction": "FromTarget",
+                    "sourceFilter": {
+                        "type": "PreventFromMatching",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsCreature",
+                                {
+                                    "type": "NotSubtype",
+                                    "subtype": "Spider"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "32",
+        "rarity": "RARE",
+        "artist": "Johannes Voss",
+        "flavorText": "Every movement is a summons—even your screams.",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/9/7967cb69-1868-45c0-92d1-39dabe30f2a2.jpg?1783938110"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Blade of Selves
+{
+    "name": "Blade of Selves",
+    "manaCost": "{2}",
+    "typeLine": "Artifact — Equipment",
+    "oracleText": "Equipped creature has myriad. (Whenever it attacks, for each opponent other than defending player, you may create a token copy that's tapped and attacking that player or a planeswalker they control. Exile the tokens at end of combat.)\nEquip {4}",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Blade of Selves:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{4}"
+                    }
+                },
+                "effect": {
+                    "type": "AttachEquipment",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "creature you control"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        },
+                        "id": "creature you control"
+                    }
+                ],
+                "timing": "SorcerySpeed",
+                "isEquipAbility": true
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "GrantKeyword",
+                "keyword": "MYRIAD"
+            }
+        ]
+    },
+    "equipCost": "{4}",
+    "metadata": {
+        "collectorNumber": "51",
+        "rarity": "RARE",
+        "artist": "Alan Pollack",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/e/6e8735b5-64ef-4782-8d8d-4477b409e52d.jpg?1783938105",
+        "rulings": [
+            {
+                "date": "2015-11-04",
+                "text": "If the defending player is your only opponent, no tokens are put onto the battlefield."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "You choose whether each token is attacking the player or a planeswalker they control as the token is created."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "If the tokens aren't creatures (perhaps because the equipped creature was an animated land), they'll enter the battlefield but they won't be attacking. You'll still exile those tokens at end of combat."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "Each token copies exactly what was printed on the original creature and nothing else. It doesn't copy whether that creature is tapped or untapped, whether it has any counters on it or Auras and Equipment attached to it, or any non-copy effects that have changed its power, toughness, types, color, and so on."
+            }
+        ]
+    }
+}
+
+// Command Beacon
+{
+    "name": "Command Beacon",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "{T}: Add {C}.\n{T}, Sacrifice this land: Put your commander into your hand from the command zone.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Command Beacon:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Command Beacon:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        "CostTap",
+                        "CostSacrificeSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Command",
+                                "filter": {
+                                    "statePredicates": [
+                                        "IsCommander"
+                                    ],
+                                    "controllerPredicate": "OwnedByYou"
+                                }
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "gathered0",
+                            "selection": {
+                                "type": "ChooseExactly",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "selected1",
+                            "prompt": "Choose your commander to put into your hand"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "selected1",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Hand"
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "{T}, Sacrifice this land: Put your commander into your hand from the command zone."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "56",
+        "rarity": "RARE",
+        "artist": "Jonas De Ro",
+        "flavorText": "\"I gazed once into that light. Now it burns in my mind, forever denying me rest.\"\n—Riku of Two Reflections",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/6/166fa02f-e456-48ca-8ac3-d217afceff4d.jpg?1783938103",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "If you cast a commander from your hand, the commander tax doesn't apply. Additionally, that casting won't add to commander tax if you later cast the commander from the command zone."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "If your commander isn't in the command zone (or you don't have a commander) as the last ability resolves, nothing happens."
+            },
+            {
+                "date": "2020-11-10",
+                "text": "If you have two commanders with the partner ability in the command zone, Command Beacon's effect puts one of your choice into your hand, not both."
+            }
+        ]
+    }
+}
+
 // Dread Summons
 {
     "name": "Dread Summons",
@@ -184,6 +424,506 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Karlov of the Ghost Council
+{
+    "name": "Karlov of the Ghost Council",
+    "manaCost": "{W}{B}",
+    "typeLine": "Legendary Creature — Spirit Advisor",
+    "oracleText": "Whenever you gain life, put two +1/+1 counters on Karlov.\n{W}{B}, Remove six +1/+1 counters from Karlov: Exile target creature.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Karlov of the Ghost Council:1",
+                "trigger": "LifeGainEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 2,
+                    "target": "Self"
+                },
+                "descriptionOverride": "Whenever you gain life, put two +1/+1 counters on Karlov."
+            }
+        ],
+        "activatedAbilities": [
+            {
+                "id": "Karlov of the Ghost Council:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{W}{B}"
+                            }
+                        },
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomRemoveCounters",
+                                "counterType": "PLUS_ONE_PLUS_ONE",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 6
+                                },
+                                "self": true
+                            }
+                        }
+                    ]
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Exile"
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{W}{B}, Remove six +1/+1 counters from Karlov: Exile target creature."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "46",
+        "rarity": "MYTHIC",
+        "artist": "Volkan Baǵa",
+        "flavorText": "\"Does Teysa think me blind to her scheming? Ambition runs in our family.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/c/8cf01688-7046-4242-8647-d1c226ae53f7.jpg?1783938107",
+        "rulings": [
+            {
+                "date": "2015-11-04",
+                "text": "The ability triggers just once for each life-gaining event, whether it's 1 life from an attacking creature with lifelink or 4 life from Faith's Fetters."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLACK"
+    ]
+}
+
+// Magus of the Wheel
+{
+    "name": "Magus of the Wheel",
+    "manaCost": "{2}{R}",
+    "typeLine": "Creature — Human Wizard",
+    "oracleText": "{1}{R}, {T}, Sacrifice this creature: Each player discards their hand, then draws seven cards.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Magus of the Wheel:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}{R}"
+                            }
+                        },
+                        "CostTap",
+                        "CostSacrificeSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Players",
+                                "players": "Each"
+                            },
+                            "body": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "FromZone",
+                                            "zone": "Hand"
+                                        },
+                                        "storeAs": "discardedHand"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "discardedHand",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Graveyard"
+                                        },
+                                        "moveType": "Discard"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Players",
+                                "players": "Each"
+                            },
+                            "body": {
+                                "type": "DrawCards",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 7
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "27",
+        "rarity": "RARE",
+        "artist": "Carl Frank",
+        "flavorText": "\"Fate is not as fixed as you might think.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/f/dfe51ad5-d786-4de3-aa39-0f5fd7e73ec6.jpg?1783938111",
+        "rulings": [
+            {
+                "date": "2018-03-16",
+                "text": "If each player has fewer than seven cards in their library as Magus of the Wheel's ability resolves, the game ends in a draw."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Mazirek, Kraul Death Priest
+{
+    "name": "Mazirek, Kraul Death Priest",
+    "manaCost": "{3}{B}{G}",
+    "typeLine": "Legendary Creature — Insect Shaman",
+    "oracleText": "Flying\nWhenever a player sacrifices another permanent, put a +1/+1 counter on each creature you control.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Mazirek, Kraul Death Priest:1",
+                "trigger": {
+                    "type": "PermanentsSacrificedEvent",
+                    "filter": "permanent",
+                    "sacrificedBy": "Each",
+                    "perPermanent": true
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "AddCounters",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
+                        "count": 1,
+                        "target": "IterationEntity"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "48",
+        "rarity": "MYTHIC",
+        "artist": "Mathias Kollros",
+        "flavorText": "The clicks and buzz of the undercity proclaim him the incarnation of decay.",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/c/5c3ac233-29f7-4ed7-9363-85022d72f633.jpg?1783938107",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "A legendary permanent that is put into a graveyard because of the \"legend rule\" isn't sacrificed."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "If you sacrifice Mazirek and other permanents at the same time, Mazirek's last ability triggers for the other permanents."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "If you sacrifice a permanent as part of casting a spell or activating an ability, Mazirek's last ability will resolve before that spell or ability."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "GREEN"
+    ]
+}
+
+// Meren of Clan Nel Toth
+{
+    "name": "Meren of Clan Nel Toth",
+    "manaCost": "{2}{B}{G}",
+    "typeLine": "Legendary Creature — Human Shaman",
+    "oracleText": "Whenever another creature you control dies, you get an experience counter.\nAt the beginning of your end step, choose target creature card in your graveyard. If that card's mana value is less than or equal to the number of experience counters you have, return it to the battlefield. Otherwise, put it into your hand.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Meren of Clan Nel Toth:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "EXPERIENCE",
+                    "count": 1,
+                    "target": "Controller"
+                }
+            },
+            {
+                "id": "Meren of Clan Nel Toth:2",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "Compare",
+                            "left": {
+                                "type": "EntityProperty",
+                                "entity": {
+                                    "type": "ContextTarget",
+                                    "index": 0
+                                },
+                                "numericProperty": "ManaValue"
+                            },
+                            "operator": "LTE",
+                            "right": {
+                                "type": "PlayerCounterCount",
+                                "counterType": "EXPERIENCE"
+                            }
+                        }
+                    },
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "destination": "Battlefield",
+                        "fromZone": "Graveyard"
+                    },
+                    "otherwise": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "destination": "Hand",
+                        "fromZone": "Graveyard"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature own:you",
+                        "zone": "Graveyard"
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "49",
+        "rarity": "MYTHIC",
+        "artist": "Mark Winters",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/4/f43bf91d-bc08-417f-a549-64919c24052a.jpg?1783938107",
+        "rulings": [
+            {
+                "date": "2015-11-04",
+                "text": "If Meren of Clan Nel Toth leaves the battlefield at the same time as other creatures you control die, its first ability will trigger for each of those creatures."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "You can't choose to put the creature card into your hand if its mana value is less than or equal to the number of experience counters you have as the ability resolves."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "If a creature card in your graveyard has {X} in its mana cost, X is 0."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "GREEN"
+    ]
+}
+
+// Mizzix's Mastery
+{
+    "name": "Mizzix's Mastery",
+    "manaCost": "{3}{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Exile target card that's an instant or sorcery from your graveyard. For each card exiled this way, copy it, and you may cast the copy without paying its mana cost. Exile Mizzix's Mastery.\nOverload {5}{R}{R}{R} (You may cast this spell for its overload cost. If you do, change \"target\" in its text to \"each.\")",
+    "keywords": [
+        "OVERLOAD"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Overload",
+            "cost": "{5}{R}{R}{R}"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": "ChosenTargets",
+                    "storeAs": "gathered0"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "gathered0",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Exile"
+                    },
+                    "storeMovedAs": "moved1"
+                },
+                {
+                    "type": "CopyCollectionIntoCollection",
+                    "from": "moved1",
+                    "storeAs": "copies2"
+                },
+                {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "CastFromCollectionWithoutPayingCost",
+                        "from": "copies2"
+                    },
+                    "descriptionOverride": "You may cast the copy without paying its mana cost."
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "instant|sorcery own:you",
+                    "zone": "Graveyard"
+                },
+                "id": "t0"
+            }
+        ],
+        "overloadSpellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "FromZone",
+                        "zone": "Graveyard",
+                        "filter": "instant|sorcery"
+                    },
+                    "storeAs": "gathered0"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "gathered0",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Exile"
+                    },
+                    "storeMovedAs": "moved1"
+                },
+                {
+                    "type": "CopyCollectionIntoCollection",
+                    "from": "moved1",
+                    "storeAs": "copies2"
+                },
+                {
+                    "type": "CastAnyNumberFromCollectionWithoutPayingCost",
+                    "from": "copies2"
+                }
+            ]
+        },
+        "selfExileOnResolve": true
+    },
+    "metadata": {
+        "collectorNumber": "29",
+        "rarity": "RARE",
+        "artist": "Dan Murayama Scott",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/b/6b5e28e8-1e6d-4e7f-bc85-427bb39ae14b.jpg?1783938111",
+        "rulings": [
+            {
+                "date": "2015-11-04",
+                "text": "The copies are created and cast during the resolution of Mizzix's Mastery. You can't wait to cast them later in the turn. Timing restrictions based on the copy's type are ignored. Other restrictions (such as \"Cast [this spell] only during combat\") are not."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "If the copy has {X} in its mana cost, you must choose 0 as the value of X."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "The cards remain exiled no matter what happens to the copies."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "If Mizzix's Mastery exiled multiple cards, you may cast the copies in any order. The last copy you cast will be the first one to resolve."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "If you don't cast one of the copies (perhaps because there are no legal targets available or you don't want to), the copy will cease to exist."
+            },
+            {
+                "date": "2015-11-04",
+                "text": "Mizzix's Mastery is still on the stack as it resolves. If you pay the overload cost, Mizzix's Mastery won't copy itself."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 

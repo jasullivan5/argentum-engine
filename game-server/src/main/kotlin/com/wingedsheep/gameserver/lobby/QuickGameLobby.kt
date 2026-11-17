@@ -200,4 +200,9 @@ data class QuickGameLobbyPlayer(
     var sideboard: Map<String, Int> = emptyMap(),
     /** The revealed companion (CR 702.139) submitted with [deckList], or null. A sideboard card. */
     var companion: String? = null,
+    /**
+     * The format [deckList] was built for, as the client declared it — kept only when the deck is
+     * legal there. Null for a pasted list, a random pool, or a claim that didn't check out.
+     */
+    var deckFormat: com.wingedsheep.sdk.core.DeckFormat? = null,
 )

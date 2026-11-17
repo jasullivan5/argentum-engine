@@ -27,6 +27,7 @@ import com.wingedsheep.engine.mechanics.mana.ManaPool
 import com.wingedsheep.engine.mechanics.mana.SpellPaymentContext
 import com.wingedsheep.engine.mechanics.mana.SpentManaProvenance
 import com.wingedsheep.engine.mechanics.mana.isSatisfiedBy
+import com.wingedsheep.engine.mechanics.mana.paysGeneric
 import com.wingedsheep.engine.state.components.player.RestrictedManaEntry
 import com.wingedsheep.sdk.scripting.effects.ManaSpellRider
 
@@ -126,16 +127,17 @@ class CastPaymentProcessor(
         val byCardType = mutableMapOf<com.wingedsheep.sdk.core.CardType, Int>()
         val sourceIds = mutableSetOf<EntityId>()
         var snow = 0
+        val snowColors = mutableSetOf<Color>()
         for ((sourceId, production) in manaProduced) {
-            val amount = production.amount + production.colorless
+            val amount = production.amount + production.colorless + production.extraColors.values.sum()
             if (amount <= 0) continue
             sourceIds.add(sourceId)
-            if (production.snow) snow += amount
+            if (production.snow) { snow += amount; production.color?.let(snowColors::add) }
             val tag = ManaProvenanceTracker.sourceTag(state, sourceId)
             for (subtype in tag.subtypes) bySubtype.merge(subtype, amount, Int::plus)
             for (cardType in tag.cardTypes) byCardType.merge(cardType, amount, Int::plus)
         }
-        return SpentManaProvenance(bySubtype, sourceIds, byCardType, snow)
+        return SpentManaProvenance(bySubtype, sourceIds, byCardType, snow, snowColors)
     }
 
     fun processPayment(
@@ -284,8 +286,8 @@ class CastPaymentProcessor(
                 // A color-restricted X can't be paid with off-color or colorless restricted mana.
                 if (entry.color != null && entry.color !in xColorsAllowed) continue
                 if (entry.color == null && xManaRestriction.isNotEmpty()) continue
-                if (entry.restriction.isSatisfiedBy(spellContext)) {
-                    val spent = poolAfterPayment.spendRestricted(entry.color, spellContext)
+                if (entry.restriction.isSatisfiedBy(spellContext) && entry.restriction.paysGeneric) {
+                    val spent = poolAfterPayment.spendRestricted(entry.color, spellContext, forGeneric = true)
                     if (spent != null) {
                         poolAfterPayment = spent
                         if (entry.color != null) {
@@ -336,7 +338,7 @@ class CastPaymentProcessor(
         val (poolWithProvenanceUpdated, unrestrictedProvenance) = poolAfterPayment.consumeProvenance(maxOf(0, unrestrictedSpent))
         val spentProvenance = unrestrictedProvenance +
             SpentManaProvenance.ofConsumedRestricted(poolComponent.restrictedMana, poolAfterPayment.restrictedMana) +
-            SpentManaProvenance(snow = poolComponent.snowTotal - poolAfterPayment.snowTotal)
+            SpentManaProvenance.ofFloatingSnow(poolComponent.snowMana, poolComponent.snowTotal, poolAfterPayment.snowMana, poolAfterPayment.snowTotal)
 
         val newState = state.updateEntity(playerId) { container ->
             container.with(toComponent(poolWithProvenanceUpdated))
@@ -381,7 +383,7 @@ class CastPaymentProcessor(
         val (updated, ordinaryProvenance) = after.consumeProvenance(allocation.spent.total - restrictedSpent)
         val provenance = ordinaryProvenance +
             SpentManaProvenance.ofConsumedRestricted(before.restrictedMana, after.restrictedMana) +
-            SpentManaProvenance(snow = before.snowTotal - after.snowTotal)
+            SpentManaProvenance.ofFloatingSnow(before.snowMana, before.snowTotal, after.snowMana, after.snowTotal)
         val spent = allocation.spent
         return PaymentResult(
             state.updateEntity(playerId) { it.with(toComponent(updated)) },
@@ -441,8 +443,8 @@ class CastPaymentProcessor(
                 // A color-restricted X can't be paid with off-color or colorless restricted mana.
                 if (entry.color != null && entry.color !in xColorsAllowed) continue
                 if (entry.color == null && xManaRestriction.isNotEmpty()) continue
-                if (entry.restriction.isSatisfiedBy(spellContext)) {
-                    val spent = poolAfterPayment.spendRestricted(entry.color, spellContext)
+                if (entry.restriction.isSatisfiedBy(spellContext) && entry.restriction.paysGeneric) {
+                    val spent = poolAfterPayment.spendRestricted(entry.color, spellContext, forGeneric = true)
                     if (spent != null) {
                         poolAfterPayment = spent
                         if (entry.color != null) {
@@ -497,7 +499,7 @@ class CastPaymentProcessor(
         val (poolWithProvenanceUpdated, poolProvenance) = poolAfterPayment.consumeProvenance(poolUnrestrictedSpent)
         var spentProvenance = poolProvenance +
             SpentManaProvenance.ofConsumedRestricted(poolComponent.restrictedMana, poolAfterPayment.restrictedMana) +
-            SpentManaProvenance(snow = poolComponent.snowTotal - poolAfterPayment.snowTotal)
+            SpentManaProvenance.ofFloatingSnow(poolComponent.snowMana, poolComponent.snowTotal, poolAfterPayment.snowMana, poolAfterPayment.snowTotal)
 
         currentState = currentState.updateEntity(playerId) { container ->
             container.with(toComponent(poolWithProvenanceUpdated))
@@ -511,7 +513,8 @@ class CastPaymentProcessor(
             solutionConsumedRiders = solution.consumedRiders
             // Mana tapped directly for this payment carries the provenance of its source (read from
             // the pre-payment [state], where every tapped source still exists with its type line).
-            spentProvenance = spentProvenance + tappedSourceProvenance(state, solution.manaProduced)
+            spentProvenance = spentProvenance + tappedSourceProvenance(state, solution.manaProduced) +
+                SpentManaProvenance(snow = solution.bonusSnowManaSpent, snowColors = solution.bonusSnowColorsSpent)
             // Fold the X portion the solver tapped (allowed colors only) into the X-by-color tally.
             for ((color, amount) in solution.xRestrictedManaSpent) {
                 xSpentByColor[color] = (xSpentByColor[color] ?: 0) + amount
@@ -527,13 +530,13 @@ class CastPaymentProcessor(
             events.addAll(tapEvents)
 
             for ((_, production) in solution.manaProduced) {
-                when (production.color) {
-                    Color.WHITE -> whiteSpent += production.amount
-                    Color.BLUE -> blueSpent += production.amount
-                    Color.BLACK -> blackSpent += production.amount
-                    Color.RED -> redSpent += production.amount
-                    Color.GREEN -> greenSpent += production.amount
-                    null -> colorlessSpent += production.colorless
+                if (production.color == null) colorlessSpent += production.colorless
+                for ((color, amount) in production.coloredAmounts) when (color) {
+                    Color.WHITE -> whiteSpent += amount
+                    Color.BLUE -> blueSpent += amount
+                    Color.BLACK -> blackSpent += amount
+                    Color.RED -> redSpent += amount
+                    Color.GREEN -> greenSpent += amount
                 }
             }
 
@@ -566,6 +569,8 @@ class CastPaymentProcessor(
                                 pool.addRestricted(entry.color, entry.amount, entry.restriction)
                             else -> pool.add(entry.color, entry.amount)
                         }
+                        // Mana from a snow source floats as snow mana (CR 107.4h).
+                        if (entry.snow) pool = pool.markSnow(if (entry.colorless) null else entry.color, entry.amount)
                         if (!entry.countsTowardSpent && entry.sourceId != null) {
                             val tag = ManaProvenanceTracker.sourceTag(state, entry.sourceId)
                             val color = if (entry.colorless) null else entry.color

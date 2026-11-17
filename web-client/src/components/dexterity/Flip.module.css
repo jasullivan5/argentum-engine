@@ -108,7 +108,30 @@
 }
 
 .stage.aiming {
-  cursor: crosshair;
+  cursor: grab;
+}
+
+.stage.flicking {
+  cursor: grabbing;
+}
+
+/* The swipe the thrower is making, fading out behind the pointer. */
+.trail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  z-index: 24;
+  overflow: visible;
+}
+
+.trail polyline {
+  fill: none;
+  stroke: rgba(255, 226, 160, 0.75);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 4px rgba(255, 214, 102, 0.6));
 }
 
 .stage.shake {
@@ -279,44 +302,6 @@
 .chipWarn { background: #ffb547; color: #2a1800; }
 .chipCalm { background: rgba(30, 40, 52, 0.92); color: #d9e6f5; border: 0.5px solid rgba(200, 220, 255, 0.4); }
 
-/* ---- Aim ghost, scatter ring --------------------------------------------------------------- */
-
-.ghost {
-  position: absolute;
-  width: 63px;
-  height: 88px;
-  margin: -44px 0 0 -31.5px;
-  border-radius: 3.2px;
-  border: 1.5px dashed rgba(255, 226, 160, 0.9);
-  background: rgba(255, 226, 160, 0.08);
-  pointer-events: none;
-  z-index: 20;
-}
-
-.ghostLocked {
-  border-style: solid;
-  background: rgba(255, 226, 160, 0.14);
-}
-
-.ring {
-  position: absolute;
-  border-radius: 50%;
-  border: 1.5px solid rgba(255, 226, 160, 0.55);
-  background: radial-gradient(circle, rgba(255, 226, 160, 0.1), rgba(255, 226, 160, 0.02) 70%);
-  pointer-events: none;
-  z-index: 19;
-  transition: border-color 120ms ease;
-}
-
-.ringClean {
-  border-color: rgba(255, 214, 102, 0.95);
-  box-shadow: 0 0 12px rgba(255, 214, 102, 0.45);
-}
-
-.ringSloppy {
-  border-color: rgba(255, 120, 90, 0.75);
-}
-
 .crosshair {
   position: absolute;
   width: 14px;
@@ -348,64 +333,6 @@
   pointer-events: none;
   z-index: 22;
   color: rgba(255, 255, 255, 0.9);
-}
-
-.aimHint {
-  display: block;
-  margin-top: 2px;
-  text-align: center;
-  font-size: 8.5px;
-  color: #ffd36e;
-}
-
-.sway {
-  position: absolute;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  transform: translateX(-50%);
-  pointer-events: none;
-  z-index: 23;
-}
-
-.swayEnd {
-  font-size: 8.5px;
-  color: rgba(255, 236, 200, 0.6);
-}
-
-.swayTrack {
-  position: relative;
-  width: 120px;
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.5);
-  border: 1px solid rgba(255, 226, 160, 0.35);
-}
-
-.swayCentre {
-  position: absolute;
-  left: 50%;
-  top: -3px;
-  bottom: -3px;
-  width: 2px;
-  margin-left: -1px;
-  background: #ffd36e;
-  box-shadow: 0 0 5px rgba(255, 211, 110, 0.9);
-}
-
-.swayDot {
-  position: absolute;
-  top: 50%;
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
-}
-
-.swayDot[data-tone='off'] {
-  background: #ffb39a;
 }
 
 /* ---- The orb ------------------------------------------------------------------------------ */
@@ -502,7 +429,7 @@
   to { transform: translate(-50%, -100%) scale(1); opacity: 1; }
 }
 
-/* ---- Release gauge ------------------------------------------------------------------------ */
+/* ---- Spin gauge ------------------------------------------------------------------------ */
 
 .gauge {
   position: absolute;
@@ -534,6 +461,11 @@
   border-radius: 0 0 12px 12px;
 }
 
+.zoneWild {
+  background: repeating-linear-gradient(-45deg, rgba(255, 90, 70, 0.55) 0 3px, rgba(255, 90, 70, 0.3) 3px 6px);
+  border-radius: 12px 12px 0 0;
+}
+
 .zoneClean {
   background: linear-gradient(90deg, #f7d27a, #ffe9a8, #f7d27a);
   box-shadow: 0 0 10px rgba(255, 214, 102, 0.7);
@@ -549,17 +481,6 @@
   border-radius: 2px;
   background: #fff;
   box-shadow: 0 0 6px rgba(255, 255, 255, 0.9);
-}
-
-.gaugeSweet {
-  position: absolute;
-  left: -3px;
-  right: -3px;
-  height: 2px;
-  margin-top: -1px;
-  background: #ffd36e;
-  box-shadow: 0 0 5px rgba(255, 211, 110, 0.9);
-  pointer-events: none;
 }
 
 .gaugeTick {
@@ -586,6 +507,10 @@
 
 .gaugeReadout[data-tone='off'] {
   color: #ff9d7a;
+}
+
+.hintWarn {
+  color: #ffb39a;
 }
 
 /* ---- Footer ------------------------------------------------------------------------------- */

@@ -133,7 +133,7 @@
                 "id": "Adrenaline Jockey:2",
                 "trigger": {
                     "type": "AbilityActivatedEvent",
-                    "requireExhaust": true
+                    "onceOnlyKind": "EXHAUST"
                 },
                 "binding": "ANY",
                 "effect": {
@@ -354,7 +354,7 @@
                 "id": "Afterburner Expert:2",
                 "trigger": {
                     "type": "AbilityActivatedEvent",
-                    "requireExhaust": true
+                    "onceOnlyKind": "EXHAUST"
                 },
                 "binding": "ANY",
                 "effect": {
@@ -1534,7 +1534,7 @@
                     "type": "Fixed",
                     "amount": 2
                 },
-                "exhaustOnly": true
+                "onceOnlyKind": "EXHAUST"
             }
         ]
     },
@@ -3133,7 +3133,8 @@
                         },
                         "descriptionOverride": "Whenever an artifact you control enters, this emblem deals 3 damage to any target."
                     },
-                    "descriptionOverride": "Whenever an artifact you control enters, this emblem deals 3 damage to any target."
+                    "descriptionOverride": "Whenever an artifact you control enters, this emblem deals 3 damage to any target.",
+                    "emblem": true
                 },
                 "timing": "SorcerySpeed",
                 "isPlaneswalkerAbility": true
@@ -5622,51 +5623,163 @@
                     "to": "Battlefield"
                 },
                 "effect": {
-                    "type": "Composite",
-                    "effects": [
+                    "type": "ChooseAction",
+                    "choices": [
                         {
-                            "type": "GatherCards",
-                            "source": {
-                                "type": "FromMultipleZones",
-                                "zones": [
-                                    "Library",
-                                    "Graveyard"
-                                ],
-                                "filter": {
-                                    "cardPredicates": [
-                                        "IsCreature",
-                                        "HasNoAbilities"
-                                    ]
-                                }
-                            },
-                            "storeAs": "searchable",
-                            "search": true
+                            "label": "Search your library",
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "FromMultipleZones",
+                                            "zones": [
+                                                "Library"
+                                            ],
+                                            "filter": {
+                                                "cardPredicates": [
+                                                    "IsCreature",
+                                                    "HasNoAbilities"
+                                                ]
+                                            }
+                                        },
+                                        "storeAs": "searchable",
+                                        "search": true
+                                    },
+                                    {
+                                        "type": "SelectFromCollection",
+                                        "from": "searchable",
+                                        "selection": {
+                                            "type": "ChooseUpTo",
+                                            "count": {
+                                                "type": "Fixed",
+                                                "amount": 1
+                                            }
+                                        },
+                                        "storeSelected": "found",
+                                        "prompt": "Search your library for a creature card has no abilities to put into your hand",
+                                        "selectedLabel": "Put into your hand"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "found",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Hand"
+                                        },
+                                        "revealed": true
+                                    },
+                                    "ShuffleLibrary",
+                                    "EmitLibrarySearchedEvent"
+                                ]
+                            }
                         },
                         {
-                            "type": "SelectFromCollection",
-                            "from": "searchable",
-                            "selection": {
-                                "type": "ChooseUpTo",
-                                "count": {
-                                    "type": "Fixed",
-                                    "amount": 1
-                                }
-                            },
-                            "storeSelected": "found",
-                            "prompt": "Search your library and/or graveyard for a creature card has no abilities to put into your hand",
-                            "selectedLabel": "Put into your hand"
+                            "label": "Search your graveyard",
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "FromMultipleZones",
+                                            "zones": [
+                                                "Graveyard"
+                                            ],
+                                            "filter": {
+                                                "cardPredicates": [
+                                                    "IsCreature",
+                                                    "HasNoAbilities"
+                                                ]
+                                            }
+                                        },
+                                        "storeAs": "searchable"
+                                    },
+                                    {
+                                        "type": "SelectFromCollection",
+                                        "from": "searchable",
+                                        "selection": {
+                                            "type": "ChooseExactly",
+                                            "count": {
+                                                "type": "Fixed",
+                                                "amount": 1
+                                            }
+                                        },
+                                        "storeSelected": "found",
+                                        "prompt": "Search your graveyard for a creature card has no abilities to put into your hand",
+                                        "selectedLabel": "Put into your hand"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "found",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Hand"
+                                        },
+                                        "revealed": true
+                                    }
+                                ]
+                            }
                         },
                         {
-                            "type": "MoveCollection",
-                            "from": "found",
-                            "destination": {
-                                "type": "ToZone",
-                                "zone": "Hand"
-                            },
-                            "revealed": true
+                            "label": "Search your library and graveyard",
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "FromMultipleZones",
+                                            "zones": [
+                                                "Library",
+                                                "Graveyard"
+                                            ],
+                                            "filter": {
+                                                "cardPredicates": [
+                                                    "IsCreature",
+                                                    "HasNoAbilities"
+                                                ]
+                                            }
+                                        },
+                                        "storeAs": "searchable",
+                                        "search": true
+                                    },
+                                    {
+                                        "type": "SelectFromCollection",
+                                        "from": "searchable",
+                                        "selection": {
+                                            "type": "ChooseUpTo",
+                                            "count": {
+                                                "type": "Fixed",
+                                                "amount": 1
+                                            }
+                                        },
+                                        "storeSelected": "found",
+                                        "prompt": "Search your library and/or graveyard for a creature card has no abilities to put into your hand",
+                                        "selectedLabel": "Put into your hand"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "found",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Hand"
+                                        },
+                                        "revealed": true
+                                    },
+                                    "ShuffleLibrary",
+                                    "EmitLibrarySearchedEvent"
+                                ]
+                            }
                         },
-                        "ShuffleLibrary",
-                        "EmitLibrarySearchedEvent"
+                        {
+                            "label": "Don't search",
+                            "effect": {
+                                "type": "Composite",
+                                "effects": []
+                            }
+                        }
                     ]
                 }
             }
@@ -7721,7 +7834,8 @@
                                     "zone": "Library",
                                     "filter": "artifact"
                                 },
-                                "storeAs": "gathered0"
+                                "storeAs": "gathered0",
+                                "search": true
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -10445,7 +10559,8 @@
                     },
                     "then": {
                         "type": "CopyTargetSpell",
-                        "target": "TriggeringEntity"
+                        "target": "TriggeringEntity",
+                        "mayChooseNewTargets": false
                     }
                 },
                 "triggerRestriction": {
@@ -10457,7 +10572,7 @@
                         "amount": 4
                     }
                 },
-                "descriptionOverride": "Max speed — you casts a artifact spell, you may pay {1}. If you do, copy target spell."
+                "descriptionOverride": "Max speed — you casts a artifact spell, you may pay {1}. If you do, copy that spell."
             }
         ]
     },
@@ -12126,7 +12241,7 @@
                     "trigger": {
                         "event": {
                             "type": "AbilityActivatedEvent",
-                            "requireExhaust": true,
+                            "onceOnlyKind": "EXHAUST",
                             "excludeManaAbilities": true
                         },
                         "binding": "ANY"
@@ -13067,7 +13182,7 @@
                 "id": "Rangers' Aetherhive:1",
                 "trigger": {
                     "type": "AbilityActivatedEvent",
-                    "requireExhaust": true
+                    "onceOnlyKind": "EXHAUST"
                 },
                 "binding": "ANY",
                 "effect": {
@@ -13125,7 +13240,7 @@
                 "id": "Rangers' Refueler:1",
                 "trigger": {
                     "type": "AbilityActivatedEvent",
-                    "requireExhaust": true
+                    "onceOnlyKind": "EXHAUST"
                 },
                 "binding": "ANY",
                 "effect": {
@@ -13523,7 +13638,8 @@
                                 "zone": "Library",
                                 "filter": "artifact"
                             },
-                            "storeAs": "gathered0"
+                            "storeAs": "gathered0",
+                            "search": true
                         },
                         {
                             "type": "FilterCollection",
@@ -17307,9 +17423,13 @@
                 "interveningIf": {
                     "type": "Compare",
                     "left": {
-                        "type": "AggregateBattlefield",
-                        "player": "EachOpponent",
-                        "filter": "land"
+                        "type": "GreatestAmongPlayers",
+                        "players": "EachOpponent",
+                        "inner": {
+                            "type": "AggregateBattlefield",
+                            "player": "You",
+                            "filter": "land"
+                        }
                     },
                     "operator": "GT",
                     "right": {

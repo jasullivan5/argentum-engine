@@ -364,6 +364,8 @@ const FORMAT_ACCENT: Record<string, string> = {
   COMMANDER: '#e0b15a',
   BRAWL: '#e0b15a',
   STANDARD_BRAWL: '#e0b15a',
+  HIGHLANDER: '#5fd1b8',
+  CANADIAN_HIGHLANDER: '#ff6b6b',
   HISTORIC: '#ff8aa8',
   CUSTOM_DECKS: '#7be0a8',
 }

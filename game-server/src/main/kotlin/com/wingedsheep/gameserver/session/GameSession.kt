@@ -241,6 +241,16 @@ class GameSession(
     var playingForAnte: Boolean = false
 
     /**
+     * Who takes the first turn, when the server already knows (CR 103.1): in games 2+ of a
+     * best-of-N tournament match the loser of the previous game chooses. Null leaves it to the
+     * engine's seeded coin flip, as every first game does.
+     */
+    var startingPlayerId: EntityId? = null
+
+    /** The player who took (or will take) the first turn, once the game has started. */
+    val actualStartingPlayerId: EntityId? get() = gameState?.turnOrder?.firstOrNull()
+
+    /**
      * Team partitioning for team variants (Two-Headed Giant — CR 810), as lists of seat indices
      * into the join/turn order; each entry is one team. Set by the lobby / scenario handler before
      * [startGame] and forwarded to [GameConfig.teams], which stamps [TeamComponent] on each player.
@@ -259,6 +269,15 @@ class GameSession(
      */
     @Volatile
     var ranked: Boolean = false
+
+    /**
+     * A Scenario Builder game (a hand-built board, or a position forked out of a replay). It is
+     * practice, not a result: game over saves no replay and records nothing to match history or
+     * stats. Set by [com.wingedsheep.gameserver.scenario.ScenarioSessionFactory]; persisted so a
+     * scenario recovered after a restart stays one.
+     */
+    @Volatile
+    var isScenario: Boolean = false
 
     /** Which ranked queue this game counts toward when [ranked]; null otherwise. */
     @Volatile
@@ -322,6 +341,9 @@ class GameSession(
 
     /** Per-player priority mode setting (AUTO = smart auto-pass, STOPS = stop on opponent stack + combat damage, FULL_CONTROL = never auto-pass) */
     private val priorityModes = java.util.concurrent.ConcurrentHashMap<EntityId, PriorityMode>()
+
+    /** Players whose preference is to order their own triggers; Full Control asks them regardless. */
+    private val prefersManualTriggerOrdering = java.util.concurrent.ConcurrentHashMap.newKeySet<EntityId>()
     private val stopOverrides = java.util.concurrent.ConcurrentHashMap<EntityId, StopOverrideSettings>()
 
     // Compact replay recording — see [com.wingedsheep.gameserver.replay.CompactReplay]. Instead of
@@ -715,6 +737,7 @@ class GameSession(
             format = engineFormat,
             attackMode = attackMode,
             playingForAnte = playingForAnte,
+            startingPlayerIndex = startingPlayerId?.let { id -> players.keys.indexOf(id).takeIf { it >= 0 } },
             // Team partitioning for Two-Headed Giant (CR 810); null for non-team games. The seat
             // indices line up with playerConfigs, which preserves the join/turn order of `players`.
             teams = teams,
@@ -1233,9 +1256,23 @@ class GameSession(
         val legalActions = renaming?.toSeat(engineLegalActions, legalActionsSerializer) ?: engineLegalActions
         val clientEvents = renaming?.toSeat(engineClientEvents, clientEventsSerializer) ?: engineClientEvents
         val pendingDecision = enginePendingDecision?.let { renaming?.toSeat(it, PendingDecision.serializer()) ?: it }
+        // A question with one legal answer: hand the browser that answer so it needn't stop the
+        // player for it. The in-process AI answers these itself through the same TrivialDecisions.
+        val autoAnswer = if (useEngineDecisionIds) null else pendingDecision?.let { seatDecision ->
+            state.pendingDecision?.let { ForcedDecisionAutoAnswer.responseFor(it, seatDecision) }
+        }
+        // Whether everyone can see the question is forced, so the browser needn't pause before
+        // answering it (#3340).
+        val autoAnswerPublic = autoAnswer != null &&
+            state.pendingDecision?.let { ForcedDecisionAutoAnswer.isPublic(state, it, visibility) } == true
 
-        // Accumulate into persistent game log (filter noisy events)
-        val logEntries = clientEvents.filter { it !is ClientEvent.PermanentTapped && it !is ClientEvent.PermanentUntapped && it !is ClientEvent.ManaAdded }
+        // Accumulate into persistent game log (filter noisy events). An ability's resolution is a
+        // per-update signal for clients, not a log line: the trigger/activation line and the
+        // effect's own events already narrate it, and every trigger would otherwise log twice.
+        val logEntries = clientEvents.filter {
+            it !is ClientEvent.PermanentTapped && it !is ClientEvent.PermanentUntapped &&
+                it !is ClientEvent.ManaAdded && it !is ClientEvent.AbilityResolved
+        }
         val playerLog = gameLogs.getOrPut(playerId) { mutableListOf() }
         playerLog.addAll(logEntries)
 
@@ -1290,11 +1327,11 @@ class GameSession(
         if (previous != null) {
             // Compute delta and send smaller message
             val delta = StateDiffCalculator.computeDelta(previous, stateWithLog)
-            return ServerMessage.StateDeltaUpdate(delta, clientEvents, legalActions, pendingDecision, nextStopPoint, opponentDecisionStatus, stopOverrideInfo, isUndoAvailable(playerId), priorityModeStr, version, interactionEpoch)
+            return ServerMessage.StateDeltaUpdate(delta, clientEvents, legalActions, pendingDecision, nextStopPoint, opponentDecisionStatus, stopOverrideInfo, isUndoAvailable(playerId), priorityModeStr, version, interactionEpoch, autoAnswer, autoAnswerPublic)
         }
 
         // First update — send full state
-        return ServerMessage.StateUpdate(stateWithLog, clientEvents, legalActions, pendingDecision, nextStopPoint, opponentDecisionStatus, stopOverrideInfo, isUndoAvailable(playerId), priorityModeStr, version, interactionEpoch)
+        return ServerMessage.StateUpdate(stateWithLog, clientEvents, legalActions, pendingDecision, nextStopPoint, opponentDecisionStatus, stopOverrideInfo, isUndoAvailable(playerId), priorityModeStr, version, interactionEpoch, autoAnswer, autoAnswerPublic)
     }
 
     /** [value] with every card id in [playerId]'s own names; unchanged for a seat that has none. */
@@ -1333,6 +1370,7 @@ class GameSession(
     fun setPriorityMode(playerId: EntityId, mode: PriorityMode) {
         priorityModes[playerId] = mode
         logger.info("Player $playerId set priority mode to $mode")
+        applyTriggerOrdering(playerId)
     }
 
     /**
@@ -1420,10 +1458,23 @@ class GameSession(
     }
 
     /**
-     * Set whether [playerId] orders their own simultaneous triggers (CR 603.3b). Like a yield it
-     * lives on the GameState and changes what the engine asks, so it is recorded for replay too.
+     * Set whether [playerId] prefers to order their own simultaneous triggers (CR 603.3b). A player
+     * in Full Control orders them whatever the preference says: they asked to see every choice.
      */
-    fun setManualTriggerOrdering(playerId: EntityId, manual: Boolean) = synchronized(stateLock) {
+    fun setManualTriggerOrdering(playerId: EntityId, manual: Boolean) {
+        if (manual) prefersManualTriggerOrdering += playerId else prefersManualTriggerOrdering -= playerId
+        applyTriggerOrdering(playerId)
+    }
+
+    /**
+     * Put [playerId]'s effective trigger ordering — their preference, or Full Control — on the
+     * GameState. Like a yield it changes what the engine asks, so it is recorded for replay too.
+     * Full Control only implies it for a person: an AI seat in Full Control keeps automatic order.
+     */
+    private fun applyTriggerOrdering(playerId: EntityId) = synchronized(stateLock) {
+        val humanInFullControl = getPriorityMode(playerId) == PriorityMode.FULL_CONTROL &&
+            players[playerId]?.webSocketSession !is com.wingedsheep.gameserver.ai.AiWebSocketSession
+        val manual = playerId in prefersManualTriggerOrdering || humanInFullControl
         val state = gameState ?: return@synchronized
         if (state.ordersOwnTriggers(playerId) == manual) return@synchronized
         gameState = state.withManualTriggerOrdering(playerId, manual)
@@ -2157,6 +2208,14 @@ class GameSession(
     fun getStartingDeckList(playerId: EntityId): List<String>? =
         deckLists[playerId]
             ?: replaySetup?.players?.firstOrNull { it.playerId == playerId.value }?.deck?.cards
+
+    /**
+     * [getStartingDeckList] as card name → copies, printing coordinates stripped — the decklist
+     * the engine AI is told about each opponent (by design it may know their full list). Stays
+     * server-side: it is AI search knowledge and never part of a client message.
+     */
+    fun getStartingDeckCardCounts(playerId: EntityId): Map<String, Int>? =
+        getStartingDeckList(playerId)?.groupingBy { cardEntryFromIdentifier(it).name }?.eachCount()
 
     // =========================================================================
     // Persistence Support (for Redis caching)

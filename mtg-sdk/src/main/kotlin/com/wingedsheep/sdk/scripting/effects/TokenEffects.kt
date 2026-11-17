@@ -248,14 +248,16 @@ data class CreateTokenEffect(
         // intentionally not rendered here to keep existing artifact-token descriptions stable.)
         val cardTypeWord = if (enchantmentToken) "enchantment creature" else "creature"
         append("Create ")
+        // "Create a tapped 2/2 black Zombie creature token" (Drana's Chosen, Null Caller).
+        val tappedWord = if (tapped) "tapped " else ""
         when (val c = count) {
             is DynamicAmount.Fixed -> {
                 append(if (c.amount == 1) "a" else "${c.amount}")
-                append(" $pt $colorWord $typeWord $cardTypeWord token")
+                append(" $tappedWord$pt $colorWord $typeWord $cardTypeWord token")
                 if (c.amount != 1) append("s")
             }
             else -> {
-                append("${c.description} $pt $colorWord $typeWord $cardTypeWord tokens")
+                append("${c.description} $tappedWord$pt $colorWord $typeWord $cardTypeWord tokens")
             }
         }
         val keywordWords = keywords.map { it.name.lowercase() } +
@@ -702,6 +704,13 @@ data class CreateTokenCopyOfTargetEffect(
      * enchantment leaves the battlefield, exile the token" has to find the one token it made.
      */
     val stampCreator: Boolean = false,
+    /**
+     * The created tokens are **embalmed** — "a token is 'embalmed' if it's created by a resolving
+     * embalm ability" (CR 702.128b). Set only by [com.wingedsheep.sdk.dsl.embalmAbility]; read
+     * through [com.wingedsheep.sdk.scripting.predicates.StatePredicate.IsEmbalmed]
+     * (`Conditions.SourceWasEmbalmed` — Vizier of Many Faces). Provenance, not a copy exception.
+     */
+    val embalmed: Boolean = false,
     /**
      * The object each token copy enters the battlefield **attached to** — "create a token that's a
      * copy of that Aura attached to that creature" (Arna Kennerüd, Skycaptain). Null (the default)

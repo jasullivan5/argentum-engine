@@ -61,6 +61,7 @@ class ActivateAbilityXCostContinuationResumer(
         resumer(ActivateAbilityExileFromGraveyardContinuation::class, ::resumeExileFromGraveyard),
         resumer(ActivateAbilitySacrificeContinuation::class, ::resumeSacrifice),
         resumer(ActivateAbilityPutOnLibraryContinuation::class, ::resumePutOnLibrary),
+        resumer(com.wingedsheep.engine.core.ActivateAbilityMillOrderContinuation::class, ::resumeMillOrder),
         resumer(ActivateAbilityVariablePermanentsContinuation::class, ::resumeVariablePermanents),
         resumer(ActivateAbilityControllerTargetContinuation::class, ::resumeControllerTargets)
     )
@@ -231,8 +232,14 @@ class ActivateAbilityXCostContinuationResumer(
             return ExecutionResult.error(state, "Expected $fixedCount cards to discard, got ${selected.size}")
         }
         val action = continuation.action
+        val x = when (continuation.xMeasure) {
+            com.wingedsheep.sdk.scripting.costs.VariableCostMeasure.COUNT -> fixedCount ?: selected.size
+            // A measured discard: the pick announces X unless `{X}` mana already fixed it.
+            else -> action.xValue
+                ?: com.wingedsheep.engine.mechanics.cost.CostDefinedX.measureCards(state, continuation.xMeasure, selected)
+        }
         val replay = action.copy(
-            xValue = fixedCount ?: selected.size,
+            xValue = x,
             costPayment = (action.costPayment ?: AdditionalCostPayment())
                 .copy(discardedCards = selected)
         )
@@ -272,10 +279,14 @@ class ActivateAbilityXCostContinuationResumer(
             }
         }
 
+        // Appended, not replaced: a joint sacrifice cost ("Sacrifice a Swamp and a Forest") asks
+        // atom by atom, and each answer is the next ordered segment of the one list. A single
+        // sacrifice atom pauses only with nothing chosen yet, so for it this is the whole list.
         val action = continuation.action
+        val prior = action.costPayment?.sacrificedPermanents ?: emptyList()
         val replay = action.copy(
             costPayment = (action.costPayment ?: AdditionalCostPayment())
-                .copy(sacrificedPermanents = response.selectedCards)
+                .copy(sacrificedPermanents = prior + response.selectedCards)
         )
         return reenter(handler.execute(state, replay), checkForMore)
     }
@@ -309,6 +320,32 @@ class ActivateAbilityXCostContinuationResumer(
         val replay = action.copy(
             costPayment = (action.costPayment ?: AdditionalCostPayment())
                 .copy(cardsPutOnLibrary = selected)
+        )
+        return reenter(handler.execute(state, replay), checkForMore)
+    }
+
+    /**
+     * Resume after the controller picks the order of the mill replacements their mill cost runs
+     * through (CR 616.1) — i.e. how many cards it mills. Fills `costPayment.millCount` and re-enters
+     * the handler to pay. A cancel backs out cleanly — nothing has been paid yet.
+     */
+    private fun resumeMillOrder(
+        state: GameState,
+        continuation: com.wingedsheep.engine.core.ActivateAbilityMillOrderContinuation,
+        response: DecisionResponse,
+        checkForMore: CheckForMore
+    ): ExecutionResult {
+        if (response is CancelDecisionResponse) {
+            return ExecutionResult.success(state.withPriority(continuation.action.playerId))
+        }
+        if (response !is com.wingedsheep.engine.core.OptionChosenResponse ||
+            response.optionIndex !in continuation.counts.indices) {
+            return ExecutionResult.error(state, "Expected a mill replacement-order choice")
+        }
+        val action = continuation.action
+        val replay = action.copy(
+            costPayment = (action.costPayment ?: AdditionalCostPayment())
+                .copy(millCount = continuation.counts[response.optionIndex])
         )
         return reenter(handler.execute(state, replay), checkForMore)
     }

@@ -164,9 +164,52 @@ object ArenaAgents {
         // LIVE without pressing a winning position. `just arena live-without-pressure live 300`
         // prices the flag on top of everything it ships with.
         ArenaAgent("live-without-pressure", AiProfile.LIVE_WITHOUT_PRESSURE),
+        // LIVE before the combat-trade fixes: `just arena live-without-trade-fixes live 300` prices
+        // the marked-damage, threshold, block-math and swap fixes together.
+        ArenaAgent("live-without-trade-fixes", AiProfile.LIVE_WITHOUT_TRADE_FIXES),
+        // LIVE pricing creatures by their current body only: `just arena live-without-growth live 300`
+        // prices the recurring +1/+1-counter growth estimate.
+        ArenaAgent("live-without-growth", AiProfile.LIVE_WITHOUT_GROWTH),
         // LIVE without the opponent's combat responses: `just arena live-without-responses live 300`
         // prices the opponent-ability model on its own.
         ArenaAgent("live-without-responses", AiProfile.LIVE.copy(id = "live-without-responses", anticipateCombatResponses = false)),
+        // LIVE aiming pod attacks at the lowest life total again: `just arena-pod ffa4 live-without-threat-defender live 300`
+        ArenaAgent(
+            "live-without-threat-defender",
+            AiProfile.LIVE.copy(id = "live-without-threat-defender", threatAwareDefender = false),
+        ),
+        // LIVE with the crack-back read off creatures only: `just arena live-without-crackback-stress live 300`
+        // prices reading the opponent's visible abilities into the swing back.
+        ArenaAgent(
+            "live-without-crackback-stress",
+            AiProfile.LIVE.copy(id = "live-without-crackback-stress", stressCrackBack = false),
+        ),
+        // LIVE reading a creature stolen until end of turn as ours: `just arena live-without-borrowed-go-home live 300`
+        ArenaAgent(
+            "live-without-borrowed-go-home",
+            AiProfile.LIVE.copy(id = "live-without-borrowed-go-home", borrowedCreaturesGoHome = false),
+        ),
+        // LIVE pricing every land within the next two drops as a whole card, whatever the hand
+        // needs: `just arena live-without-hand-read-lands live 300`
+        ArenaAgent(
+            "live-without-hand-read-lands",
+            AiProfile.LIVE.copy(id = "live-without-hand-read-lands", surplusLandsReadTheHand = false),
+        ),
+        // LIVE keeping any scried / surveiled spell over the keep threshold, land-short or not:
+        // `just arena live-without-look-digs live 300`
+        ArenaAgent(
+            "live-without-look-digs",
+            AiProfile.LIVE.copy(id = "live-without-look-digs", lookDigsForLand = false),
+        ),
+        // LIVE reading each candidate's playouts raw again, without its static leaf as a prior playout:
+        // `just arena live-without-static-prior live 300` prices `RolloutSettings.staticPriorPlayouts`.
+        ArenaAgent(
+            "live-without-static-prior",
+            AiProfile.LIVE.copy(
+                id = "live-without-static-prior",
+                rollouts = AiProfile.LIVE.rollouts?.copy(staticPriorPlayouts = 0.0),
+            ),
+        ),
         // Selection counts by value: searches take what they may, scry/surveil send away only the
         // cards not worth drawing. `just arena production production-selectcount 300` prices it
         // alone; `just arena production-candidate-expiring production-candidate-selectcount 300`
@@ -229,6 +272,9 @@ object ArenaAgents {
         // modal DFC played as a land costs its spell, and a bounce never strands a land.
         ArenaAgent("production-surpluslands", AiProfile.PRODUCTION_SURPLUSLANDS),
         ArenaAgent("production-candidate-surpluslands", AiProfile.PRODUCTION_CANDIDATE_SURPLUSLANDS),
+        ArenaAgent("production-candidate-oneshotmana", AiProfile.PRODUCTION_CANDIDATE_ONESHOTMANA),
+        ArenaAgent("production-candidate-statsread", AiProfile.PRODUCTION_CANDIDATE_STATSREAD),
+        ArenaAgent("production-candidate-synergy", AiProfile.PRODUCTION_CANDIDATE_SYNERGY),
         // An until-end-of-turn P/T change read only on a creature already in a fight.
         ArenaAgent("production-expiringstats", AiProfile.PRODUCTION_EXPIRINGSTATS),
         ArenaAgent("production-candidate-expiringstats", AiProfile.PRODUCTION_CANDIDATE_EXPIRINGSTATS),

@@ -4,7 +4,6 @@ import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.card
 import com.wingedsheep.sdk.model.Rarity
-import com.wingedsheep.sdk.scripting.events.AttackPredicate
 import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
 import com.wingedsheep.sdk.dsl.Triggers
@@ -19,9 +18,14 @@ import com.wingedsheep.sdk.dsl.Triggers
  * Whenever a player attacks with five or more creatures, Aurelia deals 3 damage to each of your
  * opponents and you gain 3 life.
  *
- * Each ability observes the single declare-attackers event with an ANY binding. The attacker-count
- * predicate is evaluated from that event's declared-attacker snapshot, so removing an attacker in
- * response does not undo either trigger.
+ * Both abilities are `Triggers.anyPlayer.attacks(minAttackers = n)` — one firing per
+ * declare-attackers, whoever declared, the Seasoned Consultant shape widened from "you" to "a
+ * player". The per-attacker `Triggers.a().attacks(AttackerCountAtLeast(n))` shape is wrong here:
+ * an unfiltered ANY-binding `AttackEvent` expands to one trigger *per attacking creature*
+ * (CR 603.2c), so an attack with three creatures drew three cards.
+ *
+ * The count is read off the declaration, so per the MKM ruling removing an attacker in response
+ * doesn't undo either trigger.
  */
 val AureliaTheLawAbove = card("Aurelia, the Law Above") {
     manaCost = "{3}{R}{W}"
@@ -37,13 +41,13 @@ val AureliaTheLawAbove = card("Aurelia, the Law Above") {
     keywords(Keyword.FLYING, Keyword.VIGILANCE, Keyword.HASTE)
 
     triggeredAbility {
-        trigger = Triggers.a().attacks(setOf(AttackPredicate.AttackerCountAtLeast(3)))
+        trigger = Triggers.anyPlayer.attacks(minAttackers = 3)
         effect = Effects.DrawCards(1)
         description = "Whenever a player attacks with three or more creatures, you draw a card."
     }
 
     triggeredAbility {
-        trigger = Triggers.a().attacks(setOf(AttackPredicate.AttackerCountAtLeast(5)))
+        trigger = Triggers.anyPlayer.attacks(minAttackers = 5)
         effect = Effects.DealDamage(
             3,
             EffectTarget.PlayerRef(Player.EachOpponent),

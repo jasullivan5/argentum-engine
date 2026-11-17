@@ -5,6 +5,8 @@ import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.gameserver.controller.DecksController
 import com.wingedsheep.gameserver.deck.DeckValidator
 import com.wingedsheep.mtg.sets.MtgSetCatalog
+import com.wingedsheep.mtg.sets.legality.LegalityData
+import com.wingedsheep.sdk.core.DeckFormat
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.shouldBe
@@ -20,8 +22,9 @@ class PremadeOpponentPickerTest : FunSpec({
 
     val registry = CardRegistry().apply {
         for (set in MtgSetCatalog.all) {
-            register(set.cards)
-            register(set.basicLands)
+            // Stamped as the server's registry is, so format legality reads real Scryfall data.
+            register(set.cards.map(LegalityData::stamp))
+            register(set.basicLands.map(LegalityData::stamp))
         }
     }
     val booster = BoosterGenerator(
@@ -70,5 +73,44 @@ class PremadeOpponentPickerTest : FunSpec({
 
     test("sets the human didn't play offer no sibling") {
         picker.pick(borosMice, listOf("DSK"), format = null, commanderRules = false) shouldBe null
+    }
+
+    // --- A constructed list with no set identity is matched by format. Orzhov Lifegain stands in
+    // for the human's list — a Standard deck spread over a dozen sets.
+
+    val orzhovLifegain = starters.getValue("standard_orzhov_lifegain").cards
+
+    test("a Standard list spread over many sets has no set identity to match") {
+        inference.setsOf(orzhovLifegain) shouldBe emptyList()
+    }
+
+    test("the format the deck was built for wins") {
+        picker.matchFormat(orzhovLifegain, declared = DeckFormat.PIONEER, lobbyFormat = null) shouldBe DeckFormat.PIONEER
+        picker.matchFormat(orzhovLifegain, declared = DeckFormat.HIGHLANDER, lobbyFormat = null) shouldBe DeckFormat.HIGHLANDER
+    }
+
+    test("an undeclared list is matched to the narrowest nested format it is legal in") {
+        picker.matchFormat(orzhovLifegain, declared = null, lobbyFormat = null) shouldBe DeckFormat.STANDARD
+    }
+
+    test("a singleton list is matched like any other") {
+        // No playsets at all — strength isn't read off duplicates.
+        val singletons = orzhovLifegain.keys.filter { it != "Plains" && it != "Swamp" }
+        val list = singletons.associateWith { 1 } + ("Plains" to 60 - singletons.size)
+        picker.matchFormat(list, declared = null, lobbyFormat = null) shouldBe DeckFormat.STANDARD
+    }
+
+    test("the lobby's restriction bounds the match") {
+        // A Standard deck in a Modern lobby meets a Standard deck, not a Modern one.
+        picker.matchFormat(orzhovLifegain, declared = null, lobbyFormat = DeckFormat.MODERN) shouldBe DeckFormat.STANDARD
+        // A declaration the lobby doesn't admit falls back to the lobby.
+        picker.matchFormat(orzhovLifegain, declared = DeckFormat.MODERN, lobbyFormat = DeckFormat.STANDARD) shouldBe DeckFormat.STANDARD
+        // Off the nested ladder the lobby's format stands as it is.
+        picker.matchFormat(orzhovLifegain, declared = null, lobbyFormat = DeckFormat.PREMODERN) shouldBe DeckFormat.PREMODERN
+    }
+
+    test("commander shapes never apply") {
+        picker.matchFormat(orzhovLifegain, declared = DeckFormat.COMMANDER, lobbyFormat = null) shouldBe DeckFormat.STANDARD
+        picker.matchFormat(orzhovLifegain, declared = null, lobbyFormat = DeckFormat.COMMANDER) shouldBe null
     }
 })

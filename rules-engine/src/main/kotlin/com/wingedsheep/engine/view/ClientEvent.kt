@@ -1,6 +1,5 @@
 package com.wingedsheep.engine.view
 
-import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.engine.core.*
@@ -391,6 +390,28 @@ sealed interface ClientEvent {
     ) : ClientEvent
 
     /**
+     * A triggered or activated ability finished resolving — the ability-side counterpart of
+     * [SpellResolved], so a client can react at the moment an ability resolves without diffing
+     * the stack. [abilityId] is the stack object that just left; [abilityDescription] is empty for
+     * an activated ability, as in [AbilityActivated].
+     */
+    @Serializable
+    @SerialName("abilityResolved")
+    data class AbilityResolved(
+        val sourceId: EntityId,
+        val sourceName: String,
+        val abilityDescription: String,
+        val abilityId: EntityId? = null,
+        val controllerId: EntityId? = null,
+        val isYours: Boolean? = null,
+        override val description: String = when (isYours) {
+            true -> "Your $sourceName's ability resolved"
+            false -> "Opponent's $sourceName's ability resolved"
+            null -> "$sourceName's ability resolved"
+        }
+    ) : ClientEvent
+
+    /**
      * A "you may" may-question was auto-resolved from the viewer's persistent yield (backlog §C).
      * Surfaced subtly in the log so the player knows the system acted for them.
      */
@@ -403,6 +424,17 @@ sealed interface ClientEvent {
         override val description: String =
             if (answer) "Auto-answered Yes to $sourceName (yield)"
             else "Auto-answered No to $sourceName (yield)"
+    ) : ClientEvent
+
+    /**
+     * Automatic ordering put [count] of the viewer's simultaneous triggered abilities on the stack
+     * in an order they could have chosen (CR 603.3b). The client points out, once, that they can.
+     */
+    @Serializable
+    @SerialName("triggersOrderedAutomatically")
+    data class TriggersOrderedAutomatically(
+        val count: Int,
+        override val description: String = "Your $count triggered abilities went on the stack in the order they triggered"
     ) : ClientEvent
 
     // =========================================================================
@@ -1438,6 +1470,15 @@ object ClientEventTransformer {
                 isYours = event.controllerId == viewingPlayerId
             )
 
+            is AbilityResolvedEvent -> ClientEvent.AbilityResolved(
+                sourceId = event.sourceId,
+                sourceName = event.sourceName,
+                abilityDescription = event.description,
+                abilityId = event.abilityEntityId,
+                controllerId = event.controllerId,
+                isYours = event.controllerId == viewingPlayerId
+            )
+
             // Only the controller (whose yield acted) sees the auto-answer note; it's their own
             // private preference, so opponents get nothing.
             is AbilityAutoAnsweredEvent ->
@@ -1448,6 +1489,10 @@ object ClientEventTransformer {
                         answer = event.answer
                     )
                 } else null
+
+            // Only the player whose triggers the game ordered hears about it; it's their preference.
+            is TriggersOrderedAutomaticallyEvent ->
+                if (event.playerId == viewingPlayerId) ClientEvent.TriggersOrderedAutomatically(event.count) else null
 
             is TappedEvent -> ClientEvent.PermanentTapped(
                 permanentId = event.entityId,
@@ -1603,13 +1648,6 @@ object ClientEventTransformer {
                 )
             }
 
-            is LoyaltyChangedEvent -> ClientEvent.CounterAdded(
-                permanentId = event.entityId,
-                permanentName = event.entityName,
-                counterType = CounterType.LOYALTY.printed,
-                count = event.change
-            )
-
             // The per-die events animate the roll; the instruction summary only feeds triggers.
             is DiceRolledEvent -> null
 
@@ -1722,6 +1760,10 @@ is PermanentsSacrificedEvent -> {
                 isYours = event.playerId == viewingPlayerId
             )
 
+            // The ballot's own decision line ("Opponent: (Selvala's Stampede) Chose Free") already
+            // logs each vote as it is cast; a second entry would only repeat it.
+            is VoteCastEvent -> null
+
             is CreatureTypeChosenEvent -> ClientEvent.CreatureTypeChosen(
                 playerId = event.playerId,
                 chosenType = event.chosenType,
@@ -1789,7 +1831,11 @@ is PermanentsSacrificedEvent -> {
                     revealingPlayerId = event.playerId,
                     cardIds = listOf(event.cardEntityId),
                     cardNames = listOf(event.cardName),
-                    source = "first draw reveal"
+                    // The overlay shows `source` as a card (its art and hover preview), so name the
+                    // permanent whose reveal this is — Primitive Etchings, God-Eternal Kefnet.
+                    source = event.revealedBy.firstNotNullOfOrNull { id ->
+                        state?.getEntity(id)?.get<com.wingedsheep.engine.state.components.identity.CardComponent>()?.name
+                    }
                 )
             }
 
@@ -1802,6 +1848,12 @@ is PermanentsSacrificedEvent -> {
                 newTargetId = event.newTargetId,
                 newTargetName = event.newTargetName,
                 sourceName = event.sourceName
+            )
+
+            is TeamBlockerChoiceEvent -> ClientEvent.DecisionMade(
+                playerId = event.playerId,
+                isYours = event.playerId == viewingPlayerId,
+                description = event.description,
             )
 
             is DecisionSubmittedEvent -> {
@@ -1837,10 +1889,10 @@ is PermanentsSacrificedEvent -> {
             is DamagePreventionShieldCreatedEvent,
             is BlockerDeclarationPolicyChangedEvent,
             is TextChangedEvent,
-            is LandTappedForManaEvent,
+            is com.wingedsheep.engine.core.TextBoxesExchangedEvent,
+            is PermanentTappedForManaEvent,
             is ManaAbilityResolvedEvent,
             is DecisionRequestedEvent,
-            is AbilityResolvedEvent,
             is SagaChapterResolvedEvent,
             is DiscardRequiredEvent,
             is LookedAtCardsEvent,
@@ -1854,6 +1906,9 @@ is PermanentsSacrificedEvent -> {
             is RingTemptedEvent,
             is ScriedEvent,
             is SurveiledEvent,
+            // Internal signal for "whenever you face a dilemma" triggers; the cast, activation or
+            // trigger whose modes were chosen is what the log shows.
+            is DilemmaFacedEvent,
             // Internal signal for "whenever you proliferate" triggers; the counters themselves are
             // surfaced by their own CountersAddedEvents.
             is ProliferatedEvent,
@@ -1874,6 +1929,10 @@ is PermanentsSacrificedEvent -> {
             // Cultivator); the three exiles or the Food's sacrifice are already surfaced by their
             // own zone-change / sacrifice events, so no separate client event.
             is ForagedEvent,
+            // Internal signal that fires "whenever you foretell a card" watcher triggers (Dream
+            // Devourer); the face-down exile is already surfaced by its own zone-change event, and
+            // the card's identity is hidden from opponents.
+            is ForetoldEvent,
             // Internal signal that fires "whenever you investigate" watcher triggers (Erdwal
             // Illuminator); the Clue itself is already surfaced by its own zone-change event.
             is InvestigatedEvent,
@@ -1885,6 +1944,9 @@ is PermanentsSacrificedEvent -> {
             // triggers; the draw, the discard and the +1/+1 counter are already surfaced by their
             // own events, so no separate client event.
             is PermanentConnivedEvent,
+            // Internal signal that fires "whenever a creature you control fights" watcher triggers;
+            // the fight's damage is already surfaced by its own DamageDealtEvents.
+            is CreatureFoughtEvent,
             // Internal signal that fires "exploits a creature" watcher triggers (Skull Skaab); the
             // sacrifice is already surfaced by PermanentsSacrificedEvent and the payoff by the
             // exploiting creature's own triggered/reflexive ability, so no separate client event.

@@ -192,6 +192,24 @@ value class CounterType(val name: String) {
         val BLIGHT = CounterType("BLIGHT")
         val COIN = CounterType("COIN")
         val FLOOD = CounterType("FLOOD")
+
+        /**
+         * Fuse counter (SPE — Pumpkin Bombs). A pure tally: the artifact deals damage equal to the
+         * number of fuse counters on it, so the bomb hits harder each time it changes hands.
+         */
+        val FUSE = CounterType("FUSE")
+
+        /**
+         * Foreshadow counter (IKO — Ominous Seas). A pure tally: one goes on each time its controller
+         * draws a card, and removing eight of them pays for an 8/8 Kraken token.
+         */
+        val FORESHADOW = CounterType("FORESHADOW")
+
+        /**
+         * Luck counter (TSP — Gemstone Caverns). A marker: the land begins the game with one when put
+         * onto the battlefield from an opening hand, and taps for any color while it has one.
+         */
+        val LUCK = CounterType("LUCK")
         val CHORUS = CounterType("CHORUS")
         val DREAM = CounterType("DREAM")
         val QUEST = CounterType("QUEST")
@@ -276,6 +294,13 @@ value class CounterType(val name: String) {
          * drawback goes with it.
          */
         val MANNEQUIN = CounterType("MANNEQUIN")
+
+        /**
+         * Incarnation counter (M21 — Nine Lives). A pure marker with no inherent rule: Nine Lives
+         * puts one on itself each time it prevents damage to you, and its state trigger exiles it at
+         * nine or more.
+         */
+        val INCARNATION = CounterType("INCARNATION")
 
         /**
          * Rev counter (DSK — Chainsaw). Passive storage counter with no inherent rule; the card's own
@@ -740,6 +765,13 @@ value class CounterType(val name: String) {
         val BOUNTY = CounterType("BOUNTY")
 
         /**
+         * Hit counter (GRN — Etrata, the Silencer). A passive mark on **cards in exile** with no
+         * inherent rule: Etrata exiles a creature with one on it, then reads how many exiled cards
+         * the damaged player owns that carry one ("loses the game if they own three or more").
+         */
+        val HIT = CounterType("HIT")
+
+        /**
          * Corpse counter (LEA — Scavenging Ghoul). A passive spendable store with no inherent rule:
          * the card's end-step trigger adds one per creature that died this turn, and its regeneration
          * ability removes one as its cost.
@@ -755,6 +787,27 @@ value class CounterType(val name: String) {
          * upkeep trigger may remove one to gain 1 life.
          */
         val VITALITY = CounterType("VITALITY")
+
+        /**
+         * Void counter (AFR — Sphere of Annihilation). A passive tally with no inherent rule: the
+         * card enters with X of them and its upkeep trigger exiles everything with mana value at
+         * most their number.
+         */
+        val VOID = CounterType("VOID")
+
+        /**
+         * Harmony counter (AFR — Instrument of the Bards). A passive tally with no inherent rule:
+         * its upkeep trigger may add one, and its search ability finds a creature card whose mana
+         * value equals their number.
+         */
+        val HARMONY = CounterType("HARMONY")
+
+        /**
+         * Enlightened counter (AFR — The Book of Exalted Deeds). A pure marker with no inherent
+         * rule: the Book puts one on the Angel it grants "You can't lose the game and your
+         * opponents can't win the game", and nothing reads it.
+         */
+        val ENLIGHTENED = CounterType("ENLIGHTENED")
 
         /**
          * Phyresis counter (DMU — Weatherlight Compleated). A passive tally with no inherent rule:
@@ -833,6 +886,116 @@ value class CounterType(val name: String) {
          */
         val STUDY = CounterType("STUDY")
 
+        /**
+         * Refine counter (STX — Uvilda, Dean of Perfection). A countdown on a card in exile: Uvilda puts
+         * three on the instant or sorcery she exiles, the abilities that card gains remove one each
+         * upkeep, and removing the last lets its owner cast it for {4} less.
+         */
+        val REFINE = CounterType("REFINE")
+
+        /**
+         * Voyage counter (KHM — Cosima, God of the Voyage). A tally on a card in exile with no inherent
+         * rule: the ability Cosima gains as she exiles herself adds one per land you control entering,
+         * and returning her reads the count for her +1/+1 counters and cards drawn.
+         */
+        val VOYAGE = CounterType("VOYAGE")
+
+        /**
+         * Ghostform counter (KHM — Kaya the Inexorable). A reminder with no rule of its own: the
+         * returning trigger Kaya's +1 grants keeps working even if the counter is removed.
+         */
+        val GHOSTFORM = CounterType("GHOSTFORM")
+
+        /**
+         * Night counter (KHM — Replicating Ring). A passive countdown with no inherent rule, unrelated
+         * to the day/night designation: the Ring's upkeep trigger adds one and, at eight, removes them
+         * all and makes eight Replicated Ring tokens.
+         */
+        val NIGHT = CounterType("NIGHT")
+
+        /**
+         * Task counter (THB — Heliod's Punishment). A passive countdown with no inherent rule: the
+         * Aura enters with four, and the "{T}" ability it grants the enchanted creature removes one,
+         * then destroys the Aura once none are left.
+         */
+        val TASK = CounterType("TASK")
+
+        /**
+         * Hour counter (ELD — Midnight Clock). A passive tally with no inherent rule: the Clock gains
+         * one each upkeep and from its activated ability, and "when the twelfth hour counter is put
+         * on" it (`getsCounters(HOUR, nth = 12)`) it resets your hand and exiles itself.
+         */
+        val HOUR = CounterType("HOUR")
+
+        /**
+         * Knowledge counter (ELD — The Magic Mirror). A passive tally with no inherent rule: the
+         * Mirror gains one each upkeep, then its controller draws a card for each.
+         */
+        val KNOWLEDGE = CounterType("KNOWLEDGE")
+
+        /**
+         * Phylactery counter (M19 — Phylactery Lich). A pure marker with no inherent rule: the Lich
+         * puts one on an artifact you control as it enters, and its state trigger sacrifices it when
+         * you control no permanent with one.
+         */
+        val PHYLACTERY = CounterType("PHYLACTERY")
+
+        /**
+         * Peace counter (TRK — Peace in Our Time). A passive tally with no inherent rule: the
+         * enchantment gains one each time a player trades their attack for a card, and wins the game
+         * for its controller at twelve.
+         */
+        val PEACE = CounterType("PEACE")
+
+        /**
+         * Promotion counter (TRK — Beckett Mariner, Impetuous Ensign). A passive tally with no
+         * inherent rule: one each time she becomes tapped, and at three they are removed and she
+         * deals 2 damage to each opponent.
+         */
+        val PROMOTION = CounterType("PROMOTION")
+
+        /**
+         * Prey counter (RIX — Tetzimoc, Primal Death). A pure marker with no inherent rule: the
+         * hand-activated ability puts one on a creature, and Tetzimoc's entry trigger
+         * destroys each opponent's creature that has one.
+         */
+        val PREY = CounterType("PREY")
+
+        /**
+         * Unity counter (AER — Call for Unity). A tally with no inherent rule: the revolt end-step
+         * trigger puts one on the enchantment, and its static anthem gives creatures you control
+         * +1/+1 for each one on it.
+         */
+        val UNITY = CounterType("UNITY")
+
+        /**
+         * Velocity counter (AER — Daredevil Dragster). A tally with no inherent rule: the Vehicle's
+         * end-of-combat trigger puts one on it after it attacked or blocked, then sacrifices it and
+         * draws two cards once it has two or more.
+         */
+        val VELOCITY = CounterType("VELOCITY")
+
+        /**
+         * Feeding counter (J25 — Nazar, the Velvet Fang). A tally with no inherent rule: a
+         * lifegain trigger puts one on the creature, and its attack trigger may remove three
+         * to draw three cards and lose 3 life.
+         */
+        val FEEDING = CounterType("FEEDING")
+
+        /**
+         * Isolation counter (BFZ — Quarantine Field). A pure marker with no inherent rule: the
+         * enchantment enters with X of them, and its entry trigger reads the count as the number
+         * of "up to one target" slots it gets.
+         */
+        val ISOLATION = CounterType("ISOLATION")
+
+        /**
+         * Crystal counter (BFZ — Prism Array). A pure marker with no inherent rule: the
+         * enchantment enters with one for each color of mana spent to cast it (converge), and
+         * removing one is the cost of its tap ability.
+         */
+        val CRYSTAL = CounterType("CRYSTAL")
+
         /** Every counter kind the SDK names, in declaration order. */
         val KNOWN: List<CounterType> = listOf(
             PLUS_ONE_PLUS_ONE,
@@ -892,6 +1055,9 @@ value class CounterType(val name: String) {
             BLIGHT,
             COIN,
             FLOOD,
+            FUSE,
+            FORESHADOW,
+            LUCK,
             CHORUS,
             DREAM,
             QUEST,
@@ -910,6 +1076,7 @@ value class CounterType(val name: String) {
             PAGE,
             HOOFPRINT,
             MANNEQUIN,
+            INCARNATION,
             REV,
             BLOODSTAIN,
             BLOOD,
@@ -967,9 +1134,13 @@ value class CounterType(val name: String) {
             COLLECTION,
             REPRIEVE,
             BOUNTY,
+            HIT,
             CORPSE,
             BRICK,
             VITALITY,
+            VOID,
+            HARMONY,
+            ENLIGHTENED,
             PHYRESIS,
             MUSTER,
             BRAIN,
@@ -982,6 +1153,22 @@ value class CounterType(val name: String) {
             EMBER,
             BOOK,
             STUDY,
+            REFINE,
+            VOYAGE,
+            GHOSTFORM,
+            NIGHT,
+            TASK,
+            HOUR,
+            KNOWLEDGE,
+            PHYLACTERY,
+            PEACE,
+            PROMOTION,
+            PREY,
+            UNITY,
+            VELOCITY,
+            FEEDING,
+            ISOLATION,
+            CRYSTAL,
         )
 
         /**

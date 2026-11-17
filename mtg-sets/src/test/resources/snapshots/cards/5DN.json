@@ -164,6 +164,65 @@
     ]
 }
 
+// Beacon of Immortality
+{
+    "name": "Beacon of Immortality",
+    "manaCost": "{5}{W}",
+    "typeLine": "Instant",
+    "oracleText": "Double target player's life total. Shuffle Beacon of Immortality into its owner's library.",
+    "script": {
+        "spellEffect": {
+            "type": "SetLifeTotal",
+            "amount": {
+                "type": "Multiply",
+                "amount": {
+                    "type": "LifeTotal",
+                    "player": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "multiplier": 2
+            },
+            "target": {
+                "type": "BoundVariable",
+                "name": "t0"
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetPlayer",
+                "id": "t0"
+            }
+        ],
+        "selfLibraryPlacementOnResolve": "Shuffled"
+    },
+    "metadata": {
+        "collectorNumber": "6",
+        "rarity": "RARE",
+        "artist": "Rob Alexander",
+        "flavorText": "The cave floods with light. A thousand rays shine forth and meld into one.",
+        "imageUri": "https://cards.scryfall.io/normal/front/6/0/601bb6d1-77f4-4ffe-94d0-bed74c33013b.jpg?1783944411",
+        "rulings": [
+            {
+                "date": "2007-07-15",
+                "text": "Beacon of Immortality's effect counts as life gain (or life loss, if the life total was negative) for effects that trigger on or replace life gain (or life loss)."
+            },
+            {
+                "date": "2007-07-15",
+                "text": "If a Beacon is countered or doesn't resolve, it's put into its owner's graveyard, not shuffled into the library."
+            },
+            {
+                "date": "2007-02-01",
+                "text": "If you double a negative life total, you do the real math. A life total of -10 becomes -20."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Blasting Station
 {
     "name": "Blasting Station",
@@ -768,6 +827,97 @@
     ]
 }
 
+// Engineered Explosives
+{
+    "name": "Engineered Explosives",
+    "manaCost": "{X}",
+    "typeLine": "Artifact",
+    "oracleText": "Sunburst (This artifact enters with a charge counter on it for each color of mana spent to cast it.)\n{2}, Sacrifice this artifact: Destroy each nonland permanent with mana value equal to the number of charge counters on this artifact.",
+    "keywords": [
+        "SUNBURST"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Engineered Explosives:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{2}"
+                            }
+                        },
+                        "CostSacrificeSelf"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "BattlefieldMatching",
+                                "filter": {
+                                    "cardPredicates": [
+                                        "IsNonland",
+                                        "IsPermanent",
+                                        {
+                                            "type": "ManaValueEqualsDynamic",
+                                            "amount": {
+                                                "type": "LastKnownSourceCounters",
+                                                "counterType": "CHARGE"
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            "storeAs": "destroyAll_gathered"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "destroyAll_gathered",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard"
+                            },
+                            "moveType": "Destroy"
+                        }
+                    ]
+                },
+                "descriptionOverride": "{2}, Sacrifice this artifact: Destroy each nonland permanent with mana value equal to the number of charge counters on this artifact."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "118",
+        "rarity": "RARE",
+        "artist": "Ron Spears",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/4/8492a272-e595-4f94-a6eb-08d29f211fd6.jpg?1783944383",
+        "rulings": [
+            {
+                "date": "2020-08-07",
+                "text": "You can choose any value for X as you cast Engineered Explosives. The value chosen for X doesn't directly affect the number of charge counters Engineered Explosives enters the battlefield with, but it does let you pay more mana and thus spend more colors of mana to cast it."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "Colorless mana won't give Engineered Explosives another charge counter. Colorless is not a color."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "Tokens that aren't a copy of something else don't have a mana cost. Anything without a mana cost normally has a mana value of 0."
+            },
+            {
+                "date": "2020-08-07",
+                "text": "If a permanent has {X} in its mana cost, X is considered to be 0."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
+}
+
 // Eternal Witness
 {
     "name": "Eternal Witness",
@@ -1126,6 +1276,68 @@
         "artist": "Doug Chaffee",
         "flavorText": "Goblin cannon crews are known not for their aim but for their ability to dive for cover.",
         "imageUri": "https://cards.scryfall.io/normal/front/b/0/b023c0cd-7046-418b-ad31-5c91c6930d45.jpg"
+    },
+    "colorIdentityOverride": []
+}
+
+// Guardian Idol
+{
+    "name": "Guardian Idol",
+    "manaCost": "{2}",
+    "typeLine": "Artifact",
+    "oracleText": "This artifact enters tapped.\n{T}: Add {C}.\n{2}: This artifact becomes a 2/2 Golem artifact creature until end of turn.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Guardian Idol:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Guardian Idol:2",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}"
+                    }
+                },
+                "effect": {
+                    "type": "BecomeCreature",
+                    "power": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "toughness": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "creatureTypes": [
+                        "Golem"
+                    ],
+                    "addTypes": [
+                        "ARTIFACT"
+                    ]
+                }
+            }
+        ],
+        "replacementEffects": [
+            "EntersTapped"
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "128",
+        "rarity": "UNCOMMON",
+        "artist": "Edward P. Beard, Jr.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/6/a6a62a73-b7db-47ec-9b68-65dd7c1a06a5.jpg?1783944380"
     },
     "colorIdentityOverride": []
 }
@@ -2210,6 +2422,87 @@
     ]
 }
 
+// Trinket Mage
+{
+    "name": "Trinket Mage",
+    "manaCost": "{2}{U}",
+    "typeLine": "Creature — Human Wizard",
+    "oracleText": "When this creature enters, you may search your library for an artifact card with mana value 1 or less, reveal that card, put it into your hand, then shuffle.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Trinket Mage:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "GatherCards",
+                                "source": {
+                                    "type": "FromZone",
+                                    "zone": "Library",
+                                    "filter": "artifact mv<=1"
+                                },
+                                "storeAs": "searchable",
+                                "search": true
+                            },
+                            {
+                                "type": "SelectFromCollection",
+                                "from": "searchable",
+                                "selection": {
+                                    "type": "ChooseUpTo",
+                                    "count": {
+                                        "type": "Fixed",
+                                        "amount": 1
+                                    }
+                                },
+                                "storeSelected": "found",
+                                "prompt": "Search your library for an artifact card with mana value 1 or less to put into your hand",
+                                "selectedLabel": "Put into your hand"
+                            },
+                            {
+                                "type": "MoveCollection",
+                                "from": "found",
+                                "destination": {
+                                    "type": "ToZone",
+                                    "zone": "Hand"
+                                },
+                                "revealed": true
+                            },
+                            "ShuffleLibrary",
+                            "EmitLibrarySearchedEvent"
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "39",
+        "artist": "Mark A. Nelson",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/c/4c5a41ab-1840-4abb-a8bb-f0b1e7d1b450.jpg?1783944402",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "If a card in a player's library has {X} in its mana cost, X is considered to be 0."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Tyrranax
 {
     "name": "Tyrranax",
@@ -2293,6 +2586,41 @@
     "colorIdentityOverride": [
         "WHITE"
     ]
+}
+
+// Vedalken Orrery
+{
+    "name": "Vedalken Orrery",
+    "manaCost": "{4}",
+    "typeLine": "Artifact",
+    "oracleText": "You may cast spells as though they had flash.",
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "GrantFlashToSpellType",
+                "filter": {},
+                "controllerOnly": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "163",
+        "rarity": "RARE",
+        "artist": "John Avon",
+        "flavorText": "The model incorporated the fifth sun effortlessly, as if it had always known.",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/4/94b546fa-af65-4afa-bb16-69b33674d3d1.jpg?1783944371",
+        "rulings": [
+            {
+                "date": "2010-06-15",
+                "text": "This applies only to casting spells. It does not, for example, change when you may activate abilities that can only be activated \"any time you could cast a sorcery\"."
+            },
+            {
+                "date": "2004-12-01",
+                "text": "The controller of Vedalken Orrery can cast nonland artifact, creature, enchantment, and sorcery cards any time they could cast an instant. This includes on other players' turns and during the upkeep step, draw step, combat phase, and end step."
+            }
+        ]
+    },
+    "colorIdentityOverride": []
 }
 
 // Viridian Scout

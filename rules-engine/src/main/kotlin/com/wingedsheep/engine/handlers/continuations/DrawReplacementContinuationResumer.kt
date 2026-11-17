@@ -3,6 +3,9 @@ package com.wingedsheep.engine.handlers.continuations
 import com.wingedsheep.engine.core.CardRevealedForMiracleEvent
 import com.wingedsheep.engine.core.DecisionResponse
 import com.wingedsheep.engine.core.MiracleRevealContinuation
+import com.wingedsheep.engine.core.OptionalFirstDrawRevealContinuation
+import com.wingedsheep.engine.handlers.effects.drawing.DrawCardPrimitive
+import com.wingedsheep.engine.handlers.effects.drawing.DrawLoop
 import com.wingedsheep.engine.core.EngineServices
 import com.wingedsheep.engine.core.ExecutionResult
 import com.wingedsheep.engine.core.GameEvent
@@ -20,8 +23,41 @@ class DrawReplacementContinuationResumer(
 
     override fun resumers(): List<ContinuationResumer<*>> = listOf(
         resumer(StaticDrawReplacementContinuation::class, ::resumeStaticDrawReplacement),
-        resumer(MiracleRevealContinuation::class, ::resumeMiracleReveal)
+        resumer(MiracleRevealContinuation::class, ::resumeMiracleReveal),
+        resumer(OptionalFirstDrawRevealContinuation::class, ::resumeOptionalFirstDrawReveal)
     )
+
+    /**
+     * Resume after the player answers an optional first-draw reveal ("you may reveal the first card
+     * you draw each turn as you draw it").
+     *
+     * Yes, with the card still in hand: emit [com.wingedsheep.engine.core.CardRevealedFromDrawEvent]
+     * naming only this source, so only its "whenever you reveal … this way" trigger fires (CR 607.1).
+     * No: nothing happens. Then the next "as you draw it" question (another source, the miracle
+     * reveal) is asked, or the rest of the draw instruction continues from the frame beneath.
+     */
+    fun resumeOptionalFirstDrawReveal(
+        state: GameState,
+        continuation: OptionalFirstDrawRevealContinuation,
+        response: DecisionResponse,
+        checkForMore: CheckForMore
+    ): ExecutionResult {
+        if (response !is YesNoResponse) {
+            return ExecutionResult.error(state, "Expected yes/no response for the first-draw reveal")
+        }
+        val inHand = continuation.cardId in
+            state.getZone(com.wingedsheep.engine.state.ZoneKey(continuation.playerId, com.wingedsheep.sdk.core.Zone.HAND))
+        if (!inHand) return checkForMore(state, emptyList())
+        val events = if (!response.choice) emptyList() else listOfNotNull(
+            DrawCardPrimitive.firstDrawRevealEvent(
+                state, continuation.playerId, continuation.cardId, listOf(continuation.sourceId)
+            )
+        )
+        return DrawLoop.askFirstDrawQuestion(
+            state, continuation.playerId, continuation.cardId,
+            continuation.laterSources, continuation.miracleCost, events
+        ) ?: checkForMore(state, events)
+    }
 
     /**
      * Resume after the player answers the miracle reveal question (CR 702.94a).
@@ -80,7 +116,8 @@ class DrawReplacementContinuationResumer(
                 drawingPlayerId = playerId,
                 remainingDraws = continuation.drawCount - 1,
                 isDrawStep = continuation.isDrawStep,
-                announcementApplied = true
+                announcementApplied = true,
+                cycledCardId = continuation.cycledCardId
             )
         )
         val events = mutableListOf<GameEvent>()
@@ -96,6 +133,7 @@ class DrawReplacementContinuationResumer(
             val effectContext = EffectContext(
                 controllerId = playerId,
                 sourceId = continuation.sourceId,
+                triggeringEntityId = continuation.cycledCardId,
             objectReferences = continuation.objectReferences,
                 targets = emptyList(),
                 programOrigin = com.wingedsheep.engine.handlers.effects.composite.EffectProgramInterpreter.startedBy(DrawReplacementContinuationResumer::class),
@@ -132,7 +170,7 @@ class DrawReplacementContinuationResumer(
             // announce = false: this is one card of a draw instruction that already went
             // through the CR 121.2a announcement before it paused on the prompt.
             val singleDrawResult = singleDrawExecutor.executeDraws(
-                stateWithDeclined, playerId, 1, announce = false
+                stateWithDeclined, playerId, 1, announce = false, cycledCardId = continuation.cycledCardId
             ).toExecutionResult()
             if (singleDrawResult.outcome is Outcome.Paused) {
                 return ExecutionResult.propagatePause(

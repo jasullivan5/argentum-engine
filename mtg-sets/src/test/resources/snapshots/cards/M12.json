@@ -39,6 +39,76 @@
     "colorIdentityOverride": []
 }
 
+// Aegis Angel
+{
+    "name": "Aegis Angel",
+    "manaCost": "{4}{W}{W}",
+    "typeLine": "Creature — Angel",
+    "oracleText": "Flying (This creature can't be blocked except by creatures with flying or reach.)\nWhen this creature enters, another target permanent gains indestructible for as long as you control this creature. (Effects that say \"destroy\" don't destroy it. A creature with indestructible can't be destroyed by damage.)",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Aegis Angel:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "GrantKeyword",
+                    "keyword": "INDESTRUCTIBLE",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "duration": {
+                        "type": "WhileYouControlSource",
+                        "sourceDescription": "Aegis Angel"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "permanent",
+                        "excludeSelf": true
+                    },
+                    "id": "t0"
+                },
+                "descriptionOverride": "When this creature enters, another target permanent gains indestructible for as long as you control this creature."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "1",
+        "rarity": "RARE",
+        "artist": "Aleksi Briclot",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/c/4cdc19da-21af-45e7-ad1f-fcacd84a8d89.jpg?1783941107",
+        "rulings": [
+            {
+                "date": "2013-07-01",
+                "text": "If another player gains control of Aegis Angel, the permanent will no longer have indestructible, even if you regain control of Aegis Angel."
+            },
+            {
+                "date": "2011-09-22",
+                "text": "If Aegis Angel leaves the battlefield, you no longer control it."
+            },
+            {
+                "date": "2011-09-22",
+                "text": "If Aegis Angel and the permanent would be destroyed simultaneously, only Aegis Angel will be destroyed."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Alabaster Mage
 {
     "name": "Alabaster Mage",
@@ -296,6 +366,61 @@
     "colorIdentityOverride": []
 }
 
+// Circle of Flame
+{
+    "name": "Circle of Flame",
+    "manaCost": "{1}{R}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever a creature without flying attacks you or a planeswalker you control, this enchantment deals 1 damage to that creature.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Circle of Flame:1",
+                "trigger": {
+                    "type": "AttackEvent",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            {
+                                "type": "NotKeyword",
+                                "keyword": "FLYING"
+                            }
+                        ],
+                        "statePredicates": [
+                            "IsAttackingYouOrYourPlaneswalkers"
+                        ]
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": "TriggeringEntity"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "127",
+        "rarity": "UNCOMMON",
+        "artist": "Jaime Jones",
+        "flavorText": "\"Which do you think is a better deterrent: a moat of water or one of fire?\"\n—Chandra Nalaar",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/1/419b1813-9760-47b9-b6f3-e501586cfe4d.jpg?1783941072",
+        "rulings": [
+            {
+                "date": "2014-07-18",
+                "text": "Circle of Flame's ability triggers only if a creature without flying is declared as an attacker during the declare attackers step. If a creature with flying attacks you or a planeswalker you control and then loses flying, or if a creature without flying is put onto the battlefield attacking you or a planeswalker you control, the ability won't trigger."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Dark Favor
 {
     "name": "Dark Favor",
@@ -444,6 +569,67 @@
     ]
 }
 
+// Frost Breath
+{
+    "name": "Frost Breath",
+    "manaCost": "{2}{U}",
+    "typeLine": "Instant",
+    "oracleText": "Tap up to two target creatures. Those creatures don't untap during their controller's next untap step.",
+    "script": {
+        "spellEffect": {
+            "type": "ForEach",
+            "space": "IterationSpace.Targets",
+            "body": {
+                "type": "Composite",
+                "effects": [
+                    {
+                        "type": "TapUntap",
+                        "target": {
+                            "type": "ContextTarget",
+                            "index": 0
+                        }
+                    },
+                    {
+                        "type": "GrantKeyword",
+                        "keyword": "DOESNT_UNTAP",
+                        "target": {
+                            "type": "ContextTarget",
+                            "index": 0
+                        },
+                        "duration": "UntilAfterAffectedControllersNextUntap"
+                    }
+                ]
+            }
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "count": 2,
+                "optional": true,
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "54",
+        "artist": "Mike Bierek",
+        "flavorText": "If you have to be stuck somewhere for a while, it's better to be stuck there with a friend.",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/7/1724ec5b-5437-4688-aa10-b327a0ae2654.jpg?1783941093",
+        "rulings": [
+            {
+                "date": "2020-06-23",
+                "text": "Frost Breath can target tapped creatures. If a targeted creature is already tapped when the spell resolves, that creature just remains tapped and doesn't untap during its controller's next untap step."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Gideon's Lawkeeper
 {
     "name": "Gideon's Lawkeeper",
@@ -525,6 +711,52 @@
     ]
 }
 
+// Goblin Fireslinger
+{
+    "name": "Goblin Fireslinger",
+    "manaCost": "{R}",
+    "typeLine": "Creature — Goblin Warrior",
+    "oracleText": "{T}: This creature deals 1 damage to target player or planeswalker.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Goblin Fireslinger:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetPlayerOrPlaneswalker",
+                        "id": "t0"
+                    }
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "139",
+        "artist": "Pete Venters",
+        "flavorText": "A rock between your eyes hurts. A burning rock between your eyes ruins your whole day.",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/c/3c11db78-f506-4af2-a7be-c7ac2c0ffcf3.jpg?1783941070"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Grand Abolisher
 {
     "name": "Grand Abolisher",
@@ -576,6 +808,114 @@
     ]
 }
 
+// Jace's Archivist
+{
+    "name": "Jace's Archivist",
+    "manaCost": "{1}{U}{U}",
+    "typeLine": "Creature — Vedalken Wizard",
+    "oracleText": "{U}, {T}: Each player discards their hand, then draws cards equal to the greatest number of cards a player discarded this way.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Jace's Archivist:1",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{U}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "StoreNumber",
+                            "name": "jacesArchivistGreatestDiscard",
+                            "amount": {
+                                "type": "GreatestAmongPlayers",
+                                "inner": {
+                                    "type": "Count",
+                                    "player": "You",
+                                    "zone": "Hand"
+                                }
+                            }
+                        },
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Players",
+                                "players": "Each"
+                            },
+                            "body": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "FromZone",
+                                            "zone": "Hand"
+                                        },
+                                        "storeAs": "discardedHand"
+                                    },
+                                    {
+                                        "type": "MoveCollection",
+                                        "from": "discardedHand",
+                                        "destination": {
+                                            "type": "ToZone",
+                                            "zone": "Graveyard"
+                                        },
+                                        "moveType": "Discard"
+                                    }
+                                ]
+                            }
+                        },
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Players",
+                                "players": "Each"
+                            },
+                            "body": {
+                                "type": "DrawCards",
+                                "count": {
+                                    "type": "VariableReference",
+                                    "variableName": "jacesArchivistGreatestDiscard"
+                                }
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "59",
+        "rarity": "RARE",
+        "artist": "James Ryman",
+        "flavorText": "\"This is a sacred duty. Master Beleren's trust has bought an eternity of my loyalty.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/7/47c6b294-3840-4007-a4e3-67309f6581dd.jpg?1783941092",
+        "rulings": [
+            {
+                "date": "2011-09-22",
+                "text": "If this ability causes a player to draw more cards than are left in their library, that player loses the game as a state-based action. If this ability causes all players to do this, the game is a draw."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Jade Mage
 {
     "name": "Jade Mage",
@@ -620,6 +960,47 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Lord of the Unreal
+{
+    "name": "Lord of the Unreal",
+    "manaCost": "{U}{U}",
+    "typeLine": "Creature — Human Wizard",
+    "oracleText": "Illusion creatures you control get +1/+1 and have hexproof. (They can't be the targets of spells or abilities your opponents control.)",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 1,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "creature Illusion ctrl:you"
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "HEXPROOF",
+                "filter": {
+                    "baseFilter": "creature Illusion ctrl:you"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "62",
+        "rarity": "RARE",
+        "artist": "Jason Chan",
+        "flavorText": "\"The dream does not end until I say so.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/0/b09140f6-fa75-4bee-9ca0-3a71cd2b5a7b.jpg?1783941091"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 
@@ -976,6 +1357,73 @@
     "colorIdentityOverride": []
 }
 
+// Tectonic Rift
+{
+    "name": "Tectonic Rift",
+    "manaCost": "{3}{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy target land. Creatures without flying can't block this turn.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Graveyard",
+                    "byDestruction": true
+                },
+                {
+                    "type": "CantBlockGroup",
+                    "filter": {
+                        "baseFilter": {
+                            "cardPredicates": [
+                                "IsCreature",
+                                {
+                                    "type": "NotKeyword",
+                                    "keyword": "FLYING"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "land"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "157",
+        "rarity": "UNCOMMON",
+        "artist": "John Avon",
+        "flavorText": "\"You will kneel before me, even if I have to split the earth under your feet!\"\n—Ash Kronor, Keldon warlord",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/9/e9838784-8c6d-4e64-bc34-e21efde99093.jpg?1783941064",
+        "rulings": [
+            {
+                "date": "2019-07-12",
+                "text": "If the target land is an illegal target by the time Tectonic Rift tries to resolve, the spell doesn't resolve. Creatures without flying will be able to block as normal. If the target is legal but not destroyed (most likely because it has indestructible), creatures without flying will be unable to block."
+            },
+            {
+                "date": "2019-07-12",
+                "text": "Because it doesn't modify the characteristics of creatures, Tectonic Rift can affect creatures that enter the battlefield or lose flying after the spell resolves, and it will stop affecting creatures that gain flying."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Titanic Growth
 {
     "name": "Titanic Growth",
@@ -1091,6 +1539,102 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Turn to Frog
+{
+    "name": "Turn to Frog",
+    "manaCost": "{1}{U}",
+    "typeLine": "Instant",
+    "oracleText": "Until end of turn, target creature loses all abilities and becomes a blue Frog with base power and toughness 1/1.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "RemoveAllAbilities",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                {
+                    "type": "SetCreatureSubtypes",
+                    "subtypes": [
+                        "Frog"
+                    ],
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "duration": "EndOfTurn"
+                },
+                {
+                    "type": "ChangeColor",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "colors": [
+                        "BLUE"
+                    ]
+                },
+                {
+                    "type": "SetBaseStats",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "power": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "toughness": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "duration": "EndOfTurn"
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "78",
+        "rarity": "UNCOMMON",
+        "artist": "Warren Mahy",
+        "flavorText": "\"Ribbit.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/4/b43d9a1e-0767-4a9b-81b4-4ff2f3dde1d5.jpg?1783941086",
+        "rulings": [
+            {
+                "date": "2014-07-18",
+                "text": "The creature will lose all other colors and creature types, but it will retain any other card types (such as artifact) or supertypes (such as legendary) it may have."
+            },
+            {
+                "date": "2014-07-18",
+                "text": "Turn to Frog overwrites all previous effects that set the creature's base power and toughness to specific values. Any power- or toughness-setting effects that start to apply after Turn to Frog resolves will overwrite this effect."
+            },
+            {
+                "date": "2014-07-18",
+                "text": "If the affected creature gains an ability after Turn to Frog resolves, it will keep that ability."
+            },
+            {
+                "date": "2014-07-18",
+                "text": "Effects that modify a creature's power and/or toughness, such as the effect of Titanic Growth, will apply to the creature no matter when they started to take effect. The same is true for any counters that change its power and/or toughness and effects that switch its power and toughness."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 

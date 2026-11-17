@@ -1,3 +1,74 @@
+// Academy Ruins
+{
+    "name": "Academy Ruins",
+    "manaCost": "",
+    "typeLine": "Legendary Land",
+    "oracleText": "{T}: Add {C}.\n{1}{U}, {T}: Put target artifact card from your graveyard on top of your library.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Academy Ruins:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Academy Ruins:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{1}{U}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "MoveToZone",
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    },
+                    "destination": "Library",
+                    "placement": "Top"
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "artifact own:you",
+                            "zone": "Graveyard"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "Put target artifact card from your graveyard on top of your library."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "269",
+        "rarity": "RARE",
+        "artist": "Zoltan Boros & Gabor Szikszai",
+        "flavorText": "Its secrets once wrought the greatest artifice ever known. Now crabs loot the rubble to decorate their shells.",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/f/af09af65-0a3b-42df-b0fd-372e2158beac.jpg?1783943196"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
 // Amrou Scout
 {
     "name": "Amrou Scout",
@@ -617,6 +688,50 @@
     ]
 }
 
+// Children of Korlis
+{
+    "name": "Children of Korlis",
+    "manaCost": "{W}",
+    "typeLine": "Creature — Human Rebel Cleric",
+    "oracleText": "Sacrifice this creature: You gain life equal to the life you've lost this turn. (Damage causes loss of life.)",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Children of Korlis:1",
+                "cost": "CostSacrificeSelf",
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "TurnTracking",
+                        "player": "You",
+                        "tracker": "LIFE_LOST_AMOUNT"
+                    }
+                },
+                "descriptionOverride": "Sacrifice this creature: You gain life equal to the life you've lost this turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "8",
+        "artist": "Quinton Hoover",
+        "flavorText": "\"We have a proud history of self-sacrifice. But it is easy, in these bleak times, to find one among us who is eager to die for any cause.\"\n—Tavalus, acolyte of Korlis",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/2/221a5895-bc21-4f10-b5fc-a4980fde843e.jpg?1783943257",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "The life you gain is based on the total amount of life you lost, not the difference in your life total from when the turn started. For example, if you lose 5 life and gain 3 life before activating the ability, the ability will cause you to gain 5 life, not 2."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Chronosavant
 {
     "name": "Chronosavant",
@@ -664,6 +779,85 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Clockspinning
+{
+    "name": "Clockspinning",
+    "manaCost": "{U}",
+    "typeLine": "Instant",
+    "oracleText": "Buyback {3} (You may pay an additional {3} as you cast this spell. If you do, put this card into your hand as it resolves.)\nChoose a counter on target permanent or suspended card. Remove that counter from that permanent or card or put another of those counters on it.",
+    "keywordAbilities": [
+        {
+            "type": "Kicker",
+            "manaCost": "{3}",
+            "displayPrefix": "Buyback",
+            "branchesEffect": false,
+            "declaredSlot": "BOUGHT_BACK"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "ChooseAction",
+            "choices": [
+                {
+                    "label": "Remove a counter from it",
+                    "effect": {
+                        "type": "RemoveAnyNumberOfCounters",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "maxTotal": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "minTotal": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    }
+                },
+                {
+                    "label": "Put another of those counters on it",
+                    "effect": {
+                        "type": "AddCountersOfChosenKind",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        }
+                    }
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "permanent",
+                    "alternatives": [
+                        {
+                            "baseFilter": {
+                                "statePredicates": [
+                                    "IsSuspended"
+                                ]
+                            },
+                            "zone": "Exile"
+                        }
+                    ]
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "53",
+        "artist": "Zoltan Boros & Gabor Szikszai",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/3/1323d548-e2fe-47c5-8df3-f181aed537c5.jpg?1783943246"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 
@@ -1342,6 +1536,97 @@
     ]
 }
 
+// Endrek Sahr, Master Breeder
+{
+    "name": "Endrek Sahr, Master Breeder",
+    "manaCost": "{4}{B}",
+    "typeLine": "Legendary Creature — Human Wizard",
+    "oracleText": "Whenever you cast a creature spell, create X 1/1 black Thrull creature tokens, where X is that spell's mana value.\nWhen you control seven or more Thrulls, sacrifice Endrek Sahr.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Endrek Sahr, Master Breeder:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "spellFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ]
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGERING_SPELL_MANA_VALUE"
+                    },
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "BLACK"
+                    ],
+                    "creatureTypes": [
+                        "Thrull"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/d/c/dc5604c5-4fff-4bb6-bf6d-69027e4eeb21.jpg?1783915255"
+                },
+                "descriptionOverride": "Whenever you cast a creature spell, create X 1/1 black Thrull creature tokens, where X is that spell's mana value."
+            }
+        ],
+        "stateTriggeredAbilities": [
+            {
+                "id": "Endrek Sahr, Master Breeder:2",
+                "condition": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "AggregateBattlefield",
+                        "player": "You",
+                        "filter": "permanent Thrull"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 7
+                    }
+                },
+                "effect": {
+                    "type": "SacrificeTarget",
+                    "target": "Self"
+                },
+                "descriptionOverride": "When you control seven or more Thrulls, sacrifice Endrek Sahr."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "106",
+        "rarity": "RARE",
+        "artist": "Mark Tedin",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/a/dac6faba-59f2-436f-addb-c53db2b0cc17.jpg?1783943233",
+        "rulings": [
+            {
+                "date": "2006-09-25",
+                "text": "The second ability is a state trigger. Once it triggers, it won't trigger again as long as the ability is on the stack. If the ability is countered and the trigger condition is still true, it will immediately trigger again."
+            },
+            {
+                "date": "2006-09-25",
+                "text": "When the second ability resolves, Endrek Sahr will be sacrificed regardless of how many Thrulls you control at that time, even if it's less than seven."
+            },
+            {
+                "date": "2006-09-25",
+                "text": "Face-down spells are creature spells, but they have mana value 0."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Errant Ephemeron
 {
     "name": "Errant Ephemeron",
@@ -1869,6 +2154,98 @@
     "colorIdentityOverride": [
         "GREEN"
     ]
+}
+
+// Gemstone Caverns
+{
+    "name": "Gemstone Caverns",
+    "manaCost": "",
+    "typeLine": "Legendary Land",
+    "oracleText": "If this card is in your opening hand and you're not the starting player, you may begin the game with Gemstone Caverns on the battlefield with a luck counter on it. If you do, exile a card from your hand.\n{T}: Add {C}. If Gemstone Caverns has a luck counter on it, instead add one mana of any color.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Gemstone Caverns:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.WhenCondition",
+                        "condition": {
+                            "type": "EntityMatches",
+                            "entity": "Self",
+                            "filter": {
+                                "statePredicates": [
+                                    {
+                                        "type": "HasCounter",
+                                        "counterType": "LUCK"
+                                    }
+                                ]
+                            }
+                        }
+                    },
+                    "then": "AddManaOfChoice",
+                    "otherwise": {
+                        "type": "AddColorlessMana",
+                        "amount": {
+                            "type": "Fixed",
+                            "amount": 1
+                        }
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true,
+                "descriptionOverride": "{T}: Add {C}. If Gemstone Caverns has a luck counter on it, instead add one mana of any color."
+            }
+        ],
+        "beginOnBattlefield": {
+            "onlyIf": "IsNotYourTurn",
+            "counters": {
+                "LUCK": 1
+            },
+            "then": {
+                "type": "Composite",
+                "effects": [
+                    {
+                        "type": "GatherCards",
+                        "source": {
+                            "type": "FromZone",
+                            "zone": "Hand"
+                        },
+                        "storeAs": "hand"
+                    },
+                    {
+                        "type": "SelectFromCollection",
+                        "from": "hand",
+                        "selection": {
+                            "type": "ChooseExactly",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 1
+                            }
+                        },
+                        "storeSelected": "exiled",
+                        "prompt": "Choose a card to exile"
+                    },
+                    {
+                        "type": "MoveCollection",
+                        "from": "exiled",
+                        "destination": {
+                            "type": "ToZone",
+                            "zone": "Exile"
+                        }
+                    }
+                ]
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "274",
+        "rarity": "RARE",
+        "artist": "Martina Pilcerova",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/4/94d74254-4750-4fb3-9e53-473a5f98b315.jpg?1783943194"
+    },
+    "colorIdentityOverride": []
 }
 
 // Grapeshot
@@ -2468,6 +2845,71 @@
     ]
 }
 
+// Kaervek the Merciless
+{
+    "name": "Kaervek the Merciless",
+    "manaCost": "{5}{B}{R}",
+    "typeLine": "Legendary Creature — Human Shaman",
+    "oracleText": "Whenever an opponent casts a spell, Kaervek deals damage equal to that spell's mana value to any target.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Kaervek the Merciless:1",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "ContextProperty",
+                        "key": "TRIGGERING_SPELL_MANA_VALUE"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "AnyTarget",
+                    "id": "t0"
+                },
+                "descriptionOverride": "Whenever an opponent casts a spell, Kaervek deals damage equal to that spell's mana value to any target."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "242",
+        "rarity": "RARE",
+        "artist": "rk post",
+        "flavorText": "\"Rats and jackals feast in his swath, but even they will not walk with him.\"\n—Mangara",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/4/444fa5a5-b5b0-4555-bd69-67c1c0cbf317.jpg?1783943201",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "An ability that triggers when a player casts a spell resolves before the spell that caused it to trigger. It resolves even if that spell is countered."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "Alternative costs, additional costs, and cost reductions don't change a spell's mana value. Its mana value is still based on its mana cost."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "For spells with {X} in their mana costs, use the value chosen for X to determine the spell's mana value."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
 // Keldon Halberdier
 {
     "name": "Keldon Halberdier",
@@ -2744,6 +3186,124 @@
     ]
 }
 
+// Mogg War Marshal
+{
+    "name": "Mogg War Marshal",
+    "manaCost": "{1}{R}",
+    "typeLine": "Creature — Goblin Warrior",
+    "oracleText": "Echo {1}{R} (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)\nWhen this creature enters or dies, create a 1/1 red Goblin creature token.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "ECHO"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Mogg War Marshal:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.MayPay",
+                        "cost": {
+                            "type": "PayManaCost",
+                            "cost": "{1}{R}"
+                        }
+                    },
+                    "then": {
+                        "type": "Composite",
+                        "effects": []
+                    },
+                    "otherwise": {
+                        "type": "SacrificeTarget",
+                        "target": "Self"
+                    },
+                    "descriptionOverride": "Pay echo {1}{R}, or sacrifice this permanent?"
+                },
+                "interveningIf": {
+                    "type": "All",
+                    "conditions": [
+                        {
+                            "type": "SourceInZone",
+                            "zones": [
+                                "Battlefield"
+                            ]
+                        },
+                        {
+                            "type": "Not",
+                            "condition": {
+                                "type": "EntityMatches",
+                                "entity": "Self",
+                                "filter": {
+                                    "statePredicates": [
+                                        {
+                                            "type": "ControlledContinuouslySince",
+                                            "since": "YOUR_LAST_UPKEEP"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    ]
+                },
+                "descriptionOverride": "Echo {1}{R} (At the beginning of your upkeep, if this came under your control since the beginning of your last upkeep, sacrifice it unless you pay its echo cost.)"
+            },
+            {
+                "id": "Mogg War Marshal:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "RED"
+                    ],
+                    "creatureTypes": [
+                        "Goblin"
+                    ]
+                }
+            },
+            {
+                "id": "Mogg War Marshal:3",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "RED"
+                    ],
+                    "creatureTypes": [
+                        "Goblin"
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "170",
+        "artist": "Wayne England",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/b/8b9e0bdb-b615-447a-b80d-d7244c25c56e.jpg"
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Momentary Blink
 {
     "name": "Momentary Blink",
@@ -2870,6 +3430,75 @@
     ]
 }
 
+// Nether Traitor
+{
+    "name": "Nether Traitor",
+    "manaCost": "{B}{B}",
+    "typeLine": "Creature — Spirit",
+    "oracleText": "Haste\nShadow (This creature can block or be blocked by only creatures with shadow.)\nWhenever another creature is put into your graveyard from the battlefield, you may pay {B}. If you do, return this card from your graveyard to the battlefield.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "keywords": [
+        "HASTE",
+        "SHADOW"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Nether Traitor:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature own:you",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.MayPay",
+                        "cost": {
+                            "type": "PayManaCost",
+                            "cost": "{B}"
+                        }
+                    },
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": "Self",
+                        "destination": "Battlefield",
+                        "fromZone": "Graveyard"
+                    }
+                },
+                "activeZones": [
+                    "Graveyard"
+                ],
+                "descriptionOverride": "Whenever another creature is put into your graveyard from the battlefield, you may pay {B}. If you do, return Nether Traitor from your graveyard to the battlefield."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "120",
+        "rarity": "RARE",
+        "artist": "Vance Kovacs",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/1/911d2271-8998-4193-9d1a-1768c5dfaaad.jpg?1783943230",
+        "rulings": [
+            {
+                "date": "2021-03-19",
+                "text": "If multiple creatures are put into your graveyard at the same time, Nether Traitor's ability triggers for each of them. Once you return it to the battlefield, you may pay {B} for the other abilities as they resolve, but they'll have no effect if you do. Even if Nether Traitor returns to your graveyard, it's considered a new object and won't be returned."
+            },
+            {
+                "date": "2021-03-19",
+                "text": "If Nether Traitor and another creature are put into your graveyard at the same time, Nether Traitor's ability won't trigger. This is because it must be in your graveyard before the creature dies in order for its ability that returns it to the battlefield to trigger."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Ophidian Eye
 {
     "name": "Ophidian Eye",
@@ -2915,6 +3544,48 @@
         "collectorNumber": "70",
         "artist": "Zoltan Boros & Gabor Szikszai",
         "imageUri": "https://cards.scryfall.io/normal/front/2/6/26836ff5-b3c3-4b10-af1e-df3658781cb2.jpg?1783943242"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
+    ]
+}
+
+// Paradox Haze
+{
+    "name": "Paradox Haze",
+    "manaCost": "{2}{U}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant player\nAt the beginning of enchanted player's first upkeep each turn, that player gets an additional upkeep step after this step.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Paradox Haze:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP",
+                    "player": "EnchantedPlayer"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddAdditionalUpkeepSteps",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "afterThisStep": true
+                },
+                "interveningIf": "IsFirstUpkeepStepOfTurn",
+                "descriptionOverride": "At the beginning of enchanted player's first upkeep each turn, that player gets an additional upkeep step after this step."
+            }
+        ],
+        "auraTarget": "TargetPlayer"
+    },
+    "metadata": {
+        "collectorNumber": "71",
+        "rarity": "UNCOMMON",
+        "artist": "Greg Staples",
+        "flavorText": "\"Keep your pace steady through the haze, lest you step on the heels of your future self or trip the self a moment behind you.\"\n—Teferi",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/7/a7c74def-83e5-4420-989d-2304bf4743ae.jpg?1783943242"
     },
     "colorIdentityOverride": [
         "BLUE"
@@ -3485,6 +4156,119 @@
     ]
 }
 
+// Scion of the Ur-Dragon
+{
+    "name": "Scion of the Ur-Dragon",
+    "manaCost": "{W}{U}{B}{R}{G}",
+    "typeLine": "Legendary Creature — Dragon Avatar",
+    "oracleText": "Flying\n{2}: Search your library for a Dragon permanent card and put it into your graveyard. If you do, Scion of the Ur-Dragon becomes a copy of that card until end of turn. Then shuffle.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Scion of the Ur-Dragon:1",
+                "cost": {
+                    "type": "CostAtomWrapper",
+                    "atom": {
+                        "type": "AtomMana",
+                        "cost": "{2}"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Library",
+                                "filter": "permanent Dragon"
+                            },
+                            "storeAs": "gathered0",
+                            "search": true
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "gathered0",
+                            "selection": {
+                                "type": "ChooseUpTo",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "selected1",
+                            "prompt": "Search your library for a Dragon permanent card to put into your graveyard"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "selected1",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard"
+                            },
+                            "storeMovedAs": "moved2"
+                        },
+                        {
+                            "type": "Gated",
+                            "gate": {
+                                "type": "Gate.WhenCondition",
+                                "condition": {
+                                    "type": "CollectionContainsMatch",
+                                    "collection": "moved2"
+                                }
+                            },
+                            "then": {
+                                "type": "EachPermanentBecomesCopyOfTarget",
+                                "target": {
+                                    "type": "PipelineTarget",
+                                    "collectionName": "moved2"
+                                },
+                                "duration": "EndOfTurn",
+                                "affected": "Self",
+                                "sourceFromAnyZone": true
+                            }
+                        },
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
+                    ]
+                },
+                "descriptionOverride": "Search your library for a Dragon permanent card and put it into your graveyard. If you do, Scion of the Ur-Dragon becomes a copy of that card until end of turn. Then shuffle."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "246",
+        "rarity": "RARE",
+        "artist": "Jim Murray",
+        "flavorText": "\"I am the blood of the ur-dragon, coursing through all dragonkind.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/f/efb6f85b-60e9-4191-b557-ec952b7f22fc.jpg?1783943200",
+        "rulings": [
+            {
+                "date": "2006-09-25",
+                "text": "Removing the other Dragon card from your graveyard has no effect on Scion of the Ur-Dragon."
+            },
+            {
+                "date": "2006-09-25",
+                "text": "When Scion of the Ur-Dragon becomes a copy of another Dragon, it loses its copy ability for the rest of the turn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLUE",
+        "BLACK",
+        "RED",
+        "GREEN"
+    ]
+}
+
 // Scryb Ranger
 {
     "name": "Scryb Ranger",
@@ -3713,6 +4497,73 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Sprite Noble
+{
+    "name": "Sprite Noble",
+    "manaCost": "{1}{U}{U}",
+    "typeLine": "Creature — Faerie Noble",
+    "oracleText": "Flying\nOther creatures you control with flying get +0/+1.\n{T}: Other creatures you control with flying get +1/+0 until end of turn.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Sprite Noble:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature kw:flying ctrl:you",
+                            "excludeSelf": true
+                        }
+                    },
+                    "body": {
+                        "type": "ModifyStats",
+                        "powerModifier": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "toughnessModifier": {
+                            "type": "Fixed",
+                            "amount": 0
+                        },
+                        "target": "IterationEntity"
+                    }
+                },
+                "descriptionOverride": "{T}: Other creatures you control with flying get +1/+0 until end of turn."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifyStats",
+                "powerBonus": 0,
+                "toughnessBonus": 1,
+                "filter": {
+                    "baseFilter": "creature kw:flying ctrl:you",
+                    "excludeSelf": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "81",
+        "rarity": "RARE",
+        "artist": "Randy Gallegos",
+        "flavorText": "\"By thorn and by stone, we will fight to see the day when beauty returns to this world.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/d/0de52e53-8a45-4c0a-bb7d-6dc0d659a7c0.jpg?1783943240"
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 

@@ -21,6 +21,18 @@ object ZoneReturnService {
         }
         // Consume first: returning an object can itself cause another zone transition.
         var newState = state.copy(zoneReturns = remaining)
+        // Everything one departure returns to the battlefield enters as one simultaneous event
+        // ("those cards all return to the battlefield at the same time"): a shared entry group, and
+        // entry replacements read off the board as it stood before any of them arrived.
+        val battlefieldReturns = due.count {
+            it.previousZone == Zone.BATTLEFIELD && newState.isCurrentObject(it.movedObject) &&
+                newState.getEntity(it.movedObject.entityId)?.has<TokenComponent>() == false
+        }
+        val (entryGroup, entryBoard) = if (battlefieldReturns > 1) {
+            val (group, allocated) = newState.newRoutingId()
+            newState = allocated
+            group to allocated
+        } else null to null
         val events = mutableListOf<GameEvent>()
         val transitions = mutableListOf<ZoneTransitionOutcome>()
         for (entry in due) {
@@ -30,8 +42,31 @@ object ZoneReturnService {
             if (container.has<TokenComponent>()) continue
             val owner = container.get<CardComponent>()?.ownerId ?: continue
             val origin = newState.logicalZone(id)
+            // A card that asks a question as it would enter ("you may discard a land card instead",
+            // EntersOnlyIfPaid) can't be asked here — a zone transition can't pause — so its return
+            // is queued as a replacement rider: the single-card move it runs asks, pauses and
+            // replays at the next boundary, before anything else happens (no trigger, no SBA).
+            if (entry.previousZone == Zone.BATTLEFIELD && EntryPayment.enteringCost(
+                    newState, id, null, zones.cardRegistry, zones.predicateEvaluator) != null
+            ) {
+                newState = newState.copy(pendingReplacementRiders = newState.pendingReplacementRiders +
+                    com.wingedsheep.engine.replacement.PendingReplacementRider(
+                        effect = com.wingedsheep.sdk.scripting.effects.MoveToZoneEffect(
+                            target = com.wingedsheep.sdk.scripting.targets.EffectTarget.TriggeringEntity,
+                            destination = Zone.BATTLEFIELD,
+                            fromZone = origin?.zoneType,
+                        ),
+                        hostId = id, controllerId = owner, subjectId = id,
+                    ))
+                continue
+            }
             val result = zones.moveToZone(
-                newState, id, entry.previousZone, ZoneEntryOptions(controllerId = owner)
+                newState, id, entry.previousZone,
+                ZoneEntryOptions(
+                    controllerId = owner,
+                    simultaneousEntryGroup = entryGroup.takeIf { entry.previousZone == Zone.BATTLEFIELD },
+                    entryCounterReplacementState = entryBoard.takeIf { entry.previousZone == Zone.BATTLEFIELD },
+                )
             )
             newState = result.state
             events.addAll(result.events.map {

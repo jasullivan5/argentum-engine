@@ -2,8 +2,11 @@ package com.wingedsheep.engine.registry
 
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.core.TypeLine
+import com.wingedsheep.sdk.scripting.CardNamePool
 import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.CharacteristicValue
+import com.wingedsheep.sdk.model.CreatureStats
 import com.wingedsheep.sdk.model.ScryfallMetadata
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
@@ -33,6 +36,19 @@ class CardRegistryTest : FunSpec({
         name = "Forest",
         subtype = Subtype.FOREST,
         metadata = ScryfallMetadata(collectorNumber = collectorNumber),
+    )
+
+    fun land(name: String, typeLine: String = "Land") = CardDefinition(
+        name = name,
+        manaCost = ManaCost.ZERO,
+        typeLine = TypeLine.parse(typeLine),
+    )
+
+    fun typedCreature(name: String, typeLine: String) = CardDefinition(
+        name = name,
+        manaCost = ManaCost.ZERO,
+        typeLine = TypeLine.parse(typeLine),
+        creatureStats = CreatureStats(1, 1),
     )
 
     fun power(card: CardDefinition?) = card?.creatureStats?.power
@@ -95,5 +111,48 @@ class CardRegistryTest : FunSpec({
         live.allCardNames() shouldContainExactlyInAnyOrder listOf("Grizzly Bears", "Forest")
         live.landCardNames() shouldContainExactly listOf("Forest")
         live.getCard("Grizzly Bears")?.name shouldBe "Grizzly Bears"
+    }
+
+    test("the nonbasic-land pool offers lands without the Basic supertype, across both layers") {
+        val live = CardRegistry().apply {
+            register(listOf(forest(), land("Wastes", "Basic Land"), land("Field of Ruin"), bear("Grizzly Bears", 2)))
+        }
+        val overlay = CardRegistry(parent = live).apply { register(land("Okina, Temple to the Grandfathers", "Legendary Land")) }
+
+        live.cardNamesIn(CardNamePool.NONBASIC_LAND) shouldContainExactly listOf("Field of Ruin")
+        overlay.cardNamesIn(CardNamePool.NONBASIC_LAND) shouldContainExactlyInAnyOrder listOf("Field of Ruin", "Okina, Temple to the Grandfathers")
+        overlay.cardNamesIn(CardNamePool.LAND) shouldContainExactlyInAnyOrder listOf("Forest", "Wastes", "Field of Ruin", "Okina, Temple to the Grandfathers")
+    }
+
+    test("the artifact pool offers every card whose type line includes Artifact, across both layers") {
+        val relic = land("Darksteel Relic", "Artifact")
+        val live = CardRegistry().apply { register(listOf(forest(), relic, bear("Grizzly Bears", 2))) }
+        val overlay = CardRegistry(parent = live).apply { register(land("Sol Ring", "Artifact")) }
+
+        live.cardNamesIn(CardNamePool.ARTIFACT) shouldContainExactly listOf("Darksteel Relic")
+        overlay.cardNamesIn(CardNamePool.ARTIFACT) shouldContainExactlyInAnyOrder listOf("Darksteel Relic", "Sol Ring")
+        // The overlay redefines the relic as a non-artifact: its parent entry is shadowed, not merged.
+        CardRegistry(parent = live).apply { register(bear("Darksteel Relic", 1)) }
+            .cardNamesIn(CardNamePool.ARTIFACT) shouldBe emptySet()
+    }
+
+    test("the nonartifact-nonland pool drops artifacts, lands and artifact lands, across both layers") {
+        val live = CardRegistry().apply {
+            register(listOf(forest(), land("Darksteel Relic", "Artifact"), land("Seat of the Synod", "Artifact Land"), bear("Grizzly Bears", 2)))
+        }
+        val overlay = CardRegistry(parent = live).apply { register(bear("Hill Giant", 4)) }
+
+        live.cardNamesIn(CardNamePool.NONARTIFACT_NONLAND) shouldContainExactly listOf("Grizzly Bears")
+        overlay.cardNamesIn(CardNamePool.NONARTIFACT_NONLAND) shouldContainExactlyInAnyOrder listOf("Grizzly Bears", "Hill Giant")
+    }
+
+    test("the creature pool offers creature names, artifact creatures included, across both layers") {
+        val live = CardRegistry().apply {
+            register(listOf(forest(), land("Darksteel Relic", "Artifact"), typedCreature("Dryad Arbor", "Land Creature — Forest Dryad"), bear("Grizzly Bears", 2)))
+        }
+        val overlay = CardRegistry(parent = live).apply { register(typedCreature("Ornithopter", "Artifact Creature — Thopter")) }
+
+        live.cardNamesIn(CardNamePool.CREATURE) shouldContainExactlyInAnyOrder listOf("Grizzly Bears", "Dryad Arbor")
+        overlay.cardNamesIn(CardNamePool.CREATURE) shouldContainExactlyInAnyOrder listOf("Grizzly Bears", "Dryad Arbor", "Ornithopter")
     }
 })

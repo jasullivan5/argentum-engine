@@ -15,6 +15,7 @@ export type GameAction =
   | CycleCardAction
   | TypecycleCardAction
   | PlotCardAction
+  | ForetellCardAction
   | PutCompanionIntoHandAction
   | SuspendCardFromHandAction
   | CrewVehicleAction
@@ -69,11 +70,9 @@ export interface AdditionalCostPayment {
   readonly revealedCards?: readonly EntityId[]
   readonly tappedPermanents?: readonly EntityId[]
   readonly bouncedPermanents?: readonly EntityId[]
-  readonly counterRemovals?: Readonly<Record<EntityId, number>>
   /**
    * Typed counter-removal entries — each entry removes `count` counters of
-   * `counterType` from `entityId`. Preferred over the legacy `counterRemovals`
-   * map (engine still accepts that as a fallback for older clients).
+   * `counterType` from `entityId`. The only counter-removal channel the engine reads.
    */
   readonly distributedCounterRemovals?: ReadonlyArray<{
     entityId: EntityId
@@ -81,10 +80,16 @@ export interface AdditionalCostPayment {
     count: number
   }>
   readonly blightTargets?: readonly EntityId[]
+  readonly counterPlacementTargets?: readonly EntityId[]
   /** X chosen for `AdditionalCost.BlightVariable` (e.g., Soul Immolation). */
   readonly blightAmount?: number
   /** X chosen for `AdditionalCost.PayXLife` (e.g., Vicious Rivalry). */
   readonly payXLifeAmount?: number
+  /**
+   * The opponent named to gain life for an "an opponent gains N life" alternative cost
+   * (`AdditionalCost.OthersGainLife`, Invigorate). Pre-filled by the server on each per-opponent cast.
+   */
+  readonly lifeGainRecipient?: EntityId
   /**
    * Permanents chosen for a variable-count permanent cost — the payer decides how many
    * (`CostAtom.VariablePermanents`). Carries the creatures tapped to pay a Teamwork N cost
@@ -133,6 +138,8 @@ export interface CastSpellAction {
    * "SELF_ALTERNATIVE", "MIRACLE"). Used by the action menu to identify the impending cast option.
    */
   readonly alternativeCostType?: string
+  /** Server-selected beam me up granter (null = the card's printed ability); echoed unchanged. */
+  readonly beamMeUpSource?: EntityId | null
   /** Server-selected escape cost; echoed unchanged with the cast action. */
   readonly escapeAbility?: { readonly cost: unknown; readonly additionalCost?: unknown } | null
   /**
@@ -262,6 +269,11 @@ export interface CycleCardAction {
    * engine raises its own ChooseNumber decision rather than defaulting X to 0.
    */
   readonly xValue?: number
+  /**
+   * Which cycling ability: omitted for the card's printed cycling, else the permanent granting
+   * cycling to cards in hand (Rhet-Tomb Mystic). Echoed back from the server's legal action.
+   */
+  readonly grantedBy?: EntityId
 }
 
 export interface TypecycleCardAction {
@@ -278,6 +290,18 @@ export interface TypecycleCardAction {
  */
 export interface PlotCardAction {
   readonly type: 'PlotCard'
+  readonly playerId: EntityId
+  readonly cardId: EntityId
+  readonly paymentStrategy?: PaymentStrategy
+}
+
+/**
+ * Foretell a card from hand (CR 702.143, Kaldheim).
+ * Special action during your turn — pays {2} and exiles the card face down. The foretold card
+ * becomes castable from exile for its foretell cost on a later turn.
+ */
+export interface ForetellCardAction {
+  readonly type: 'ForetellCard'
   readonly playerId: EntityId
   readonly cardId: EntityId
   readonly paymentStrategy?: PaymentStrategy
@@ -315,6 +339,8 @@ export interface CrewVehicleAction {
   readonly playerId: EntityId
   readonly vehicleId: EntityId
   readonly crewCreatures: readonly EntityId[]
+  /** Pays the Vehicle's alternative crew cost (Heart of Kiran) instead of tapping creatures. */
+  readonly alternativeCostFrom?: EntityId | null
 }
 
 // =============================================================================
@@ -489,6 +515,8 @@ export function getActionSubject(action: GameAction): EntityId | null {
     case 'TypecycleCard':
       return action.cardId
     case 'PlotCard':
+      return action.cardId
+    case 'ForetellCard':
       return action.cardId
     case 'PutCompanionIntoHand':
       return action.cardId

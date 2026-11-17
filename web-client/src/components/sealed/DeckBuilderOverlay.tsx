@@ -44,10 +44,10 @@ import ls from '../draft/limitedScreen.module.css'
 import { ChatButton } from '@/components/messages/ChatButton'
 
 /**
- * Hard per-card copy cap while deckbuilding (basic lands exempt, managed via `landCounts`). Mirrors
- * `TournamentLobby.MAX_COPIES_PER_CARD` and the cap enforced in `addCardToDeck`.
+ * Pool Play's per-card copy cap when an older server doesn't send `maxCopiesPerCard`. Mirrors
+ * `TournamentLobby.MAX_COPIES_PER_CARD`.
  */
-const MAX_COPIES_PER_CARD = 4
+const POOL_PLAY_COPY_CAP = 4
 
 /**
  * Deck Builder overlay for sealed draft mode.
@@ -448,10 +448,12 @@ function DeckBuilder({ state }: { state: DeckBuildingState }) {
     for (const [name, { card, totalCount }] of Object.entries(poolCardCounts)) {
       const inDeckCount = deckCardCounts[name] || 0
       // In Pool Play the pool is the whole cube and copies are unlimited, so a card is never
-      // consumed — what's left to add is the 4-of cap minus what's already in the deck.
+      // consumed — what's left to add is the copy cap minus what's already in the deck. Otherwise
+      // it is the copies opened, further capped when the lobby limits copies.
+      const copyCap = state.maxCopiesPerCard ?? (state.poolPlay ? POOL_PLAY_COPY_CAP : Infinity)
       const availableCount = state.poolPlay
-        ? MAX_COPIES_PER_CARD - inDeckCount
-        : totalCount - inDeckCount
+        ? copyCap - inDeckCount
+        : Math.min(totalCount, copyCap) - inDeckCount
       if (availableCount > 0) {
         if (archetypeFilter) {
           const cardColors = getCardColors(card)
@@ -499,7 +501,7 @@ function DeckBuilder({ state }: { state: DeckBuildingState }) {
         return getRarityOrder(a.card) - getRarityOrder(b.card) || getCmc(a.card) - getCmc(b.card)
       }
     })
-  }, [state.cardPool, state.deck, state.poolPlay, sortBy, colorFilter, colorMode, typeFilter, creatureTypeFilter, matchesSearch, archetypeFilter, commanderIdentity, restrictToCommanderIdentity])
+  }, [state.cardPool, state.deck, state.poolPlay, state.maxCopiesPerCard, sortBy, colorFilter, colorMode, typeFilter, creatureTypeFilter, matchesSearch, archetypeFilter, commanderIdentity, restrictToCommanderIdentity])
 
   // "Cards left to add" is only a meaningful total when the pool is finite. In Pool Play every card
   // is always available, so count distinct cards on offer instead of copies.
@@ -1093,7 +1095,7 @@ function DeckBuilder({ state }: { state: DeckBuildingState }) {
               style={{ color: '#666', fontSize: 12, marginLeft: 'auto' }}
               title={
                 state.poolPlay
-                  ? `Pool Play: the whole cube is available, up to ${MAX_COPIES_PER_CARD} copies of any card`
+                  ? `Pool Play: the whole cube is available, up to ${state.maxCopiesPerCard ?? POOL_PLAY_COPY_CAP} copies of any card`
                   : undefined
               }
             >

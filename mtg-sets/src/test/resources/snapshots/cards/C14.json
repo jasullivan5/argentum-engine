@@ -1,3 +1,88 @@
+// Angelic Field Marshal
+{
+    "name": "Angelic Field Marshal",
+    "manaCost": "{2}{W}{W}",
+    "typeLine": "Creature — Angel",
+    "oracleText": "Flying\nLieutenant — As long as you control your commander, this creature gets +2/+2 and creatures you control have vigilance.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "ConditionalStaticAbility",
+                "ability": {
+                    "type": "CompositeStaticAbility",
+                    "abilities": [
+                        {
+                            "type": "ModifyStats",
+                            "powerBonus": 2,
+                            "toughnessBonus": 2,
+                            "filter": {
+                                "baseFilter": "permanent",
+                                "scope": "Self"
+                            }
+                        },
+                        {
+                            "type": "GrantKeyword",
+                            "keyword": "VIGILANCE",
+                            "filter": {
+                                "baseFilter": "creature ctrl:you"
+                            }
+                        }
+                    ]
+                },
+                "condition": {
+                    "type": "Exists",
+                    "player": "You",
+                    "zone": "Battlefield",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsPermanent"
+                        ],
+                        "statePredicates": [
+                            "IsCommander"
+                        ],
+                        "controllerPredicate": "OwnedByYou"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "2",
+        "rarity": "RARE",
+        "artist": "Scott Murphy",
+        "flavorText": "Her presence on the battlefield can transform an unruly mob into a disciplined army.",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/e/4e8185b9-f559-47e8-ae90-d62396b4aa6b.jpg?1783938874",
+        "rulings": [
+            {
+                "date": "2014-11-07",
+                "text": "Lieutenant abilities apply only if your commander is on the battlefield and under your control."
+            },
+            {
+                "date": "2014-11-07",
+                "text": "Lieutenant abilities refer only to whether you control your commander, not any other player’s commander."
+            },
+            {
+                "date": "2014-11-07",
+                "text": "If you gain control of a creature with a lieutenant ability owned by another player, that ability will check to see if you control your commander and will apply if you do. It won’t check whether its owner controls their commander."
+            },
+            {
+                "date": "2014-11-07",
+                "text": "If you lose control of your commander, lieutenant abilities of creatures you control will immediately stop applying. If this causes a creature’s toughness to become less than or equal to the amount of damage marked on it, the creature will be destroyed."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Commander's Sphere
 {
     "name": "Commander's Sphere",
@@ -50,6 +135,55 @@
         ]
     },
     "colorIdentityOverride": []
+}
+
+// Containment Priest
+{
+    "name": "Containment Priest",
+    "manaCost": "{1}{W}",
+    "typeLine": "Creature — Human Cleric",
+    "oracleText": "Flash\nIf a nontoken creature would enter and it wasn't cast, exile it instead.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLASH"
+    ],
+    "script": {
+        "replacementEffects": [
+            {
+                "type": "RedirectZoneChange",
+                "newDestination": "Exile",
+                "appliesTo": {
+                    "type": "ZoneChangeEvent",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            "IsNontoken"
+                        ],
+                        "statePredicates": [
+                            {
+                                "type": "StateNot",
+                                "predicate": "WasCast"
+                            }
+                        ]
+                    },
+                    "to": "Battlefield"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "5",
+        "rarity": "RARE",
+        "artist": "John Stanko",
+        "flavorText": "Some protection requires a bit of finesse.",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/2/c2c794b9-09da-49be-b258-b0e21f1663e3.jpg?1783938874"
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
 }
 
 // Creeperhulk
@@ -200,6 +334,145 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Fell the Mighty
+{
+    "name": "Fell the Mighty",
+    "manaCost": "{4}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Destroy all creatures with power greater than target creature's power.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "GatherCards",
+                    "source": {
+                        "type": "BattlefieldMatching",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsCreature",
+                                {
+                                    "type": "PowerGreaterThanEntity",
+                                    "reference": {
+                                        "type": "BoundVariable",
+                                        "name": "t0"
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "storeAs": "destroyAll_gathered"
+                },
+                {
+                    "type": "MoveCollection",
+                    "from": "destroyAll_gathered",
+                    "destination": {
+                        "type": "ToZone",
+                        "zone": "Graveyard"
+                    },
+                    "moveType": "Destroy"
+                }
+            ]
+        },
+        "targetRequirements": [
+            {
+                "type": "TargetObject",
+                "filter": {
+                    "baseFilter": "creature"
+                },
+                "id": "t0"
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "7",
+        "rarity": "RARE",
+        "artist": "Raymond Swanland",
+        "flavorText": "\"They had it coming.\"\n—Squire Imalia, savior of Thiswick",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/4/d4e999d3-c2d7-47dc-81ad-a2baf6cc4757.jpg?1783938873",
+        "rulings": [
+            {
+                "date": "2014-11-07",
+                "text": "Use the power of the target creature as Fell the Mighty resolves to determine which creatures are destroyed. Fell the Mighty doesn't target any of those creatures, so a creature with hexproof or protection from white will be destroyed if its power is high enough."
+            },
+            {
+                "date": "2014-11-07",
+                "text": "Fell the Mighty won't destroy the target creature."
+            },
+            {
+                "date": "2014-11-07",
+                "text": "If the target creature is an illegal target when Fell the Mighty tries to resolve, Fell the Mighty won't resolve and none of its effects will happen. No creatures will be destroyed."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Hallowed Spiritkeeper
+{
+    "name": "Hallowed Spiritkeeper",
+    "manaCost": "{1}{W}{W}",
+    "typeLine": "Creature — Avatar",
+    "oracleText": "Vigilance\nWhen this creature dies, create X 1/1 white Spirit creature tokens with flying, where X is the number of creature cards in your graveyard.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 2
+    },
+    "keywords": [
+        "VIGILANCE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Hallowed Spiritkeeper:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "Count",
+                        "player": "You",
+                        "zone": "Graveyard",
+                        "filter": "creature"
+                    },
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "WHITE"
+                    ],
+                    "creatureTypes": [
+                        "Spirit"
+                    ],
+                    "keywords": [
+                        "FLYING"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/6/6/66c51c7f-b2d2-4a8a-84c6-57382e06fe7b.jpg?1783938799"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "8",
+        "rarity": "RARE",
+        "artist": "Steve Prescott",
+        "imageUri": "https://cards.scryfall.io/normal/front/9/4/94ebd5bd-99b3-4371-9ca2-e0504db1458e.jpg?1783938873",
+        "rulings": [
+            {
+                "date": "2014-11-07",
+                "text": "Count the number of creature cards in your graveyard as the triggered ability resolves, including Hallowed Spiritkeeper itself if it's still there, to determine how many Spirits are created."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
     ]
 }
 
@@ -490,6 +763,84 @@
     "colorIdentityOverride": []
 }
 
+// Overseer of the Damned
+{
+    "name": "Overseer of the Damned",
+    "manaCost": "{5}{B}{B}",
+    "typeLine": "Creature — Demon",
+    "oracleText": "Flying\nWhen this creature enters, you may destroy target creature.\nWhenever a nontoken creature an opponent controls dies, create a tapped 2/2 black Zombie creature token.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 5
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Overseer of the Damned:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Gated",
+                    "gate": "Gate.MayDecide",
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        },
+                        "destination": "Graveyard",
+                        "byDestruction": true
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "filter": {
+                        "baseFilter": "creature"
+                    },
+                    "id": "t0"
+                }
+            },
+            {
+                "id": "Overseer of the Damned:2",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature nontoken ctrl:opponent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "power": 2,
+                    "toughness": 2,
+                    "colors": [
+                        "BLACK"
+                    ],
+                    "creatureTypes": [
+                        "Zombie"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/0/3/0397aa00-6d82-47d9-bc30-072b722c8b71.jpg?1783938797",
+                    "tapped": true
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "28",
+        "rarity": "RARE",
+        "artist": "rk post",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/1/d1a73408-27b3-45d8-9153-ca964d99fe80.jpg?1783938868"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Reef Worm
 {
     "name": "Reef Worm",
@@ -576,6 +927,112 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Sylvan Offering
+{
+    "name": "Sylvan Offering",
+    "manaCost": "{X}{G}",
+    "typeLine": "Sorcery",
+    "oracleText": "Choose an opponent. You and that player each create an X/X green Treefolk creature token.\nChoose an opponent. You and that player each create X 1/1 green Elf Warrior creature tokens.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "ChooseOpponentForSource",
+                    "prompt": "Choose an opponent: you and that player each create an X/X Treefolk"
+                },
+                {
+                    "type": "CreateToken",
+                    "power": 0,
+                    "toughness": 0,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Treefolk"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/2/a/2a3f0d52-34cd-4095-bfa0-bbf9562a8146.jpg?1783938794",
+                    "dynamicPower": "XValue",
+                    "dynamicToughness": "XValue"
+                },
+                {
+                    "type": "CreateToken",
+                    "power": 0,
+                    "toughness": 0,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Treefolk"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/2/a/2a3f0d52-34cd-4095-bfa0-bbf9562a8146.jpg?1783938794",
+                    "controller": {
+                        "type": "PlayerRef",
+                        "player": "ChosenOpponent"
+                    },
+                    "dynamicPower": "XValue",
+                    "dynamicToughness": "XValue"
+                },
+                {
+                    "type": "ChooseOpponentForSource",
+                    "prompt": "Choose an opponent: you and that player each create X 1/1 Elf Warriors"
+                },
+                {
+                    "type": "CreateToken",
+                    "count": "XValue",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Elf",
+                        "Warrior"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/a/1/a1ad366d-645c-4b14-8e51-437431eb0fa5.jpg?1783938794"
+                },
+                {
+                    "type": "CreateToken",
+                    "count": "XValue",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Elf",
+                        "Warrior"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/a/1/a1ad366d-645c-4b14-8e51-437431eb0fa5.jpg?1783938794",
+                    "controller": {
+                        "type": "PlayerRef",
+                        "player": "ChosenOpponent"
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "48",
+        "rarity": "RARE",
+        "artist": "Zoltan Boros",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/8/584ffe37-cc49-410d-b8a6-06d20d43b36d.jpg?1783938864",
+        "rulings": [
+            {
+                "date": "2014-11-07",
+                "text": "You may choose the same opponent for each of the effects, or you may choose different opponents. None of the affected players are targets of the spell."
+            },
+            {
+                "date": "2014-11-07",
+                "text": "You choose the opponents for each effect as the spell resolves."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }
 

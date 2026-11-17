@@ -1,3 +1,321 @@
+// Aragorn, Hornburg Hero
+{
+    "name": "Aragorn, Hornburg Hero",
+    "manaCost": "{1}{R}{G}{W}",
+    "typeLine": "Legendary Creature — Human Soldier",
+    "oracleText": "Attacking creatures you control have first strike and renown 1. (When a creature with renown 1 deals combat damage to a player, if it isn't renowned, put a +1/+1 counter on it and it becomes renowned.)\nWhenever a renowned creature you control deals combat damage to a player, double the number of +1/+1 counters on it.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Aragorn, Hornburg Hero:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    },
+                    "sourceFilter": {
+                        "cardPredicates": [
+                            "IsCreature"
+                        ],
+                        "statePredicates": [
+                            "IsRenowned"
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DoubleCounters",
+                    "target": "TriggeringEntity"
+                },
+                "descriptionOverride": "Whenever a renowned creature you control deals combat damage to a player, double the number of +1/+1 counters on it."
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "GrantKeyword",
+                "keyword": "FIRST_STRIKE",
+                "filter": {
+                    "baseFilter": "creature attacking ctrl:you"
+                }
+            },
+            {
+                "type": "GrantKeyword",
+                "keyword": "RENOWN_1",
+                "filter": {
+                    "baseFilter": "creature attacking ctrl:you"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "492",
+        "rarity": "MYTHIC",
+        "artist": "Jason Rainville",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/4/14c62aa6-2660-4a18-8f69-4088e18abb40.jpg?1783914203",
+        "rulings": [
+            {
+                "date": "2023-11-03",
+                "text": "If a creature has multiple instances of renown, each triggers separately. The first one that resolves causes the creature to become renowned, which means any additional renown abilities that creature has will have no effect. The creature's controller chooses what order to put those renown abilities on the stack, so they can choose to have the ability with the higher renown number resolve first."
+            },
+            {
+                "date": "2023-11-03",
+                "text": "When a creature you control that isn't renowned deals combat damage to a player, you'll put a +1/+1 counter on it and it will become renowned. Since it wasn't renowned when it dealt combat damage, Aragorn, Hornburg Hero's last ability won't trigger, and you won't double the number of +1/+1 counters on it."
+            },
+            {
+                "date": "2023-11-03",
+                "text": "Renown won't trigger when a creature deals damage to a planeswalker, a battle, or another creature. It also won't trigger when a creature deals noncombat damage to a player."
+            },
+            {
+                "date": "2023-11-03",
+                "text": "If Aragorn, Hornburg Hero leaves the battlefield after first strike damage is dealt but before regular combat damage, creatures you control that dealt first strike damage but no longer have first strike won't also deal regular combat damage (unless they have double strike for some reason)."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "GREEN",
+        "WHITE"
+    ]
+}
+
+// Aragorn, King of Gondor
+{
+    "name": "Aragorn, King of Gondor",
+    "manaCost": "{1}{U}{R}{W}",
+    "typeLine": "Legendary Creature — Human Noble",
+    "oracleText": "Vigilance, lifelink\nWhen Aragorn enters, you become the monarch.\nWhenever Aragorn attacks, up to one target creature can't block this turn. If you're the monarch, creatures can't block this turn.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "keywords": [
+        "VIGILANCE",
+        "LIFELINK"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Aragorn, King of Gondor:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "TakeDesignation",
+                    "designation": "MONARCH"
+                }
+            },
+            {
+                "id": "Aragorn, King of Gondor:2",
+                "trigger": "AttackEvent",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "CantBlockTargetCreatures",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        {
+                            "type": "Gated",
+                            "gate": {
+                                "type": "Gate.WhenCondition",
+                                "condition": {
+                                    "type": "PlayerHasDesignation",
+                                    "designation": "MONARCH"
+                                }
+                            },
+                            "then": {
+                                "type": "CantBlockGroup",
+                                "filter": {
+                                    "baseFilter": "creature"
+                                }
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetObject",
+                    "optional": true,
+                    "filter": {
+                        "baseFilter": "creature"
+                    },
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "5",
+        "rarity": "MYTHIC",
+        "artist": "Yongjae Choi",
+        "flavorText": "\"In this place will I abide, and my heirs, unto the ending of the world.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/c/1c7ac04c-8510-468b-aa6f-f249bde9ff87.jpg?1783916037",
+        "rulings": [
+            {
+                "date": "2023-06-16",
+                "text": "When Aragorn, King of Gondor's last ability triggers, you can choose not to target a creature, probably because you're the monarch and just want creatures to be unable to block this turn. However, if you do choose a target, and that target is illegal at the time the ability tries to resolve, the ability won't resolve and none of its effects will happen. Creatures will still be able to block this turn, even if you're the monarch."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "The game starts with no monarch. Once an effect makes one player the monarch, the game will have exactly one monarch from that point forward. As a player becomes the monarch, the current monarch (if any) ceases being the monarch."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "There are two inherent triggered abilities associated with being the monarch. These triggered abilities have no source and are controlled by the player who was the monarch at the time the abilities triggered. The full texts of these abilities are \"At the beginning of the monarch's end step, that player draws a card\" and \"Whenever a creature deals combat damage to the monarch, its controller becomes the monarch.\""
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "RED",
+        "WHITE"
+    ]
+}
+
+// Arwen, Weaver of Hope
+{
+    "name": "Arwen, Weaver of Hope",
+    "manaCost": "{1}{G}{G}",
+    "typeLine": "Legendary Creature — Elf Noble",
+    "oracleText": "Each other creature you control enters with a number of additional +1/+1 counters on it equal to Arwen's toughness.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 1
+    },
+    "script": {
+        "replacementEffects": [
+            {
+                "type": "EntersWithDynamicCounters",
+                "count": {
+                    "type": "EntityProperty",
+                    "entity": "GrantingSource",
+                    "numericProperty": "Toughness"
+                },
+                "otherOnly": true
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "35",
+        "rarity": "RARE",
+        "artist": "Axel Sauerwald",
+        "flavorText": "From afar, Arwen watched over Aragorn, and in hope, she made for him a great and kingly standard.",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/d/4d4f4d41-232d-4377-be69-de590b880edb.jpg?1783916027",
+        "rulings": [
+            {
+                "date": "2023-06-23",
+                "text": "If Arwen, Weaver of Hope and another creature you control enter the battlefield at the same time, Arwen's ability won't cause that creature to enter with additional +1/+1 counters on it."
+            },
+            {
+                "date": "2023-06-23",
+                "text": "To determine how many additional +1/+1 counters a creature enters the battlefield with, use Arwen, Weaver of Hope's toughness as that creature is entering the battlefield."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Cavern-Hoard Dragon
+{
+    "name": "Cavern-Hoard Dragon",
+    "manaCost": "{7}{R}{R}",
+    "typeLine": "Creature — Dragon",
+    "oracleText": "This spell costs {X} less to cast, where X is the greatest number of artifacts an opponent controls.\nFlying, trample, haste\nWhenever this creature deals combat damage to a player, you create a Treasure token for each artifact that player controls.",
+    "creatureStats": {
+        "power": 6,
+        "toughness": 6
+    },
+    "keywords": [
+        "FLYING",
+        "TRAMPLE",
+        "HASTE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Cavern-Hoard Dragon:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Treasure",
+                    "dynamicCount": {
+                        "type": "AggregateBattlefield",
+                        "player": "TriggeringPlayer",
+                        "filter": "artifact"
+                    }
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "ModifySpellCost",
+                "target": "SelfCast",
+                "modification": {
+                    "type": "ReduceGenericBy",
+                    "source": {
+                        "type": "Dynamic",
+                        "amount": {
+                            "type": "GreatestAmongPlayers",
+                            "players": "EachOpponent",
+                            "inner": {
+                                "type": "AggregateBattlefield",
+                                "player": "You",
+                                "filter": "artifact"
+                            }
+                        }
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "31",
+        "rarity": "RARE",
+        "artist": "Antonio José Manzanedo",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/6/c67e509e-a219-4f7f-b7eb-8c446cc0620a.jpg?1783916028",
+        "rulings": [
+            {
+                "date": "2023-06-16",
+                "text": "Cavern-Hoard Dragon's last ability cares about the number of artifacts that player controls as the ability resolves."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "Once a player has announced that they are casting Cavern-Hoard Dragon, no player may take actions to try and change the greatest number of artifacts an opponent controls before Cavern-Hoard Dragon's cost is locked in."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "If the greatest number of artifacts an opponent controls is seven or more, Cavern-Hoard Dragon costs {R}{R} to cast."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "Cavern-Hoard Dragon's first ability counts only the artifacts controlled by the opponent who controls the greatest number of artifacts among your opponents. If you have an opponent who controls two artifacts and another opponent who controls three artifacts, Cavern-Hoard Dragon's mana cost would be reduced by {3}."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
 // Corsairs of Umbar
 {
     "name": "Corsairs of Umbar",
@@ -77,6 +395,95 @@
     ]
 }
 
+// Faramir, Steward of Gondor
+{
+    "name": "Faramir, Steward of Gondor",
+    "manaCost": "{1}{W}{U}",
+    "typeLine": "Legendary Creature — Human Noble",
+    "oracleText": "Whenever a legendary creature you control with mana value 4 or greater enters, you become the monarch.\nAt the beginning of your end step, if you're the monarch, create two 1/1 white Human Soldier creature tokens.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Faramir, Steward of Gondor:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": {
+                        "cardPredicates": [
+                            "IsCreature",
+                            "IsLegendary",
+                            {
+                                "type": "ManaValueAtLeast",
+                                "min": 4
+                            }
+                        ],
+                        "controllerPredicate": "ControlledByYou"
+                    },
+                    "to": "Battlefield"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "TakeDesignation",
+                    "designation": "MONARCH"
+                }
+            },
+            {
+                "id": "Faramir, Steward of Gondor:2",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 2
+                    },
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "WHITE"
+                    ],
+                    "creatureTypes": [
+                        "Human",
+                        "Soldier"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/d/b/dbab4309-daca-42d9-ad0b-0457717c4503.jpg?1783916056"
+                },
+                "interveningIf": {
+                    "type": "PlayerHasDesignation",
+                    "designation": "MONARCH"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "54",
+        "rarity": "RARE",
+        "artist": "Anna Podedworna",
+        "flavorText": "\"The last Steward of Gondor begs leave to surrender his office.\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/c/5c3e8a30-de2a-4d8f-a929-5abeaea2e65a.jpg?1783916020",
+        "rulings": [
+            {
+                "date": "2023-06-16",
+                "text": "The game starts with no monarch. Once an effect makes one player the monarch, the game will have exactly one monarch from that point forward. As a player becomes the monarch, the current monarch (if any) ceases being the monarch."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "There are two inherent triggered abilities associated with being the monarch. These triggered abilities have no source and are controlled by the player who was the monarch at the time the abilities triggered. The full texts of these abilities are \"At the beginning of the monarch's end step, that player draws a card\" and \"Whenever a creature deals combat damage to the monarch, its controller becomes the monarch.\""
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLUE"
+    ]
+}
+
 // Farmer Cotton
 {
     "name": "Farmer Cotton",
@@ -128,6 +535,355 @@
         "flavorText": "\"So it's begun at last! I've been itching for trouble all this year.\"",
         "imageUri": "https://cards.scryfall.io/normal/front/2/5/25b49eaa-13e7-4f4e-b0dc-56ebd28a4a22.jpg?1783916019"
     }
+}
+
+// Forth Eorlingas!
+{
+    "name": "Forth Eorlingas!",
+    "manaCost": "{X}{R}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Create X 2/2 red Human Knight creature tokens with trample and haste.\nWhenever one or more creatures you control deal combat damage to one or more players this turn, you become the monarch.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "CreateToken",
+                    "count": "XValue",
+                    "power": 2,
+                    "toughness": 2,
+                    "colors": [
+                        "RED"
+                    ],
+                    "creatureTypes": [
+                        "Human",
+                        "Knight"
+                    ],
+                    "keywords": [
+                        "TRAMPLE",
+                        "HASTE"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/4/9/491fc1c3-a46e-4cfd-a749-57f4c96f6aea.jpg?1783916057"
+                },
+                {
+                    "type": "CreateGlobalTriggeredAbility",
+                    "ability": {
+                        "id": "Forth Eorlingas!:1",
+                        "trigger": {
+                            "type": "OneOrMoreDealCombatDamageToPlayerEvent",
+                            "toOneOrMorePlayers": true
+                        },
+                        "binding": "ANY",
+                        "effect": {
+                            "type": "TakeDesignation",
+                            "designation": "MONARCH"
+                        }
+                    },
+                    "duration": "EndOfTurn"
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "56",
+        "rarity": "RARE",
+        "artist": "Filipe Pagliuso",
+        "flavorText": "\"A sword-day, a red day, ere the sun rises! Ride now, ride now! Ride to Gondor!\"",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/6/06c053d3-028e-4961-93a5-5b7bb5a8601c.jpg?1783916020"
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "WHITE"
+    ]
+}
+
+// Galadhrim Ambush
+{
+    "name": "Galadhrim Ambush",
+    "manaCost": "{3}{G}",
+    "typeLine": "Instant",
+    "oracleText": "Create X 1/1 green Elf Warrior creature tokens, where X is the number of attacking creatures.\nPrevent all combat damage that would be dealt this turn by non-Elf creatures.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "CreateToken",
+                    "count": {
+                        "type": "AggregateBattlefield",
+                        "player": "Each",
+                        "filter": "creature attacking"
+                    },
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "GREEN"
+                    ],
+                    "creatureTypes": [
+                        "Elf",
+                        "Warrior"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/0/2/023f668a-a8e6-4fcb-98d1-30adf343f050.jpg?1783916056"
+                },
+                {
+                    "type": "PreventDamageShield",
+                    "scope": "CombatOnly",
+                    "direction": "FromTarget",
+                    "sourceFilter": {
+                        "type": "PreventFromMatching",
+                        "filter": {
+                            "cardPredicates": [
+                                "IsCreature",
+                                {
+                                    "type": "NotSubtype",
+                                    "subtype": "Elf"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "38",
+        "rarity": "RARE",
+        "artist": "John Di Giovanni",
+        "flavorText": "\"None of the Orcs will ever return out of Lórien.\"\n—Haldir",
+        "imageUri": "https://cards.scryfall.io/normal/front/e/6/e69e06f0-6142-4f80-9208-362b3e74d51d.jpg?1783916026",
+        "rulings": [
+            {
+                "date": "2023-06-16",
+                "text": "Galadhrim Ambush counts all attacking creatures no matter which player, planeswalker, or battle they're attacking, including attacking creatures you control if Galadhrim Ambush is cast during your combat phase."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
+// Galadriel, Light of Valinor
+{
+    "name": "Galadriel, Light of Valinor",
+    "manaCost": "{2}{G}{W}{U}",
+    "typeLine": "Legendary Creature — Elf Noble",
+    "oracleText": "Alliance — Whenever another creature you control enters, choose one that hasn't been chosen this turn —\n• Add {G}{G}{G}.\n• Put a +1/+1 counter on each creature you control.\n• Scry 2, then draw a card.",
+    "creatureStats": {
+        "power": 3,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Galadriel, Light of Valinor:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature ctrl:you",
+                    "to": "Battlefield"
+                },
+                "binding": "OTHER",
+                "effect": {
+                    "type": "Modal",
+                    "modes": [
+                        {
+                            "effect": {
+                                "type": "AddMana",
+                                "color": "GREEN",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 3
+                                }
+                            },
+                            "description": "Add {G}{G}{G}"
+                        },
+                        {
+                            "effect": {
+                                "type": "ForEach",
+                                "space": {
+                                    "type": "IterationSpace.Group",
+                                    "filter": {
+                                        "baseFilter": "creature ctrl:you"
+                                    }
+                                },
+                                "body": {
+                                    "type": "AddCounters",
+                                    "counterType": "PLUS_ONE_PLUS_ONE",
+                                    "count": 1,
+                                    "target": "IterationEntity"
+                                }
+                            },
+                            "description": "Put a +1/+1 counter on each creature you control"
+                        },
+                        {
+                            "effect": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "Scry",
+                                        "count": 2
+                                    },
+                                    {
+                                        "type": "DrawCards",
+                                        "count": {
+                                            "type": "Fixed",
+                                            "amount": 1
+                                        }
+                                    }
+                                ]
+                            },
+                            "description": "Scry 2, then draw a card"
+                        }
+                    ],
+                    "excludeModesChosenThisTurn": true,
+                    "countsAsModalSpell": false
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "498",
+        "rarity": "MYTHIC",
+        "artist": "Alexander Mokhov",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/4/f485596f-3a23-4714-ad7e-4c493ab1b530.jpg?1783914199",
+        "rulings": [
+            {
+                "date": "2023-11-03",
+                "text": "If multiple creatures enter the battlefield simultaneously, you must still choose different modes for each instance of the triggered ability that's put onto the stack. If more than three creatures enter the battlefield simultaneously, that choice is made only for the first three."
+            },
+            {
+                "date": "2023-11-03",
+                "text": "The phrase \"that hasn't been chosen this turn\" refers only to that specific Galadriel, Light of Valinor. If Galadriel leaves the battlefield and then returns to the battlefield later in the turn, it will be a new object with no memory of the modes chosen when it was previously on the battlefield."
+            },
+            {
+                "date": "2023-11-03",
+                "text": "If all three modes have been chosen this turn, Galadriel, Light of Valinor's triggered ability is removed from the stack with no effect."
+            },
+            {
+                "date": "2023-11-03",
+                "text": "It doesn't matter who has chosen any particular mode. For example, say you control Galadriel, Light of Valinor and have chosen the first two modes this turn. If an opponent gains control of Galadriel, that player can choose only the third mode this turn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE",
+        "BLUE"
+    ]
+}
+
+// Gríma, Saruman's Footman
+{
+    "name": "Gríma, Saruman's Footman",
+    "manaCost": "{2}{U}{B}",
+    "typeLine": "Legendary Creature — Human Advisor",
+    "oracleText": "Gríma can't be blocked.\nWhenever Gríma deals combat damage to a player, that player exiles cards from the top of their library until they exile an instant or sorcery card. You may cast that card without paying its mana cost. Then that player puts the exiled cards that weren't cast this way on the bottom of their library in a random order.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 4
+    },
+    "flags": [
+        "CANT_BE_BLOCKED"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Gríma, Saruman's Footman:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherUntilMatch",
+                            "player": "TriggeringPlayer",
+                            "filter": "instant|sorcery",
+                            "storeMatch": "matched0",
+                            "storeRevealed": "revealed0"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "revealed0",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Exile"
+                            }
+                        },
+                        {
+                            "type": "ConditionalOnCollection",
+                            "collection": "matched0",
+                            "ifNotEmpty": {
+                                "type": "Gated",
+                                "gate": "Gate.MayDecide",
+                                "then": {
+                                    "type": "CastFromCollectionWithoutPayingCost",
+                                    "from": "matched0"
+                                }
+                            }
+                        },
+                        {
+                            "type": "FilterCollection",
+                            "from": "revealed0",
+                            "filter": {
+                                "statePredicates": [
+                                    {
+                                        "type": "InZone",
+                                        "zone": "Exile"
+                                    }
+                                ]
+                            },
+                            "storeMatching": "matching4"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "matching4",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Library",
+                                "player": "TriggeringPlayer",
+                                "placement": "Bottom"
+                            },
+                            "order": "Random"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "57",
+        "rarity": "RARE",
+        "artist": "Matt Stewart",
+        "imageUri": "https://cards.scryfall.io/normal/front/0/0/00f40514-d37d-423f-aa0c-1875300f43a8.jpg?1783916020",
+        "rulings": [
+            {
+                "date": "2023-06-16",
+                "text": "If you choose not to cast the card, it is put on the bottom of its owner's library in a random order along with the other exiled cards."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "If you cast a spell \"without paying its mana cost,\" you can't pay any alternative costs. You can, however, pay additional costs, such as kicker costs. If the card has any mandatory additional costs, you must pay those."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "If that player exiles their entire library without exiling an instant or sorcery card, they will randomize the order of the exiled cards, and the cards then become that player's library, ending the effect. They will not continue to exile and randomize their library forever."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "You cast the card while the ability is resolving and still on the stack. You can't wait to cast it later in the turn."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "BLACK"
+    ]
 }
 
 // In the Darkness Bind Them
@@ -631,6 +1387,94 @@
     ]
 }
 
+// Rapacious Guest
+{
+    "name": "Rapacious Guest",
+    "manaCost": "{2}{B}",
+    "typeLine": "Creature — Halfling Citizen",
+    "oracleText": "Menace\nWhenever one or more creatures you control deal combat damage to a player, create a Food token.\nWhenever you sacrifice a Food, put a +1/+1 counter on this creature.\nWhen this creature leaves the battlefield, target opponent loses life equal to its power.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "MENACE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Rapacious Guest:1",
+                "trigger": {
+                    "type": "OneOrMoreDealCombatDamageToPlayerEvent",
+                    "sourceFilter": "creature ctrl:you"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "CreatePredefinedToken",
+                    "tokenType": "Food"
+                }
+            },
+            {
+                "id": "Rapacious Guest:2",
+                "trigger": {
+                    "type": "PermanentsSacrificedEvent",
+                    "filter": "artifact Food",
+                    "perPermanent": true
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 1,
+                    "target": "Self"
+                }
+            },
+            {
+                "id": "Rapacious Guest:3",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield"
+                },
+                "effect": {
+                    "type": "LoseLife",
+                    "amount": {
+                        "type": "EntityProperty",
+                        "entity": "Self",
+                        "numericProperty": "Power"
+                    },
+                    "target": {
+                        "type": "BoundVariable",
+                        "name": "t0"
+                    }
+                },
+                "targetRequirement": {
+                    "type": "TargetOpponent",
+                    "id": "t0"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "28",
+        "rarity": "RARE",
+        "artist": "Bartłomiej Gaweł",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/f/ff9dfba4-07d2-4407-a441-88acc7284d43.jpg?1783916032",
+        "rulings": [
+            {
+                "date": "2023-06-16",
+                "text": "Rapacious Guest's third ability triggers whenever you sacrifice a Food for any reason, not just to activate a Food's activated ability."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "To determine the amount of life the target opponent loses from Rapacious Guest's last ability, use Rapacious Guest's power as it last existed on the battlefield, not its power in the graveyard."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Relic of Sauron
 {
     "name": "Relic of Sauron",
@@ -927,6 +1771,101 @@
     ]
 }
 
+// Song of Eärendil
+{
+    "name": "Song of Eärendil",
+    "manaCost": "{3}{G}{U}",
+    "typeLine": "Enchantment — Saga",
+    "oracleText": "(As this Saga enters and after your draw step, add a lore counter. Sacrifice after III.)\nI — Scry 2, then draw two cards.\nII — Create a Treasure token and a 2/2 blue Bird creature token with flying.\nIII — Put a flying counter on each creature you control without flying.",
+    "script": {
+        "sagaChapters": [
+            {
+                "chapter": 1,
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "Scry",
+                            "count": 2
+                        },
+                        {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 2
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "chapter": 2,
+                "effect": {
+                    "type": "CreateTokenBatch",
+                    "groups": [
+                        {
+                            "type": "CreatePredefinedToken",
+                            "tokenType": "Treasure"
+                        },
+                        {
+                            "type": "CreateToken",
+                            "power": 2,
+                            "toughness": 2,
+                            "colors": [
+                                "BLUE"
+                            ],
+                            "creatureTypes": [
+                                "Bird"
+                            ],
+                            "keywords": [
+                                "FLYING"
+                            ],
+                            "imageUri": "https://cards.scryfall.io/normal/front/c/8/c813d283-c996-4f85-afaa-7702414a1197.jpg?1783916058"
+                        }
+                    ]
+                }
+            },
+            {
+                "chapter": 3,
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": {
+                                "cardPredicates": [
+                                    "IsCreature",
+                                    {
+                                        "type": "NotKeyword",
+                                        "keyword": "FLYING"
+                                    }
+                                ],
+                                "controllerPredicate": "ControlledByYou"
+                            }
+                        }
+                    },
+                    "body": {
+                        "type": "AddCounters",
+                        "counterType": "FLYING",
+                        "count": 1,
+                        "target": "IterationEntity"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "69",
+        "rarity": "RARE",
+        "artist": "Torgeir Fjereide",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/2/325bb6b7-6d19-48b5-82dd-2759d4fc3144.jpg?1783916015"
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "BLUE"
+    ]
+}
+
 // Summons of Saruman
 {
     "name": "Summons of Saruman",
@@ -941,7 +1880,7 @@
             "type": "Flashback",
             "cost": "{3}{U}{R}",
             "additionalCost": {
-                "type": "ExileVariableCards",
+                "type": "VariableCards",
                 "minCount": 0
             }
         }
@@ -1033,6 +1972,64 @@
     "colorIdentityOverride": [
         "BLUE",
         "RED"
+    ]
+}
+
+// Taunt from the Rampart
+{
+    "name": "Taunt from the Rampart",
+    "manaCost": "{3}{R}{W}",
+    "typeLine": "Sorcery",
+    "oracleText": "Goad all creatures your opponents control. Until your next turn, those creatures can't block. (Until your next turn, those creatures attack each combat if able and attack a player other than you if able.)",
+    "script": {
+        "spellEffect": {
+            "type": "ForEach",
+            "space": {
+                "type": "IterationSpace.Group",
+                "filter": {
+                    "baseFilter": "creature ctrl:opponent"
+                }
+            },
+            "body": {
+                "type": "Composite",
+                "effects": [
+                    {
+                        "type": "Goad",
+                        "target": "IterationEntity"
+                    },
+                    {
+                        "type": "CantBlockTargetCreatures",
+                        "target": "IterationEntity",
+                        "duration": "UntilYourNextTurn"
+                    }
+                ]
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "71",
+        "rarity": "RARE",
+        "artist": "Lorenzo Mastroianni",
+        "flavorText": "\"Is it not said that no foe has ever taken the Hornburg, if men defended it?\"\n—Aragorn",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/d/dd1eaa0e-060d-40f1-84c5-f7e8df2f824c.jpg?1783916016",
+        "rulings": [
+            {
+                "date": "2023-06-16",
+                "text": "Being goaded isn't an ability the creature has. Once it's been goaded, it must attack as detailed above even if it loses all abilities."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "Attacking with a goaded creature doesn't cause it to stop being goaded. If there is an additional combat phase that turn, or if another player gains control of it before it stops being goaded, it must attack again if able."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "If a creature you control has been goaded by multiple opponents, it must attack one of your opponents that hasn't goaded it, as that fulfills the maximum number of goad requirements. If a creature you control has been goaded by each of your opponents, you choose which opponent it attacks."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "WHITE"
     ]
 }
 
@@ -1166,8 +2163,12 @@
                             "requirement": {
                                 "type": "TargetPlayer",
                                 "restriction": {
-                                    "type": "PlayerHasMostLife",
-                                    "player": "Candidate"
+                                    "type": "PlayerHasMost",
+                                    "player": "Candidate",
+                                    "amount": {
+                                        "type": "LifeTotal",
+                                        "player": "You"
+                                    }
                                 },
                                 "descriptionOverride": "a player with the most life or tied for most life"
                             },
@@ -1234,5 +2235,360 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// The Gaffer
+{
+    "name": "The Gaffer",
+    "manaCost": "{2}{W}",
+    "typeLine": "Legendary Creature — Halfling Peasant",
+    "oracleText": "At the beginning of each end step, if you gained 3 or more life this turn, draw a card.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 3
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "The Gaffer:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "END",
+                    "player": "Each"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "TurnTracking",
+                        "player": "You",
+                        "tracker": "LIFE_GAINED"
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 3
+                    }
+                },
+                "descriptionOverride": "At the beginning of each end step, if you gained 3 or more life this turn, draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "12",
+        "rarity": "RARE",
+        "artist": "Tomas Duchek",
+        "flavorText": "On the growing of vegetables, especially potatoes, Master Hamfast Gamgee was recognized as the leading authority by all in the neighborhood.",
+        "imageUri": "https://cards.scryfall.io/normal/front/8/6/863ed552-dc6d-4910-b188-3cefc3ebf0ed.jpg?1786423840",
+        "rulings": [
+            {
+                "date": "2023-06-16",
+                "text": "You draw just one card, no matter how much life you've gained past 3 life."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "The Gaffer's ability looks at how much life you've gained in the turn, even if it wasn't on the battlefield when you gained life. It doesn't care if you also lost life, even if you lost more life than you gained."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "If you haven't gained 3 or more life by the time an end step begins, The Gaffer's ability won't trigger at all."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
+// Wake the Dragon
+{
+    "name": "Wake the Dragon",
+    "manaCost": "{4}{B}{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Create a 6/6 black and red Dragon creature token with flying, menace, and \"Whenever this token deals combat damage to a player, gain control of target artifact that player controls.\"\nFlashback {6}{B}{R} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    "keywords": [
+        "FLASHBACK"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Flashback",
+            "cost": "{6}{B}{R}"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "CreateToken",
+            "power": 6,
+            "toughness": 6,
+            "colors": [
+                "BLACK",
+                "RED"
+            ],
+            "creatureTypes": [
+                "Dragon"
+            ],
+            "keywords": [
+                "FLYING",
+                "MENACE"
+            ],
+            "imageUri": "https://cards.scryfall.io/normal/front/1/1/11335886-a422-42ff-be14-226602202603.jpg?1783916054",
+            "triggeredAbilities": [
+                {
+                    "id": "Wake the Dragon:1",
+                    "trigger": {
+                        "type": "DealsDamageEvent",
+                        "damageType": "DamageCombat",
+                        "recipient": {
+                            "type": "RecipientPlayer",
+                            "player": "Any"
+                        }
+                    },
+                    "effect": {
+                        "type": "GainControl",
+                        "target": {
+                            "type": "BoundVariable",
+                            "name": "t0"
+                        }
+                    },
+                    "targetRequirement": {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "artifact ctrl:triggering-player"
+                        },
+                        "id": "t0"
+                    }
+                }
+            ]
+        }
+    },
+    "metadata": {
+        "collectorNumber": "74",
+        "rarity": "RARE",
+        "artist": "Henry Peters",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/9/f9cf5f78-0316-4c35-a40e-9bfba2e46ad8.jpg?1783916013"
+    },
+    "colorIdentityOverride": [
+        "BLACK",
+        "RED"
+    ]
+}
+
+// Éomer, King of Rohan
+{
+    "name": "Éomer, King of Rohan",
+    "manaCost": "{3}{R}{W}",
+    "typeLine": "Legendary Creature — Human Noble",
+    "oracleText": "Double strike\nÉomer enters with a +1/+1 counter on it for each other Human you control.\nWhen Éomer enters, target player becomes the monarch. Éomer deals damage equal to its power to any target.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "DOUBLE_STRIKE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Éomer, King of Rohan:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "TakeDesignation",
+                            "designation": "MONARCH",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        {
+                            "type": "DealDamage",
+                            "amount": {
+                                "type": "EntityProperty",
+                                "entity": "Self",
+                                "numericProperty": "Power"
+                            },
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t1"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0"
+                },
+                "additionalTargetRequirements": [
+                    {
+                        "type": "AnyTarget",
+                        "id": "t1"
+                    }
+                ]
+            }
+        ],
+        "replacementEffects": [
+            {
+                "type": "EntersWithDynamicCounters",
+                "count": {
+                    "type": "Count",
+                    "player": "You",
+                    "zone": "Battlefield",
+                    "filter": {
+                        "cardPredicates": [
+                            {
+                                "type": "HasSubtype",
+                                "subtype": "Human"
+                            }
+                        ],
+                        "statePredicates": [
+                            {
+                                "type": "StateNot",
+                                "predicate": "IsSource"
+                            }
+                        ]
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "52",
+        "rarity": "RARE",
+        "artist": "Leonardo Borazio",
+        "imageUri": "https://cards.scryfall.io/normal/front/5/f/5f48930a-d7bd-410b-995a-4e2837aabb25.jpg?1783916021",
+        "rulings": [
+            {
+                "date": "2023-06-16",
+                "text": "The game starts with no monarch. Once an effect makes one player the monarch, the game will have exactly one monarch from that point forward. As a player becomes the monarch, the current monarch (if any) ceases being the monarch."
+            },
+            {
+                "date": "2023-06-16",
+                "text": "There are two inherent triggered abilities associated with being the monarch. These triggered abilities have no source and are controlled by the player who was the monarch at the time the abilities triggered. The full texts of these abilities are \"At the beginning of the monarch's end step, that player draws a card\" and \"Whenever a creature deals combat damage to the monarch, its controller becomes the monarch.\""
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "WHITE"
+    ]
+}
+
+// Éowyn, Shieldmaiden
+{
+    "name": "Éowyn, Shieldmaiden",
+    "manaCost": "{2}{U}{R}{W}",
+    "typeLine": "Legendary Creature — Human Knight",
+    "oracleText": "First strike\nAt the beginning of combat on your turn, if another Human entered the battlefield under your control this turn, create two 2/2 red Human Knight creature tokens with trample and haste. Then if you control six or more Humans, draw a card.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 4
+    },
+    "keywords": [
+        "FIRST_STRIKE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Éowyn, Shieldmaiden:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "BEGIN_COMBAT"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "CreateToken",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 2
+                            },
+                            "power": 2,
+                            "toughness": 2,
+                            "colors": [
+                                "RED"
+                            ],
+                            "creatureTypes": [
+                                "Human",
+                                "Knight"
+                            ],
+                            "keywords": [
+                                "TRAMPLE",
+                                "HASTE"
+                            ],
+                            "imageUri": "https://cards.scryfall.io/normal/front/4/9/491fc1c3-a46e-4cfd-a749-57f4c96f6aea.jpg?1783916057"
+                        },
+                        {
+                            "type": "Gated",
+                            "gate": {
+                                "type": "Gate.WhenCondition",
+                                "condition": {
+                                    "type": "Compare",
+                                    "left": {
+                                        "type": "AggregateBattlefield",
+                                        "player": "You",
+                                        "filter": "permanent Human"
+                                    },
+                                    "operator": "GTE",
+                                    "right": {
+                                        "type": "Fixed",
+                                        "amount": 6
+                                    }
+                                }
+                            },
+                            "then": {
+                                "type": "DrawCards",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            }
+                        }
+                    ]
+                },
+                "interveningIf": {
+                    "type": "Compare",
+                    "left": {
+                        "type": "SubtypeEnteredUnderControlThisTurn",
+                        "player": "You",
+                        "subtypes": [
+                            "Human"
+                        ],
+                        "excludeSource": true
+                    },
+                    "operator": "GTE",
+                    "right": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "descriptionOverride": "At the beginning of combat on your turn, if another Human entered the battlefield under your control this turn, create two 2/2 red Human Knight creature tokens with trample and haste. Then if you control six or more Humans, draw a card."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "1",
+        "rarity": "MYTHIC",
+        "artist": "Craig Elliott",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/d/dd4a00ff-2206-4e12-a0ab-61ed82c9e6c5.jpg?1783916039"
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "RED",
+        "WHITE"
     ]
 }

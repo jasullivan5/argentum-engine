@@ -223,21 +223,10 @@ object MeaningfulActionFilter {
         // An ability whose resolution-time choice has nothing to choose from would do nothing.
         if (action.inertReason != null) return false
 
-        // A non-mana activated ability is meaningful.
-        if (action.actionType == "ActivateAbility") return true
-
-        // Everything with a cost is meaningful only if it can be paid. (Regular spells are only
-        // enumerated when affordable, but companion actions for cycling/morph cards are added
-        // with isAffordable = false.)
-        if (action.actionType in SPELL_CAST_ACTION_TYPES ||
-            action.actionType == "CycleCard" || action.actionType == "TypecycleCard" ||
-            action.actionType == "PlotCard" || action.actionType == "ForetellCard" ||
-            action.actionType == "PutCompanionIntoHand" || action.actionType == "CrewVehicle"
-        ) {
-            return action.isAffordableAction
-        }
-
-        return true
+        // Everything else is meaningful only if it can be paid. The enumerators offer unpayable
+        // actions greyed out (activated abilities, cycling, crew, suspend, saddle, the morph
+        // twins of a cast …) so the client can show them; none of them is a reason to stop.
+        return action.isAffordableAction
     }
 
     /** [isMeaningful] over a list, preserving the caller's own action type. */
@@ -358,6 +347,10 @@ object MeaningfulActionFilter {
             return PASS_NO_ATTACKERS_DECLARED
         }
 
+        if (isLastWindowBeforeDeckingDraw(state, playerId)) {
+            return respondOrPass(meaningfulActions, "My upkeep with an empty library")
+        }
+
         return if (isMyTurn) {
             shouldAutoPassOnMyTurn(state.step, meaningfulActions)
         } else {
@@ -384,6 +377,7 @@ object MeaningfulActionFilter {
         if (state.stack.isNotEmpty()) return false
 
         val isMyTurn = state.isActiveTurnFor(playerId)
+        if (isLastWindowBeforeDeckingDraw(state, playerId)) return false
         val unconditional =
             if (isMyTurn) UNCONDITIONAL_PASS_ON_MY_TURN else UNCONDITIONAL_PASS_ON_OPPONENT_TURN
         if (state.step in unconditional) return true
@@ -598,6 +592,15 @@ object MeaningfulActionFilter {
         } else {
             AutoPassVerdict(true, "AUTO-PASS: $window ($passSuffix)")
         }
+
+    /**
+     * Our own upkeep with an empty library: the last priority window before the draw step's draw
+     * loses the game (CR 704.5b). Otherwise an unconditional pass, here it stops for any
+     * instant-speed answer — Paradox Shaper putting a graveyard card on the bottom of the library
+     * is the one an AI seat once passed straight through and decked with.
+     */
+    private fun isLastWindowBeforeDeckingDraw(state: GameState, playerId: EntityId): Boolean =
+        state.step == Step.UPKEEP && state.isActiveTurnFor(playerId) && state.getLibrary(playerId).isEmpty()
 
     private fun hasAttackers(state: GameState): Boolean = state.getBattlefield().any { entityId ->
         state.getEntity(entityId)?.get<AttackingComponent>() != null

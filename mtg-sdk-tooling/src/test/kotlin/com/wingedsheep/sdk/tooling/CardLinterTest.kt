@@ -266,6 +266,21 @@ class CardLinterTest : DescribeSpec({
             CardLinter.lint(card).shouldBeEmpty()
         }
 
+        it("reads AnyPlayerMayPay's storePayerAs as a written collection") {
+            val card = instant(
+                "Payer Stored",
+                CardScript(
+                    spellEffect = com.wingedsheep.sdk.scripting.effects.AnyPlayerMayPayEffect(
+                        cost = null,
+                        prompt = "Take 1 damage?",
+                        consequence = DealDamageEffect(DynamicAmount.Fixed(1), EffectTarget.PipelineTarget("taker")),
+                        storePayerAs = "taker",
+                    ),
+                ),
+            )
+            CardLinter.lint(card).shouldBeEmpty()
+        }
+
         it("flags a bare BoundVariable on a multi-slot requirement") {
             // "Return one or two target creature cards ... to your hand" handed straight to a
             // single-target effect: the two chosen targets are keyed `cards[0]` / `cards[1]`, so
@@ -908,6 +923,29 @@ class CardLinterTest : DescribeSpec({
                 ),
             )
             findings(aura).shouldBeEmpty()
+        }
+
+        // The Fate Reforged Forms: a plain Enchantment whose enters trigger makes it an Aura and
+        // attaches it, so its printed "enchanted creature has flying" is live once attached.
+        it("accepts attached stats on an enchantment whose own trigger makes it an Aura") {
+            fun form(effect: com.wingedsheep.sdk.scripting.effects.Effect) = CardDefinition(
+                name = "Becomes Aura",
+                manaCost = ManaCost.parse("{1}{U}{U}"),
+                typeLine = TypeLine.enchantment(),
+                script = CardScript(
+                    triggeredAbilities = listOf(
+                        TriggeredAbility.create(
+                            id = AbilityId("CardLinterTest_form"),
+                            trigger = EventPattern.ZoneChangeEvent(to = Zone.BATTLEFIELD),
+                            effect = effect,
+                        ),
+                    ),
+                    staticAbilities = listOf(ModifyStats(1, 1)),
+                ),
+            )
+            findings(form(Effects.BecomeAura(GameObjectFilter.Creature, EffectTarget.PipelineTarget("manifested"))))
+                .shouldBeEmpty()
+            findings(form(Effects.GainLife(1))).shouldHaveSize(1)
         }
 
         it("accepts the same grant on an Equipment") {

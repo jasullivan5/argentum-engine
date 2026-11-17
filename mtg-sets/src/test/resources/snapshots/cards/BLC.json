@@ -1184,7 +1184,7 @@
                 "id": "Echoing Assault:1",
                 "trigger": {
                     "type": "YouAttackEvent",
-                    "perAttackedPlayer": true
+                    "attackedPlayer": "Each"
                 },
                 "binding": "ANY",
                 "effect": {
@@ -1241,89 +1241,6 @@
         "rarity": "RARE",
         "artist": "Bram Sels",
         "imageUri": "https://cards.scryfall.io/normal/front/3/2/3213bfee-c0a0-49a2-9080-cdaa09b414c5.jpg?1783910732"
-    },
-    "colorIdentityOverride": [
-        "RED"
-    ]
-}
-
-// Etali, Primal Storm
-{
-    "name": "Etali, Primal Storm",
-    "manaCost": "{4}{R}{R}",
-    "typeLine": "Legendary Creature — Elder Dinosaur",
-    "oracleText": "Whenever Etali, Primal Storm attacks, exile the top card of each player's library, then you may cast any number of spells from among those cards without paying their mana costs.",
-    "creatureStats": {
-        "power": 6,
-        "toughness": 6
-    },
-    "script": {
-        "triggeredAbilities": [
-            {
-                "id": "Etali, Primal Storm:1",
-                "trigger": "AttackEvent",
-                "effect": {
-                    "type": "Composite",
-                    "effects": [
-                        {
-                            "type": "GatherCards",
-                            "source": {
-                                "type": "TopOfLibrary",
-                                "count": {
-                                    "type": "Fixed",
-                                    "amount": 1
-                                },
-                                "player": "Each"
-                            },
-                            "storeAs": "gathered0"
-                        },
-                        {
-                            "type": "MoveCollection",
-                            "from": "gathered0",
-                            "destination": {
-                                "type": "ToZone",
-                                "zone": "Exile"
-                            }
-                        },
-                        {
-                            "type": "FilterCollection",
-                            "from": "gathered0",
-                            "filter": "nonland",
-                            "storeMatching": "matching2"
-                        },
-                        {
-                            "type": "CastAnyNumberFromCollectionWithoutPayingCost",
-                            "from": "matching2"
-                        }
-                    ]
-                }
-            }
-        ]
-    },
-    "metadata": {
-        "collectorNumber": "196",
-        "rarity": "RARE",
-        "artist": "Raymond Swanland",
-        "flavorText": "The storm rages and the earth breaks.",
-        "imageUri": "https://cards.scryfall.io/normal/front/8/d/8dd1b0e5-b197-4e8a-a34f-e0b16a928fb0.jpg?1721429153",
-        "rulings": [
-            {
-                "date": "2021-03-19",
-                "text": "If you cast any of the exiled cards, you do so as part of the resolution of the triggered ability. You can't wait to cast them later in the turn."
-            },
-            {
-                "date": "2021-03-19",
-                "text": "If you cast a card \"without paying its mana cost,\" you can't pay any alternative costs. You can, however, pay additional costs."
-            },
-            {
-                "date": "2021-03-19",
-                "text": "Any cards not cast, including land cards, remain in exile. They can't be cast on later turns, even if Etali attacks again."
-            },
-            {
-                "date": "2021-03-19",
-                "text": "Because all attacking creatures are chosen at once, a creature cast this way can't attack during the same combat as Etali, even if it has haste."
-            }
-        ]
     },
     "colorIdentityOverride": [
         "RED"
@@ -1556,7 +1473,10 @@
             "effects": [
                 {
                     "type": "PlayAdditionalLands",
-                    "count": 1
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
                 },
                 {
                     "type": "DrawCards",
@@ -2129,69 +2049,6 @@
         ]
     },
     "colorIdentityOverride": [
-        "GREEN"
-    ]
-}
-
-// Grumgully, the Generous
-{
-    "name": "Grumgully, the Generous",
-    "manaCost": "{1}{R}{G}",
-    "typeLine": "Legendary Creature — Goblin Shaman",
-    "oracleText": "Each other non-Human creature you control enters with an additional +1/+1 counter on it.",
-    "creatureStats": {
-        "power": 3,
-        "toughness": 3
-    },
-    "script": {
-        "replacementEffects": [
-            {
-                "type": "EntersWithDynamicCounters",
-                "count": {
-                    "type": "Fixed",
-                    "amount": 1
-                },
-                "otherOnly": true,
-                "appliesTo": {
-                    "type": "ZoneChangeEvent",
-                    "filter": {
-                        "cardPredicates": [
-                            "IsCreature",
-                            {
-                                "type": "NotSubtype",
-                                "subtype": "Human"
-                            }
-                        ],
-                        "controllerPredicate": "ControlledByYou"
-                    },
-                    "to": "Battlefield"
-                }
-            }
-        ]
-    },
-    "metadata": {
-        "collectorNumber": "253",
-        "rarity": "UNCOMMON",
-        "artist": "Milivoj Ćeran",
-        "flavorText": "\"Does it matter what it is? Take it and be grateful!\"",
-        "imageUri": "https://cards.scryfall.io/normal/front/d/8/d8d7ac51-450e-473e-93e1-3fa9b3b6e2d4.jpg?1721429470",
-        "rulings": [
-            {
-                "date": "2019-10-04",
-                "text": "A non-Human creature you control that would enter the battlefield with no +1/+1 counters on it enters with one +1/+1 counter on it."
-            },
-            {
-                "date": "2019-10-04",
-                "text": "Any other non-Human creatures that enter the battlefield at the same time as Grumgully won't get a +1/+1 counter."
-            },
-            {
-                "date": "2019-10-04",
-                "text": "If a non-Human creature enters the battlefield as a copy of a Human creature, it won't get a +1/+1 counter. Similarly, if a Human enters as a non-Human creature, it will get a +1/+1 counter."
-            }
-        ]
-    },
-    "colorIdentityOverride": [
-        "RED",
         "GREEN"
     ]
 }
@@ -4086,122 +3943,6 @@
     ]
 }
 
-// Simic Ascendancy
-{
-    "name": "Simic Ascendancy",
-    "manaCost": "{G}{U}",
-    "typeLine": "Enchantment",
-    "oracleText": "{1}{G}{U}: Put a +1/+1 counter on target creature you control.\nWhenever one or more +1/+1 counters are put on a creature you control, put that many growth counters on Simic Ascendancy.\nAt the beginning of your upkeep, if Simic Ascendancy has twenty or more growth counters on it, you win the game.",
-    "script": {
-        "triggeredAbilities": [
-            {
-                "id": "Simic Ascendancy:2",
-                "trigger": {
-                    "type": "CountersPlacedEvent",
-                    "counterType": "PLUS_ONE_PLUS_ONE",
-                    "filter": "creature ctrl:you"
-                },
-                "binding": "ANY",
-                "effect": {
-                    "type": "AddDynamicCounters",
-                    "counterType": "GROWTH",
-                    "amount": {
-                        "type": "ContextProperty",
-                        "key": "TRIGGER_COUNTERS_PLACED_AMOUNT"
-                    },
-                    "target": "Self"
-                }
-            },
-            {
-                "id": "Simic Ascendancy:3",
-                "trigger": {
-                    "type": "StepEvent",
-                    "step": "UPKEEP"
-                },
-                "binding": "ANY",
-                "effect": {
-                    "type": "WinGame",
-                    "message": "Simic Ascendancy reached 20 growth counters."
-                },
-                "interveningIf": {
-                    "type": "Compare",
-                    "left": {
-                        "type": "EntityProperty",
-                        "entity": "Self",
-                        "numericProperty": {
-                            "type": "CounterCount",
-                            "counterType": "GROWTH"
-                        }
-                    },
-                    "operator": "GTE",
-                    "right": {
-                        "type": "Fixed",
-                        "amount": 20
-                    }
-                }
-            }
-        ],
-        "activatedAbilities": [
-            {
-                "id": "Simic Ascendancy:1",
-                "cost": {
-                    "type": "CostAtomWrapper",
-                    "atom": {
-                        "type": "AtomMana",
-                        "cost": "{1}{G}{U}"
-                    }
-                },
-                "effect": {
-                    "type": "AddCounters",
-                    "counterType": "PLUS_ONE_PLUS_ONE",
-                    "count": 1,
-                    "target": {
-                        "type": "BoundVariable",
-                        "name": "t0"
-                    }
-                },
-                "targetRequirements": [
-                    {
-                        "type": "TargetObject",
-                        "filter": {
-                            "baseFilter": "creature ctrl:you"
-                        },
-                        "id": "t0"
-                    }
-                ]
-            }
-        ]
-    },
-    "metadata": {
-        "collectorNumber": "260",
-        "rarity": "RARE",
-        "artist": "Izzy",
-        "imageUri": "https://cards.scryfall.io/normal/front/9/3/9300abb9-2750-4de8-8c1d-dbae48a86037.jpg?1721429509",
-        "rulings": [
-            {
-                "date": "2019-01-25",
-                "text": "An ability that triggers when counters are put on a permanent will trigger if that permanent somehow enters the battlefield with those counters."
-            },
-            {
-                "date": "2019-01-25",
-                "text": "If Simic Ascendancy doesn't have twenty or more growth counters on it as your upkeep begins, its last ability won't trigger. You can't take any actions during your turn before your upkeep begins."
-            },
-            {
-                "date": "2019-01-25",
-                "text": "If the last ability does trigger, but counters are removed from Simic Ascendancy so it has fewer than twenty remaining on it, you won't win the game."
-            },
-            {
-                "date": "2019-01-25",
-                "text": "If the last ability does trigger, but Simic Ascendancy leaves the battlefield, use the number of counters it had on it immediately before it left the battlefield to determine whether you win the game."
-            }
-        ]
-    },
-    "colorIdentityOverride": [
-        "GREEN",
-        "BLUE"
-    ]
-}
-
 // Steelburr Champion
 {
     "name": "Steelburr Champion",
@@ -4681,69 +4422,6 @@
     },
     "colorIdentityOverride": [
         "WHITE"
-    ]
-}
-
-// Tendershoot Dryad
-{
-    "name": "Tendershoot Dryad",
-    "manaCost": "{4}{G}",
-    "typeLine": "Creature — Dryad",
-    "oracleText": "Ascend (If you control ten or more permanents, you get the city's blessing for the rest of the game.)\nAt the beginning of each upkeep, create a 1/1 green Saproling creature token.\nSaprolings you control get +2/+2 as long as you have the city's blessing.",
-    "creatureStats": {
-        "power": 2,
-        "toughness": 2
-    },
-    "keywords": [
-        "ASCEND"
-    ],
-    "script": {
-        "triggeredAbilities": [
-            {
-                "id": "Tendershoot Dryad:1",
-                "trigger": {
-                    "type": "StepEvent",
-                    "step": "UPKEEP",
-                    "player": "Each"
-                },
-                "binding": "ANY",
-                "effect": {
-                    "type": "CreateToken",
-                    "power": 1,
-                    "toughness": 1,
-                    "colors": [
-                        "GREEN"
-                    ],
-                    "creatureTypes": [
-                        "Saproling"
-                    ],
-                    "imageUri": "https://cards.scryfall.io/normal/front/5/9/590abe94-9c71-4429-b1b5-8b5de877de03.jpg?1721427861"
-                }
-            }
-        ],
-        "staticAbilities": [
-            {
-                "type": "ConditionalStaticAbility",
-                "ability": {
-                    "type": "ModifyStats",
-                    "powerBonus": 2,
-                    "toughnessBonus": 2,
-                    "filter": {
-                        "baseFilter": "permanent Saproling ctrl:you"
-                    }
-                },
-                "condition": "PlayerHasCitysBlessing"
-            }
-        ]
-    },
-    "metadata": {
-        "collectorNumber": "242",
-        "rarity": "RARE",
-        "artist": "Yongjae Choi",
-        "imageUri": "https://cards.scryfall.io/normal/front/3/a/3a60bdb4-53b3-46f2-b7a1-7954117b42a1.jpg?1721429404"
-    },
-    "colorIdentityOverride": [
-        "GREEN"
     ]
 }
 

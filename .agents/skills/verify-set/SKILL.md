@@ -69,7 +69,7 @@ curl -s "https://api.scryfall.com/cards/search?order=set&unique=prints&q=e%3A$CO
   (showcase, borderless, Beginner Box); the per-card row Scryfall serves is an arbitrary one of them.
   Reprint rows and variant art are matched by collector number, which only `unique=prints` gives you.
 - **Do not commit** This changes, so this is a snapshot for this test.
-- **Do not reuse `~/.cache/scryfall/<code>.json`.** `scripts/card-status` writes it, but it keeps only
+- **Do not reuse `~/.cache/scryfall/set-<code>.json`.** `scripts/card-status` writes it, but it keeps only
   names plus a flattened per-card subset — no `type_line`, no `mana_cost`, no P/T, no per-face objects. It
   cannot support Stage 2.
 

@@ -744,7 +744,8 @@ class GamePlayHandler(
         // scenario / hotseat games inject state directly and have no setup, so they aren't saved.
         val replaySetup = gameSession.getReplaySetup()
         val frameCount = gameSession.getReplayFrameCount()
-        if (replaySetup != null && frameCount >= 5) {
+        // A scenario is practice: never a stored replay, whatever its recording holds.
+        if (replaySetup != null && frameCount >= 5 && !gameSession.isScenario) {
             val winnerName = winnerId?.let { wId ->
                 gameSession.getPlayers().find { it.playerId == wId }?.playerName
             }
@@ -801,12 +802,21 @@ class GamePlayHandler(
         // account/IP via its live identity (null for guests/AI). Only meaningful games count: ones
         // that reached a winner, or had more than a trivial number of actions (>= 10 frames).
         // A warm-up the queue interrupted is nobody's result: the conceding seat left for a real match.
-        val meaningful = (winnerId != null || frameCount >= 10) && gameSession.departedForMatch.isEmpty()
+        // A Scenario Builder game (hand-built, or forked from a replay frame) is practice, not a
+        // result, so it never reaches anyone's match history or stats.
+        val meaningful = (winnerId != null || frameCount >= 10) && gameSession.departedForMatch.isEmpty() &&
+            !gameSession.isScenario
         if (meaningful) {
             val statsLobby = lobbyId?.let { lobbyRepository.findLobbyById(it) }
             val persistenceInfo = gameSession.getPlayerPersistenceInfo()
             val gameMode = statsLobby?.gameMode?.name
                 ?: if (gameSession.quickGameSetCode != null) "QUICK_GAME" else "CASUAL"
+            // Who actually played: a seat that never made a play of its own past the mulligan (a
+            // no-show the disconnect timer conceded, an instant concession) doesn't count. Only a log
+            // recorded from the first action can show an *absence* of plays — without a setup (a dev
+            // scenario, or a recovered game whose recording couldn't resume) we know only who did act.
+            val actedIds = com.wingedsheep.gameserver.stats.StatsEligibility.playersWhoActed(gameSession.getRecordedActions())
+            val completeLog = replaySetup != null
             matchResultSink.record(
                 com.wingedsheep.gameserver.stats.RecordedMatch(
                     gameId = gameSessionId,
@@ -829,10 +839,8 @@ class GamePlayHandler(
                         // seat whose live entry went missing still lands in history with its deck.
                         val deckList = gameSession.getStartingDeckList(player.playerId)
                         val profile = deckList?.let { deckProfiler.profile(it, gameSession.quickGameSetCode) }
-                        // Count copies by canonical card name (strip any "#collector" pin).
-                        val deckCards = deckList
-                            ?.groupingBy { it.substringBefore('#') }?.eachCount()
-                            ?: emptyMap()
+                        // Copies by canonical card name, plus the printing each was pinned to.
+                        val recordedDeck = deckList?.let(com.wingedsheep.gameserver.stats.RecordedDeck::of)
                         com.wingedsheep.gameserver.stats.RecordedParticipant(
                             userId = identity?.userId,
                             playerName = player.playerName,
@@ -841,7 +849,14 @@ class GamePlayHandler(
                             setCodes = profile?.setCodes,
                             isAi = isAi,
                             clientIp = if (isAi) null else identity?.clientIp,
-                            deckCards = deckCards,
+                            deckCards = recordedDeck?.cards.orEmpty(),
+                            deckPrintings = recordedDeck?.printings.orEmpty(),
+                            // The AI never sits out a game, even one it only had to pass through.
+                            tookAction = when {
+                                isAi || player.playerId.value in actedIds -> true
+                                completeLog -> false
+                                else -> null
+                            },
                         )
                     },
                 )
@@ -1105,6 +1120,12 @@ class GamePlayHandler(
                 val state = gameSession.getStateForTesting()
                 if (state != null && (state.step == com.wingedsheep.sdk.core.Step.DECLARE_ATTACKERS || state.step == com.wingedsheep.sdk.core.Step.DECLARE_BLOCKERS)) {
                     logger.debug("Skipping auto-pass for AI player at {} — AI will handle combat", state.step)
+                    break
+                }
+                // A window smart auto-pass skips that the AI wants to act in (Silence in the
+                // opponent's upkeep): leave the priority with the AI, which decides on its own.
+                if (state != null && aiGameManager.aiWantsPriority(gameSession.sessionId, autoPassPlayer, state)) {
+                    logger.debug("Skipping auto-pass for AI player at {} — AI wants this window", state.step)
                     break
                 }
             }
@@ -1611,13 +1632,19 @@ class GamePlayHandler(
         val passIsLegal = gameSession.getLegalActions(aiPlayerId).any {
             it.action is com.wingedsheep.engine.core.PassPriority
         }
-        return cancelPending + when (gameSession.getStateForTesting()?.step) {
+        // A declaration routed to the AI from another seat (Master Warcraft, Brutal Hordechief) is
+        // still that seat's, so its do-nothing fallback must name that seat.
+        val state = gameSession.getStateForTesting()
+        val declaringSeat = state?.turnOrder?.firstOrNull {
+            it != aiPlayerId && com.wingedsheep.engine.mechanics.combat.CombatDeclarationControl.declarerFor(state, it) == aiPlayerId
+        } ?: aiPlayerId
+        return cancelPending + when (state?.step) {
             com.wingedsheep.sdk.core.Step.DECLARE_BLOCKERS -> {
-                val declare = com.wingedsheep.engine.core.DeclareBlockers(aiPlayerId, emptyMap())
+                val declare = com.wingedsheep.engine.core.DeclareBlockers(declaringSeat, emptyMap())
                 if (passIsLegal) listOf(pass, declare) else listOf(declare, pass)
             }
             com.wingedsheep.sdk.core.Step.DECLARE_ATTACKERS -> {
-                val declare = com.wingedsheep.engine.core.DeclareAttackers(aiPlayerId, emptyMap())
+                val declare = com.wingedsheep.engine.core.DeclareAttackers(declaringSeat, emptyMap())
                 if (passIsLegal) listOf(pass, declare) else listOf(declare, pass)
             }
             else -> listOf(pass)

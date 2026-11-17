@@ -1838,7 +1838,7 @@
     "colorIdentityOverride": [
         "GREEN"
     ],
-    "layout": "ADVENTURE",
+    "layout": "OMEN",
     "cardFaces": [
         {
             "name": "Claim Territory",
@@ -1907,7 +1907,8 @@
                             },
                             "revealed": true
                         },
-                        "ShuffleLibrary"
+                        "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent"
                     ]
                 }
             }
@@ -9517,7 +9518,11 @@
                                         "filter": "basicland"
                                     },
                                     "storeAs": "gathered0",
-                                    "search": true
+                                    "search": true,
+                                    "searcher": {
+                                        "type": "ControllerOf",
+                                        "targetDescription": "nonbasic land an opponent controls"
+                                    }
                                 },
                                 {
                                     "type": "SelectFromCollection",
@@ -9549,7 +9554,8 @@
                                 {
                                     "type": "ShuffleLibrary",
                                     "target": "TargetController"
-                                }
+                                },
+                                "EmitLibrarySearchedEvent"
                             ]
                         }
                     ]
@@ -13378,7 +13384,8 @@
                 "trigger": "CastThisSpellEvent",
                 "effect": {
                     "type": "CopyTargetSpell",
-                    "target": "TriggeringEntity"
+                    "target": "TriggeringEntity",
+                    "mayChooseNewTargets": false
                 },
                 "interveningIf": {
                     "type": "PlayerCastSpellsThisTurn",
@@ -13520,7 +13527,7 @@
     "colorIdentityOverride": [
         "GREEN"
     ],
-    "layout": "ADVENTURE",
+    "layout": "OMEN",
     "cardFaces": [
         {
             "name": "Roost Seek",
@@ -16449,7 +16456,8 @@
                     "effects": [
                         {
                             "type": "CopyTargetSpell",
-                            "target": "TriggeringEntity"
+                            "target": "TriggeringEntity",
+                            "mayChooseNewTargets": false
                         },
                         {
                             "type": "Counter",
@@ -17712,6 +17720,7 @@
                             }
                         },
                         "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent",
                         {
                             "type": "GrantMayPlayFromExile",
                             "from": "selected1"

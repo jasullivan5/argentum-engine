@@ -103,7 +103,7 @@ class GrantedEmergeTest : FunSpec({
         val offer = emergeOffers(driver, player, beast).single()
         offer.manaCostString shouldBe "{5}{G}"
         withClue("{5}{G} less the Bears' mana value 2 is {3}{G}") {
-            offer.additionalCostInfo!!.costAfterSacrifice!![bears] shouldBe "{3}{G}"
+            offer.additionalCostInfo!!.costAfterSacrifice[bears] shouldBe "{3}{G}"
         }
 
         castEmerge(driver, player, beast, bears).outcome shouldBe Outcome.Done
@@ -120,7 +120,7 @@ class GrantedEmergeTest : FunSpec({
         val bears = driver.putCreatureOnBattlefield(player, "Grizzly Bears")
         repeat(3) { driver.giveMana(player, Color.GREEN) }
 
-        emergeOffers(driver, player, pips).single().additionalCostInfo!!.costAfterSacrifice!![bears] shouldBe "{G}{G}{G}"
+        emergeOffers(driver, player, pips).single().additionalCostInfo!!.costAfterSacrifice[bears] shouldBe "{G}{G}{G}"
     }
 
     test("the granter itself may be sacrificed to pay a granted emerge cost") {
@@ -132,7 +132,7 @@ class GrantedEmergeTest : FunSpec({
 
         val info = emergeOffers(driver, player, beast).single().additionalCostInfo!!
         info.validSacrificeTargets shouldContainExactlyInAnyOrder listOf(granter)
-        info.costAfterSacrifice!![granter] shouldBe "{1}{G}"
+        info.costAfterSacrifice[granter] shouldBe "{1}{G}"
 
         castEmerge(driver, player, beast, granter).outcome shouldBe Outcome.Done
         driver.getGraveyard(player) shouldContain granter
@@ -180,7 +180,7 @@ class GrantedEmergeTest : FunSpec({
 
         val offer = emergeOffers(driver, player, printed).single()
         offer.manaCostString shouldBe "{4}{G}"
-        offer.additionalCostInfo!!.costAfterSacrifice!![bears] shouldBe "{2}{G}"
+        offer.additionalCostInfo!!.costAfterSacrifice[bears] shouldBe "{2}{G}"
         driver.state.getBattlefield() shouldNotContain printed
     }
 })

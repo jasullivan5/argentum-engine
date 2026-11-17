@@ -171,6 +171,12 @@ wholeGame, autoAnswer }`. A triggered/activated ability on the stack carries its
 in its `ClientCard`, so the stack-item context menu can target it. When a yield auto-answers a
 may-question, the server emits an `abilityAutoAnswered` log event (shown only to the controller).
 
+Trigger ordering (CR 603.3b): `{ "type": "setTriggerOrdering", "manual": true }` asks the server to
+let this player order their own simultaneous triggers (an `OrderTriggersDecision`). A player in Full
+Control is asked regardless of this setting. When automatic ordering places several of a player's
+triggers in an order they could have chosen, the server emits a `triggersOrderedAutomatically` event
+(`{ count }`, shown only to that player); the client turns the first one into a one-time tip.
+
 ### B3. Deck Tracker (`deck` on the client state)
 
 The state update carries the viewer's own decklist as `deck` — one entry per distinct card,
@@ -270,7 +276,7 @@ Set-level metadata for the deckbuilder, pickers, and the **Set Completion** view
 plain HTTP JSON.
 
 **List sets** — `GET /api/sets` → `[{ "code", "name", "releaseDate" }]` (every catalogued set).
-**Booster-ready** — `GET /api/sets/booster-ready` → `[{ "setCode", "setName", "implementedCount", "incomplete" }]`
+**Booster-ready** — `GET /api/sets/booster-ready` → `[{ "setCode", "setName", "implementedCount", "incomplete", "releaseDate", "extensionSet" }]` (the Set guide reads this list)
 (subset draftable for sealed/draft).
 
 **Set coverage** — `GET /api/sets/coverage` → per-set card-implementation coverage, newest release
@@ -536,7 +542,15 @@ sealed, or premade), then one N-player game".
   seat-order grouping if the manual assignment can't form two equal teams. The result flows to
   `GameSession.teams` → `GameConfig.teams`. The two modes differ only in the engine `Format` chosen:
   - `TWO_HEADED_GIANT` — exactly four players (`Format.TwoHeadedGiant`): teams share one 30-life
-    total, take shared turns, fight combined combat, and win/lose together.
+    total, take shared turns, fight combined combat, and win/lose together. A single
+    `DeclareBlockers` submission covers both teammates: `validBlockers` includes eligible
+    creatures across their boards, and `blockableAttackers` names attacks that this declaration
+    may block. The client uses these lists directly rather than inferring eligibility from
+    card ownership or the attacked seat; confirming completes the whole team's declaration.
+    If effects assign teammates' choices to different input actors, each owner submits separately
+    and `proposedBlockerAssignments` carries the prior choices for display only. The engine applies
+    the declaration atomically after validating the combined map; an illegal aggregate restarts
+    the choices with an explanatory action description, without firing block triggers.
   - `TEAM_VS_TEAM` — an even pod of 4/6/8 (`Format.TeamVsTeam`, i.e. 2v2/3v3/4v4): **nothing is
     shared** (CR 808.5). Each player keeps their own 20 life and their own turn, is eliminated
     individually (CR 104.3b), and a team loses only once all its members have left (CR 104.2c).
@@ -579,6 +593,29 @@ sealed, or premade), then one N-player game".
   reopen that same seat to a human. `QuickGameLobbyState.vsAi` reports the current occupant rather
   than a separate lobby kind; the create message's `vsAi` remains a shortcut for initially filling
   the seat.
+
+## 3d½. Best-of-three tournament matches (WebSocket)
+
+A round-robin lobby's `LobbySettings.bestOf` is `1` (default) or `3`, set with
+`updateLobbySettings { bestOf }`; `gamesPerMatch` stays the number of times each pair meets.
+`LobbySettings.allowsSideboarding` is false for Jumpstart and Commander rules.
+
+- **Each game** starts with `tournamentMatchStarting`, which now also carries `gameNumber`, `bestOf`
+  and the score going in (`yourGameWins`, `opponentGameWins`).
+- **Between games.** A game that doesn't decide the match is followed (after `gameOver`) by
+  **`betweenGames`** to each seat: the score, `lastGameResult` (`WIN`/`LOSS`/`DRAW`), the seat's
+  `deck` for the next game, its `sideboard` (pool − deck in Limited, CR 100.4b; the brought sideboard
+  for premade decks), the `registeredDeck`, `cards` (a `SealedCardInfo` for every name), free
+  `basicLands` (Limited), `youChoosePlayDraw` (the loser of the last game, or after a draw whoever chose
+  last time — CR 103.1), `startingPlayer` once chosen, and both seats' ready flags. It is re-sent whole
+  on every change and on reconnect (after `tournamentStarted`).
+- The seat answers **`submitMatchDeck`** `{ deck, playFirst? }`: the server validates the deck like a
+  submission (Limited: from the pool, basic lands free, ≥40; premade: only trades with its registered
+  sideboard), stores it for the rest of the match, and readies the seat. **`editMatchDeck`** takes the
+  ready back. The next game starts when both seats are ready; AI seats ready at once and always play.
+- **Decided.** `matchComplete` as before; `MatchResultInfo` now carries `player1GameWins` /
+  `player2GameWins`. Sideboarded decks are match-scoped: the next match starts from the registered deck.
+  Between matches the player may `unsubmitDeck` to rebuild from the pool (refused mid-match).
 
 ## 3e. Playing for Ante (WebSocket / REST)
 
@@ -740,6 +777,32 @@ use the same live acceptance operation. Missing or obsolete AI deliveries are di
 fallbacks, rejection accounting, or broadcasts. Rejection accounting and any resulting concession
 also check the originating epoch atomically. Replay records only canonical engine actions.
 
+A browser update whose `pendingDecision` has exactly one legal answer also carries that answer as
+`autoAnswer` (a `DecisionResponse` already keyed to the routed decision ID). The server decides it
+from the engine's own decision with `ForcedDecisionAutoAnswer`, which applies the AI's
+`TrivialDecisions` and still asks when the question is how the player looks at cards. The client
+never derives one: unless the player set *Choices with only one answer* to *Ask me every time*
+(`gameplay.forcedChoices = 'ask'`), it keeps the question off screen and submits `autoAnswer`
+unchanged as an ordinary `SubmitDecision`: at once under *Answer instantly* (`'instant'`), and under
+*Answer for me* (`'delayed'`, the default) after a human-like delay drawn fresh per question
+(0.8–2.5 s, skewed short; see `humanAnswerDelayMs` in
+`web-client/src/store/slices/handlers/autoAnswer.ts`). The engine still always asks (#3340), and
+other seats still see the decision status while it waits. AI seats get no `autoAnswer`; they answer
+through `TrivialDecisions` directly.
+
+`autoAnswerPublic: true` travels with an `autoAnswer` whose forcedness everyone can already see, and
+the client then sends it at once in both answering modes. `ForcedDecisionAutoAnswer.isPublic`
+decides it and fails closed: only a target or card-selection question qualifies, and only when the
+engine declared where its candidates came from (`DecisionContext.candidateZones`, set today by
+triggered-ability targeting via `TargetCandidateZones`) and everything in those zones is visible to
+a spectator, per `Visibility`: no hand, library or sideboard, and no face-down object. An unknown
+source, a forced "no" (`YesNoDecision.yesAvailable = false`) and a private question are never
+public.
+
+`gameplay.forcedChoices` replaced the boolean `gameplay.autoAnswerForced`. The preferences document
+is stored verbatim, so `parsePreferences` still reads the old field from a document that has no
+valid new one: `true` → `'delayed'`, `false` → `'ask'`.
+
 #### One store
 
 Every replay — finished or still being recorded — is a row in `game_replays`, written by
@@ -899,8 +962,9 @@ costs remain unchanged. The field defaults to empty and is public information.
 
 ### Jumpstart pack selection
 
-For a lobby selecting only `JMP` or only `J22`, ordinary `SEALED` and `DRAFT` use Jumpstart by default.
-The client presents this as **Jump In**; its wizard creates a `SEALED` lobby selecting `J22`,
+For a lobby selecting only one of `JumpstartPacks.SUPPORTED_SETS` (`J25`, `J22`, `JMP`), ordinary `SEALED` and
+`DRAFT` use Jumpstart by default. The client presents this as **Jump In**; it creates a `SEALED` lobby selecting
+the Jumpstart set the player chose under "Packs from" (default `J25`),
 with `useJumpstart: true` and one game per matchup. It uses the existing tournament transport,
 AI seats, private pack selections, reconnect and automatic deck submission.
 `LobbySettings.useJumpstart` is the host's persistent preference; `jumpstartEligible` and
@@ -920,7 +984,8 @@ server-side. Players cannot add lands, remove cards, or edit this deck. Offers, 
 preference survive persistence and reconnection; a pair can be chosen only once, so a retransmit
 cannot choose another.
 
-The checked-in `game-server/src/main/resources/jumpstart/j22.txt` contains Wizards' 121 paper J22
+`game-server/src/main/resources/jumpstart/j25.txt` holds the 121 paper Foundations Jumpstart variants across 46
+themes, generated from MTGJSON's J25 Jumpstart deck files. The checked-in `game-server/src/main/resources/jumpstart/j22.txt` contains Wizards' 121 paper J22
 variants across 46 themes, taken from the [published decklists](https://magic.wizards.com/en/news/feature/jumpstart-2022-booster-themes-and-card-lists).
 `game-server/src/main/resources/jumpstart/jmp.txt` contains Wizards' 121 paper JMP
 lists (including cards printed in M21). Themed basic-land labels are normalized to their printed

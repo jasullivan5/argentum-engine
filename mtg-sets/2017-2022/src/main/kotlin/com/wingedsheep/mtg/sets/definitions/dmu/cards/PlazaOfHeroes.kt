@@ -40,7 +40,7 @@ val PlazaOfHeroes = card("Plaza of Heroes") {
 
     activatedAbility {
         cost = Costs.Tap
-        effect = Effects.AddAnyColorMana(1, restriction = ManaRestriction.LegendarySpellsOnly)
+        effect = Effects.AddAnyColorMana(1, restriction = ManaRestriction.LegendarySpellsOnly())
         manaAbility = true
         timing = TimingRule.ManaAbility
     }

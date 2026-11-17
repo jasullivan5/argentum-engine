@@ -53,8 +53,9 @@ class FlipAimTest : ScenarioTestBase() {
                     .respondToDecision(game.state, decision)
                     .shouldBeInstanceOf<FlipThrowResponse>()
                 // At the dragon, or at the seam between it and the Mountain behind it to take both.
-                withClue("aimed within reach of the dragon") {
-                    kotlin.math.hypot(response.aimX - dragon.x, response.aimY - dragon.y) shouldBeLessThan 60.0
+                withClue("flicked within reach of the dragon") {
+                    val (x, y) = FlipPhysics.carry(decision.table, response.velocityX, response.velocityY)
+                    kotlin.math.hypot(x - dragon.x, y - dragon.y) shouldBeLessThan 80.0
                 }
                 // The same decision always gets the same throw.
                 FlipAim.respond(game.state, decision, game.player1Id) shouldBe response
@@ -75,13 +76,13 @@ class FlipAimTest : ScenarioTestBase() {
                 val dragon = decision.table.cards.single { it.entityId == game.findPermanent("Shivan Dragon") }
 
                 val throws = (0 until 300).map { FlipAim.respond(game.state, decision, game.player1Id, hand = kotlin.random.Random(it)) }
-                withClue("it lets go at different moments") { throws.map { it.strength }.distinct().size shouldBeGreaterThan 250 }
-                withClue("it swings both ways") {
-                    throws.count { it.sway < 0 } shouldBeGreaterThan 100
-                    throws.count { it.sway > 0 } shouldBeGreaterThan 100
+                withClue("no two flicks are the same") { throws.map { it.velocityY }.distinct().size shouldBeGreaterThan 250 }
+                withClue("it spins a little too much and a little too little") {
+                    throws.count { it.spin < FlipPhysics.IDEAL_SPIN } shouldBeGreaterThan 100
+                    throws.count { it.spin > FlipPhysics.IDEAL_SPIN } shouldBeGreaterThan 100
                 }
                 val hits = throws.withIndex().count { (i, t) ->
-                    val landing = FlipPhysics.land(decision.table, t.aimX, t.aimY, t.strength, GameRng.seeded(i.toLong()), t.sway).first
+                    val landing = FlipPhysics.land(decision.table, t.velocityX, t.velocityY, t.spin, GameRng.seeded(i.toLong())).first
                     landing.turnedOver && FlipPhysics.overlaps(landing, dragon)
                 }
                 withClue("hits $hits of 300") {
@@ -103,7 +104,9 @@ class FlipAimTest : ScenarioTestBase() {
                 val decision = game.flipDecision()
 
                 val response = FlipAim.respond(game.state, decision, game.player1Id)
-                withClue("aimed past the far edge") { response.aimY shouldBeLessThan 0.0 }
+                withClue("flicked past the far edge") {
+                    FlipPhysics.carry(decision.table, response.velocityX, response.velocityY).second shouldBeLessThan 0.0
+                }
 
                 game.execute(SubmitDecision(game.player1Id, response)).error shouldBe null
                 game.findPermanents("Grizzly Bears").size shouldBe 2

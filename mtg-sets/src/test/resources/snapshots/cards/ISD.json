@@ -241,6 +241,51 @@
     ]
 }
 
+// Army of the Damned
+{
+    "name": "Army of the Damned",
+    "manaCost": "{5}{B}{B}{B}",
+    "typeLine": "Sorcery",
+    "oracleText": "Create thirteen tapped 2/2 black Zombie creature tokens.\nFlashback {7}{B}{B}{B} (You may cast this card from your graveyard for its flashback cost. Then exile it.)",
+    "keywords": [
+        "FLASHBACK"
+    ],
+    "keywordAbilities": [
+        {
+            "type": "Flashback",
+            "cost": "{7}{B}{B}{B}"
+        }
+    ],
+    "script": {
+        "spellEffect": {
+            "type": "CreateToken",
+            "count": {
+                "type": "Fixed",
+                "amount": 13
+            },
+            "power": 2,
+            "toughness": 2,
+            "colors": [
+                "BLACK"
+            ],
+            "creatureTypes": [
+                "Zombie"
+            ],
+            "tapped": true
+        }
+    },
+    "metadata": {
+        "collectorNumber": "87",
+        "rarity": "MYTHIC",
+        "artist": "Ryan Pancoast",
+        "flavorText": "Sometimes death comes knocking. Sometimes it tears down the walls.",
+        "imageUri": "https://cards.scryfall.io/normal/front/2/6/260a4544-a1eb-4d07-943f-0401ae288e13.jpg?1783940961"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
 // Avacyn's Pilgrim
 {
     "name": "Avacyn's Pilgrim",
@@ -445,6 +490,75 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Bloodgift Demon
+{
+    "name": "Bloodgift Demon",
+    "manaCost": "{3}{B}{B}",
+    "typeLine": "Creature — Demon",
+    "oracleText": "Flying\nAt the beginning of your upkeep, target player draws a card and loses 1 life.",
+    "creatureStats": {
+        "power": 5,
+        "toughness": 4
+    },
+    "keywords": [
+        "FLYING"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Bloodgift Demon:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "DrawCards",
+                            "count": {
+                                "type": "Fixed",
+                                "amount": 1
+                            },
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        {
+                            "type": "LoseLife",
+                            "amount": {
+                                "type": "Fixed",
+                                "amount": 1
+                            },
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirement": {
+                    "type": "TargetPlayer",
+                    "id": "t0"
+                },
+                "descriptionOverride": "At the beginning of your upkeep, target player draws a card and loses 1 life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "89",
+        "rarity": "RARE",
+        "artist": "Peter Mohrbacher",
+        "flavorText": "He relishes the devotion of his Skirsdag puppets and their belief that it will earn them immortality.",
+        "imageUri": "https://cards.scryfall.io/normal/front/f/2/f271addb-e267-4397-b181-f1eaeabbfe71.jpg?1783940960"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
     ]
 }
 
@@ -1063,6 +1177,167 @@
     },
     "colorIdentityOverride": [
         "WHITE"
+    ]
+}
+
+// Charmbreaker Devils
+{
+    "name": "Charmbreaker Devils",
+    "manaCost": "{5}{R}",
+    "typeLine": "Creature — Devil",
+    "oracleText": "At the beginning of your upkeep, return an instant or sorcery card at random from your graveyard to your hand.\nWhenever you cast an instant or sorcery spell, this creature gets +4/+0 until end of turn.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Charmbreaker Devils:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "GatherCards",
+                            "source": {
+                                "type": "FromZone",
+                                "zone": "Graveyard",
+                                "filter": "instant|sorcery"
+                            },
+                            "storeAs": "gathered0"
+                        },
+                        {
+                            "type": "SelectFromCollection",
+                            "from": "gathered0",
+                            "selection": {
+                                "type": "Random",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            "storeSelected": "selected1"
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "selected1",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Hand"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "id": "Charmbreaker Devils:2",
+                "trigger": {
+                    "type": "SpellCastEvent",
+                    "spellFilter": {
+                        "cardPredicates": [
+                            {
+                                "type": "Or",
+                                "predicates": [
+                                    "IsInstant",
+                                    "IsSorcery"
+                                ]
+                            }
+                        ]
+                    }
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "ModifyStats",
+                    "powerModifier": {
+                        "type": "Fixed",
+                        "amount": 4
+                    },
+                    "toughnessModifier": {
+                        "type": "Fixed",
+                        "amount": 0
+                    },
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "134",
+        "rarity": "RARE",
+        "artist": "Dan Murayama Scott",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/9/a9197a67-6609-496c-9aae-825ede4f755b.jpg?1783940941",
+        "rulings": [
+            {
+                "date": "2017-11-17",
+                "text": "The instant or sorcery card returned to your hand is chosen at random as Charmbreaker Devils's first ability resolves. If any player responds to the ability, that player won't yet know what card will be returned."
+            },
+            {
+                "date": "2017-11-17",
+                "text": "Because the first ability doesn't target the instant or sorcery card, any instants or sorceries put into your graveyard in response to that ability may be returned to your hand."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
+    ]
+}
+
+// Claustrophobia
+{
+    "name": "Claustrophobia",
+    "manaCost": "{1}{U}{U}",
+    "typeLine": "Enchantment — Aura",
+    "oracleText": "Enchant creature\nWhen this Aura enters, tap enchanted creature.\nEnchanted creature doesn't untap during its controller's untap step.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Claustrophobia:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "TapUntap",
+                    "target": "EnchantedCreature"
+                }
+            }
+        ],
+        "staticAbilities": [
+            {
+                "type": "GrantKeyword",
+                "keyword": "DOESNT_UNTAP"
+            }
+        ],
+        "auraTarget": {
+            "type": "TargetObject",
+            "filter": {
+                "baseFilter": "creature"
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "48",
+        "artist": "Ryan Pancoast",
+        "flavorText": "Six feet of earth muffled his cries.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/7/b7e5f600-4d19-42a4-b57e-650c76041798.jpg?1783940979",
+        "rulings": [
+            {
+                "date": "2015-06-22",
+                "text": "Claustrophobia can target and enchant a tapped or untapped creature."
+            },
+            {
+                "date": "2015-06-22",
+                "text": "The enchanted creature can still be untapped in other ways. Claustrophobia will remain attached, and the creature will continue to not untap during its controller's untap step."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE"
     ]
 }
 
@@ -1810,6 +2085,53 @@
     },
     "colorIdentityOverride": [
         "BLACK"
+    ]
+}
+
+// Falkenrath Marauders
+{
+    "name": "Falkenrath Marauders",
+    "manaCost": "{3}{R}{R}",
+    "typeLine": "Creature — Vampire Warrior",
+    "oracleText": "Flying\nHaste (This creature can attack and {T} as soon as it comes under your control.)\nWhenever this creature deals combat damage to a player, put two +1/+1 counters on it.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "keywords": [
+        "FLYING",
+        "HASTE"
+    ],
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Falkenrath Marauders:1",
+                "trigger": {
+                    "type": "DealsDamageEvent",
+                    "damageType": "DamageCombat",
+                    "recipient": {
+                        "type": "RecipientPlayer",
+                        "player": "Any"
+                    }
+                },
+                "effect": {
+                    "type": "AddCounters",
+                    "counterType": "PLUS_ONE_PLUS_ONE",
+                    "count": 2,
+                    "target": "Self"
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "141",
+        "rarity": "RARE",
+        "artist": "James Ryman",
+        "flavorText": "No slinking in the dark for them, no luring whispers. They claim their prey in the speed and glory of the hunt.",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/9/b9c09887-6d2b-48b4-a483-16b8a45babd0.jpg?1783940937"
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 
@@ -2621,6 +2943,74 @@
     ]
 }
 
+// Gavony Township
+{
+    "name": "Gavony Township",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "{T}: Add {C}.\n{2}{G}{W}, {T}: Put a +1/+1 counter on each creature you control.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Gavony Township:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Gavony Township:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{2}{G}{W}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Group",
+                        "filter": {
+                            "baseFilter": "creature ctrl:you"
+                        }
+                    },
+                    "body": {
+                        "type": "AddCounters",
+                        "counterType": "PLUS_ONE_PLUS_ONE",
+                        "count": 1,
+                        "target": "IterationEntity"
+                    }
+                },
+                "descriptionOverride": "{2}{G}{W}, {T}: Put a +1/+1 counter on each creature you control."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "239",
+        "rarity": "RARE",
+        "artist": "Peter Mohrbacher",
+        "flavorText": "\"The protective wards of the church have weakened, and no one can tell us why. It's time to look to our own defenses.\"\n—Gregel, militia leader",
+        "imageUri": "https://cards.scryfall.io/normal/front/b/5/b5f73443-2fe8-424f-8e71-fc7ce1f3a3eb.jpg?1783940895"
+    },
+    "colorIdentityOverride": [
+        "GREEN",
+        "WHITE"
+    ]
+}
+
 // Geist of Saint Traft
 {
     "name": "Geist of Saint Traft",
@@ -3199,7 +3589,13 @@
                     "effect": "Transform",
                     "interveningIf": {
                         "type": "Compare",
-                        "left": "SpellsCastLastTurn",
+                        "left": {
+                            "type": "GreatestAmongPlayers",
+                            "inner": {
+                                "type": "SpellsCastLastTurn",
+                                "player": "You"
+                            }
+                        },
                         "operator": "GTE",
                         "right": {
                             "type": "Fixed",
@@ -3582,6 +3978,93 @@
     ]
 }
 
+// Kessig Wolf Run
+{
+    "name": "Kessig Wolf Run",
+    "manaCost": "",
+    "typeLine": "Land",
+    "oracleText": "{T}: Add {C}.\n{X}{R}{G}, {T}: Target creature gets +X/+0 and gains trample until end of turn.",
+    "script": {
+        "activatedAbilities": [
+            {
+                "id": "Kessig Wolf Run:1",
+                "cost": "CostTap",
+                "effect": {
+                    "type": "AddColorlessMana",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    }
+                },
+                "timing": "ManaAbility",
+                "isManaAbility": true
+            },
+            {
+                "id": "Kessig Wolf Run:2",
+                "cost": {
+                    "type": "CostComposite",
+                    "costs": [
+                        {
+                            "type": "CostAtomWrapper",
+                            "atom": {
+                                "type": "AtomMana",
+                                "cost": "{X}{R}{G}"
+                            }
+                        },
+                        "CostTap"
+                    ]
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "ModifyStats",
+                            "powerModifier": "XValue",
+                            "toughnessModifier": {
+                                "type": "Fixed",
+                                "amount": 0
+                            },
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        },
+                        {
+                            "type": "GrantKeyword",
+                            "keyword": "TRAMPLE",
+                            "target": {
+                                "type": "BoundVariable",
+                                "name": "t0"
+                            }
+                        }
+                    ]
+                },
+                "targetRequirements": [
+                    {
+                        "type": "TargetObject",
+                        "filter": {
+                            "baseFilter": "creature"
+                        },
+                        "id": "t0"
+                    }
+                ],
+                "descriptionOverride": "{X}{R}{G}, {T}: Target creature gets +X/+0 and gains trample until end of turn."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "243",
+        "rarity": "RARE",
+        "artist": "Eytan Zana",
+        "flavorText": "When a werewolf changes for the first time, that first howl is said to echo through the wilds till moonset.",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/a/4a8447fe-7368-470a-911a-1083ec6cc831.jpg?1783940895"
+    },
+    "colorIdentityOverride": [
+        "RED",
+        "GREEN"
+    ]
+}
+
 // Kindercatch
 {
     "name": "Kindercatch",
@@ -3663,7 +4146,13 @@
                     "effect": "Transform",
                     "interveningIf": {
                         "type": "Compare",
-                        "left": "SpellsCastLastTurn",
+                        "left": {
+                            "type": "GreatestAmongPlayers",
+                            "inner": {
+                                "type": "SpellsCastLastTurn",
+                                "player": "You"
+                            }
+                        },
                         "operator": "GTE",
                         "right": {
                             "type": "Fixed",
@@ -3817,46 +4306,54 @@
                     "change": 1
                 },
                 "effect": {
-                    "type": "ForEach",
-                    "space": {
-                        "type": "IterationSpace.Players",
-                        "players": "ActivePlayerFirst"
-                    },
-                    "body": {
-                        "type": "Composite",
-                        "effects": [
-                            {
-                                "type": "GatherCards",
-                                "source": {
-                                    "type": "FromZone",
-                                    "zone": "Hand"
-                                },
-                                "storeAs": "hand"
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "ForEach",
+                            "space": {
+                                "type": "IterationSpace.Players",
+                                "players": "ActivePlayerFirst"
                             },
-                            {
-                                "type": "SelectFromCollection",
-                                "from": "hand",
-                                "selection": {
-                                    "type": "ChooseExactly",
-                                    "count": {
-                                        "type": "Fixed",
-                                        "amount": 1
+                            "body": {
+                                "type": "Composite",
+                                "effects": [
+                                    {
+                                        "type": "GatherCards",
+                                        "source": {
+                                            "type": "FromZone",
+                                            "zone": "Hand"
+                                        },
+                                        "storeAs": "hand"
+                                    },
+                                    {
+                                        "type": "SelectFromCollection",
+                                        "from": "hand",
+                                        "selection": {
+                                            "type": "ChooseExactly",
+                                            "count": {
+                                                "type": "Fixed",
+                                                "amount": 1
+                                            }
+                                        },
+                                        "storeSelected": "chosenToDiscard",
+                                        "prompt": "Choose a card to discard"
                                     }
-                                },
-                                "storeSelected": "discarded",
-                                "prompt": "Choose a card to discard"
+                                ]
                             },
-                            {
-                                "type": "MoveCollection",
-                                "from": "discarded",
-                                "destination": {
-                                    "type": "ToZone",
-                                    "zone": "Graveyard"
-                                },
-                                "moveType": "Discard"
+                            "collectCollections": {
+                                "chosenToDiscard": "discarded_by_each_player"
                             }
-                        ]
-                    }
+                        },
+                        {
+                            "type": "MoveCollection",
+                            "from": "discarded_by_each_player",
+                            "destination": {
+                                "type": "ToZone",
+                                "zone": "Graveyard"
+                            },
+                            "moveType": "Discard"
+                        }
+                    ]
                 },
                 "timing": "SorcerySpeed",
                 "isPlaneswalkerAbility": true
@@ -4419,7 +4916,13 @@
                     "effect": "Transform",
                     "interveningIf": {
                         "type": "Compare",
-                        "left": "SpellsCastLastTurn",
+                        "left": {
+                            "type": "GreatestAmongPlayers",
+                            "inner": {
+                                "type": "SpellsCastLastTurn",
+                                "player": "You"
+                            }
+                        },
                         "operator": "GTE",
                         "right": {
                             "type": "Fixed",
@@ -4969,6 +5472,63 @@
         "imageUri": "https://cards.scryfall.io/normal/front/5/d/5d495d85-6458-44d5-b3b4-5e09569057e3.jpg"
     },
     "colorIdentityOverride": []
+}
+
+// Orchard Spirit
+{
+    "name": "Orchard Spirit",
+    "manaCost": "{2}{G}",
+    "typeLine": "Creature — Spirit",
+    "oracleText": "This creature can't be blocked except by creatures with flying or reach.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "staticAbilities": [
+            {
+                "type": "CantBeBlockedExceptBy",
+                "blockerFilter": {
+                    "cardPredicates": [
+                        {
+                            "type": "Or",
+                            "predicates": [
+                                {
+                                    "type": "And",
+                                    "predicates": [
+                                        "IsCreature",
+                                        {
+                                            "type": "HasKeyword",
+                                            "keyword": "FLYING"
+                                        }
+                                    ]
+                                },
+                                {
+                                    "type": "And",
+                                    "predicates": [
+                                        "IsCreature",
+                                        {
+                                            "type": "HasKeyword",
+                                            "keyword": "REACH"
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "198",
+        "artist": "Howard Lyon",
+        "flavorText": "\"Pick not the rotten fruit, but neither touch the best. Leave those as an offering for our unseen guests.\"\n—Radwick, farmer of Gatstaf",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/a/aac43ced-35b0-4e70-a049-1a65db9b2b1e.jpg?1783940912"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
 }
 
 // Parallel Lives
@@ -7377,7 +7937,13 @@
                     "effect": "Transform",
                     "interveningIf": {
                         "type": "Compare",
-                        "left": "SpellsCastLastTurn",
+                        "left": {
+                            "type": "GreatestAmongPlayers",
+                            "inner": {
+                                "type": "SpellsCastLastTurn",
+                                "player": "You"
+                            }
+                        },
                         "operator": "GTE",
                         "right": {
                             "type": "Fixed",

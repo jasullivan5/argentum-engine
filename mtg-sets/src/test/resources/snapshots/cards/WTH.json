@@ -1,3 +1,110 @@
+// Abyssal Gatekeeper
+{
+    "name": "Abyssal Gatekeeper",
+    "manaCost": "{1}{B}",
+    "typeLine": "Creature — Horror",
+    "oracleText": "When this creature dies, each player sacrifices a creature of their choice.",
+    "creatureStats": {
+        "power": 1,
+        "toughness": 1
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Abyssal Gatekeeper:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "effect": {
+                    "type": "ForceSacrifice",
+                    "filter": "creature",
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "Each"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "59",
+        "artist": "Mark Tedin",
+        "flavorText": "\"There are two ways for me to pass this gate. One involves you remaining conscious.\"\n—Gerrard of the *Weatherlight*",
+        "imageUri": "https://cards.scryfall.io/normal/front/1/7/1734df5a-7d3a-46c7-a0ad-adbbd1be958f.jpg?1783946738"
+    },
+    "colorIdentityOverride": [
+        "BLACK"
+    ]
+}
+
+// Angelic Renewal
+{
+    "name": "Angelic Renewal",
+    "manaCost": "{1}{W}",
+    "typeLine": "Enchantment",
+    "oracleText": "Whenever a creature is put into your graveyard from the battlefield, you may sacrifice this enchantment. If you do, return that card to the battlefield.",
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Angelic Renewal:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "filter": "creature own:you",
+                    "from": "Battlefield",
+                    "to": "Graveyard"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.MayPay",
+                        "cost": "SacrificeSelf"
+                    },
+                    "then": {
+                        "type": "MoveToZone",
+                        "target": "TriggeringEntity",
+                        "destination": "Battlefield",
+                        "fromZone": "Graveyard"
+                    }
+                },
+                "descriptionOverride": "Whenever a creature is put into your graveyard from the battlefield, you may sacrifice this enchantment. If you do, return that card to the battlefield."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "4",
+        "artist": "Rebecca Guay",
+        "imageUri": "https://cards.scryfall.io/normal/front/7/d/7dddde7d-8565-45a7-a1db-f2dea2a6a3ba.jpg?1783946750",
+        "rulings": [
+            {
+                "date": "2018-12-07",
+                "text": "Angelic Renewal's ability triggers if a creature you own dies under another player's control."
+            },
+            {
+                "date": "2018-12-07",
+                "text": "If multiple creatures are put into your graveyard at once, Angelic Renewal triggers multiple times, but it can only be sacrificed once and only brings back one creature."
+            },
+            {
+                "date": "2018-12-07",
+                "text": "If Angelic Renewal leaves the battlefield before its triggered ability resolves, you won't be able to sacrifice it and the creature can't be returned to the battlefield."
+            },
+            {
+                "date": "2018-12-07",
+                "text": "If an animated permanent that's not normally a creature is put into your graveyard from the battlefield, Angelic Renewal can return that card to the battlefield."
+            },
+            {
+                "date": "2018-12-07",
+                "text": "If a token creature is put into your graveyard from the battlefield, you can sacrifice Angelic Renewal, but nothing will be returned to the battlefield."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE"
+    ]
+}
+
 // Benalish Knight
 {
     "name": "Benalish Knight",
@@ -819,5 +926,38 @@
     },
     "colorIdentityOverride": [
         "RED"
+    ]
+}
+
+// Vitalize
+{
+    "name": "Vitalize",
+    "manaCost": "{G}",
+    "typeLine": "Instant",
+    "oracleText": "Untap all creatures you control.",
+    "script": {
+        "spellEffect": {
+            "type": "ForEach",
+            "space": {
+                "type": "IterationSpace.Group",
+                "filter": {
+                    "baseFilter": "creature ctrl:you"
+                }
+            },
+            "body": {
+                "type": "TapUntap",
+                "target": "IterationEntity",
+                "tap": false
+            }
+        }
+    },
+    "metadata": {
+        "collectorNumber": "145",
+        "artist": "Pete Venters",
+        "flavorText": "\"After waking to the magic of Llanowar, no dreams can compare.\"\n—Mirri of the *Weatherlight*",
+        "imageUri": "https://cards.scryfall.io/normal/front/d/6/d6ee4997-4b1a-4e03-88ac-63b451bb7b38.jpg?1783946715"
+    },
+    "colorIdentityOverride": [
+        "GREEN"
     ]
 }

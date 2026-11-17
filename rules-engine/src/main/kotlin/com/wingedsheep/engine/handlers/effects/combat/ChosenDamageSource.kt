@@ -51,7 +51,7 @@ fun damageSourceChoices(state: GameState, resolvingContext: EffectContext? = nul
         snapshots(context.sacrificedPermanents + context.exiledAsCostSnapshots + context.tappedEntitySnapshots + context.chosenEntitySnapshots)
         context.lastKnownSourceSnapshot?.let { snapshots(listOf(it)) }
         ids(context.discardedAsCostCards + context.exiledAsCostCards)
-        context.pipeline?.storedCollections?.values?.forEach(::ids)
+        context.pipeline.storedCollections?.values?.forEach(::ids)
         context.granterId?.let { ids(listOf(it)) }
     }
     for (id in state.getBattlefield()) add(state.objectRef(id))

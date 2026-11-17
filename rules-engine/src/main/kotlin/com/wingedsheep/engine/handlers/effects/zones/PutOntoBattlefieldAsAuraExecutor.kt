@@ -55,7 +55,13 @@ class PutOntoBattlefieldAsAuraExecutor(
         }
 
         val controllerId = context.controllerId
-        val entry = AuraEntry(effect.enchant, effect.grantedStaticAbilities, effect.grantedAbilities)
+        // "If this would enter, you may [pay] instead" (EntersOnlyIfPaid) — asked before the host.
+        com.wingedsheep.engine.handlers.effects.EffectEntryPayments.prepare(
+            state, effect, context, mapOf(cardId to controllerId), cardRegistry, zones.predicateEvaluator
+        )?.let { return it }
+        val entry = AuraEntry(
+            effect.enchant, effect.grantedStaticAbilities, effect.grantedAbilities, effect.losesOtherAbilities
+        )
         val host = if (cardId in context.entryAuraHosts) {
             context.entryAuraHosts[cardId]
         } else {
@@ -69,7 +75,8 @@ class PutOntoBattlefieldAsAuraExecutor(
 
         val moved = zones.moveToZone(
             state, cardId, Zone.BATTLEFIELD,
-            ZoneEntryOptions(controllerId = controllerId, auraHostId = host, asAura = entry), zone
+            ZoneEntryOptions(controllerId = controllerId, auraHostId = host, asAura = entry,
+                paidToEnter = com.wingedsheep.engine.handlers.effects.EffectEntryPayments.paid(context, cardId)), zone
         )
         return EffectResult.success(moved.state, moved.events)
     }

@@ -108,7 +108,9 @@ const styles: Record<string, React.CSSProperties> = {
   layer: {
     position: 'absolute',
     inset: 0,
-    zIndex: 2000,
+    // Above the floating life-change numbers: the lethal hit plays out on the board around the
+    // banner, never across the winner's name.
+    zIndex: 'var(--z-game-result)' as unknown as number,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

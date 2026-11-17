@@ -51,6 +51,13 @@ data class ManaCost(val symbols: List<ManaSymbol>) {
     val xCount: Int
         get() = symbols.count { it is ManaSymbol.X }
 
+    /**
+     * True when the same symbol appears more than once — `{1}{G}{G}`, `{X}{X}{R}`, `{R/G}{R/G}`.
+     * Symbols compare exactly: `{R}{R/G}` has no repeat, and `{4}` is one symbol.
+     */
+    val hasRepeatedSymbol: Boolean
+        get() = symbols.size != symbols.toSet().size
+
     /** How many `{S}` pips this cost holds — each payable only with mana from a snow source (CR 107.4h). */
     val snowCount: Int
         get() = symbols.count { it is ManaSymbol.Snow }
@@ -314,6 +321,51 @@ data class ManaCost(val symbols: List<ManaSymbol>) {
         val newGenericAmount = (genericAmount - genericReduction).coerceAtLeast(0)
         val genericSymbols = if (newGenericAmount > 0) listOf(ManaSymbol.Generic(newGenericAmount)) else emptyList()
         return ManaCost(genericSymbols + remainingColored + otherSymbols)
+    }
+
+    /**
+     * This cost as it must be paid when only mana of [colors] may be spent on it — "spend only mana
+     * of the chosen color to activate this ability"
+     * ([com.wingedsheep.sdk.scripting.ActivatedAbility.payOnlyWithManaOf]). Each generic mana becomes
+     * one pip of the color (`{3}` → `{U}{U}{U}`), or, for two colors, a hybrid pip either pays
+     * (CR 107.4e). A colored or Phyrexian pip of an allowed color stays; a hybrid pip narrows to its
+     * allowed half (`{U/R}` with only blue allowed → `{U}`).
+     *
+     * Returns null when no mana of [colors] can pay the cost, or when the restriction can't be
+     * written in symbols: a pip of another color, `{C}`, `{S}`, `{X}`, a twobrid pip, any mana at all
+     * when [colors] is empty (a color never chosen), or generic mana when [colors] holds more than two
+     * colors. Callers treat null as unpayable, so the restriction fails closed rather than letting
+     * other mana through. A cost with no symbols is returned unchanged.
+     */
+    fun payableOnlyWith(colors: Set<Color>): ManaCost? {
+        if (symbols.isEmpty()) return this
+        val genericPip: ManaSymbol? = when (colors.size) {
+            1 -> ManaSymbol.Colored(colors.single())
+            2 -> colors.sortedBy { it.ordinal }.let { (a, b) -> ManaSymbol.Hybrid(a, b) }
+            else -> null
+        }
+        val result = mutableListOf<ManaSymbol>()
+        for (symbol in symbols) {
+            when (symbol) {
+                is ManaSymbol.Generic -> if (symbol.amount > 0) {
+                    val pip = genericPip ?: return null
+                    repeat(symbol.amount) { result += pip }
+                }
+                is ManaSymbol.Colored -> if (symbol.color in colors) result += symbol else return null
+                is ManaSymbol.Phyrexian -> if (symbol.color in colors) result += symbol else return null
+                is ManaSymbol.HybridPair -> {
+                    val allowed = listOf(symbol.color1, symbol.color2).filter { it in colors }
+                    result += when {
+                        allowed.size == 2 -> symbol
+                        allowed.size == 1 && symbol is ManaSymbol.Hybrid -> ManaSymbol.Colored(allowed.single())
+                        allowed.size == 1 && symbol is ManaSymbol.HybridPhyrexian -> ManaSymbol.Phyrexian(allowed.single())
+                        else -> return null
+                    }
+                }
+                ManaSymbol.Colorless, ManaSymbol.Snow, ManaSymbol.X, is ManaSymbol.MonocolorHybrid -> return null
+            }
+        }
+        return ManaCost(result)
     }
 
     /**

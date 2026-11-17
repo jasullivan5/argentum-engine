@@ -3,6 +3,7 @@ package com.wingedsheep.engine.scenarios
 import com.wingedsheep.engine.core.CardFlippedOntoBattlefieldEvent
 import com.wingedsheep.engine.core.FlipOntoBattlefieldDecision
 import com.wingedsheep.engine.core.FlipThrowResponse
+import com.wingedsheep.engine.mechanics.dexterity.FlipPhysics
 import com.wingedsheep.engine.state.components.battlefield.DamageComponent
 import com.wingedsheep.engine.state.components.battlefield.TappedComponent
 import com.wingedsheep.engine.support.ScenarioTestBase
@@ -29,9 +30,6 @@ import io.kotest.matchers.types.shouldBeInstanceOf
  */
 class FallingStarScenarioTest : ScenarioTestBase() {
 
-    /** Middle of the engine's clean release zone. */
-    private val clean = 0.74
-
     private fun TestGame.castStar(): FlipOntoBattlefieldDecision {
         val cast = castSpell(1, "Falling Star")
         withClue("Casting Falling Star should succeed: ${cast.error}") { cast.error shouldBe null }
@@ -42,10 +40,10 @@ class FallingStarScenarioTest : ScenarioTestBase() {
     private fun TestGame.throwAtCard(
         decision: FlipOntoBattlefieldDecision,
         id: EntityId,
-        strength: Double = clean,
+        spin: Double = FlipPhysics.IDEAL_SPIN,
     ): CardFlippedOntoBattlefieldEvent {
         val card = decision.table.cards.single { it.entityId == id }
-        val result = submitDecision(FlipThrowResponse(decision.id, card.x, card.y, strength, 0.0))
+        val result = submitDecision(FlipThrowResponse.toward(decision.id, decision.table, card.x, card.y, spin))
         withClue("Throwing should succeed: ${result.error}") { result.error shouldBe null }
         return result.events.filterIsInstance<CardFlippedOntoBattlefieldEvent>().single()
     }
@@ -104,7 +102,7 @@ class FallingStarScenarioTest : ScenarioTestBase() {
                 .build()
             val spider = game.findPermanent("Giant Spider")!!
 
-            val event = game.throwAtCard(game.castStar(), spider, strength = 0.0)
+            val event = game.throwAtCard(game.castStar(), spider, spin = 0.5)
 
             event.landing.turnedOver.shouldBeFalse()
             event.affected.shouldBeEmpty()
@@ -134,7 +132,7 @@ class FallingStarScenarioTest : ScenarioTestBase() {
                 com.wingedsheep.engine.state.ZoneKey(game.player1Id, com.wingedsheep.sdk.core.Zone.HAND),
             )
 
-            val event = game.throwAtCard(game.castStar(), spider, strength = 0.0)
+            val event = game.throwAtCard(game.castStar(), spider, spin = 0.5)
             event.affected.shouldBeEmpty()
             game.tapped(spider).shouldBeFalse()
         }

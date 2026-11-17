@@ -3,6 +3,7 @@ package com.wingedsheep.gameserver.deck
 import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.registry.PrintingRegistry
 import com.wingedsheep.gameserver.protocol.DeckEntryDTO
+import com.wingedsheep.sdk.core.CanadianHighlanderPoints
 import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.core.DeckFormat
 import com.wingedsheep.sdk.model.CardDefinition
@@ -28,6 +29,9 @@ import org.springframework.stereotype.Component
  *     Persistent Petitioners decks legal.
  *   - **Standard Brawl**: 60-card singleton restricted to the Standard pool (Scryfall key
  *     `standardbrawl`). Identical singleton + override rules as Brawl, just smaller.
+ *   - **Highlander / Canadian Highlander**: 100-card *minimum* singleton with no commander, over the
+ *     Vintage pool (legality derived in `LegalityData`). Canadian Highlander also caps the deck at
+ *     [CanadianHighlanderPoints.POINT_CAP] points and allows no sideboard.
  *   - **Standard / Pioneer / Modern / Pauper / Legacy / Vintage / Premodern**: 60-card minimum,
  *     4-of (current default). Format-specific banned-list enforcement comes from the per-card
  *     legality data Scryfall publishes — `card.legalFormats` already encodes "is currently legal
@@ -267,6 +271,19 @@ class DeckValidator @Autowired constructor(
             validateCommanderRules(commanders, countsByBaseName, format.displayName, errors)
         }
 
+        val points = if (format == DeckFormat.CANADIAN_HIGHLANDER) {
+            canadianHighlanderPoints(countsByBaseName, errors)
+        } else {
+            null
+        }
+        if (format == DeckFormat.CANADIAN_HIGHLANDER && (sideboard.isNotEmpty() || companion != null)) {
+            errors += DeckValidationIssue(
+                code = "SIDEBOARD_NOT_ALLOWED",
+                message = "${format.displayName} decks have no sideboard",
+                cardName = null,
+            )
+        }
+
         if (companion != null) {
             validateCompanion(
                 companion = companion,
@@ -284,8 +301,34 @@ class DeckValidator @Autowired constructor(
             valid = errors.isEmpty(),
             totalCards = totalCards,
             errors = errors,
-            warnings = warnings
+            warnings = warnings,
+            points = points,
         )
+    }
+
+    /**
+     * Tallies the deck's Canadian Highlander points and raises POINTS_OVER_CAP when it spends more
+     * than [CanadianHighlanderPoints.POINT_CAP]. The tally is returned whatever the outcome, so the
+     * deckbuilder can show it while the deck is still being built.
+     */
+    private fun canadianHighlanderPoints(
+        countsByBaseName: Map<String, Int>,
+        errors: MutableList<DeckValidationIssue>,
+    ): DeckPoints {
+        val byCard = countsByBaseName
+            .mapValues { (name, count) -> CanadianHighlanderPoints.pointsFor(name) * count }
+            .filterValues { it > 0 }
+            .toSortedMap()
+        val total = byCard.values.sum()
+        val cap = CanadianHighlanderPoints.POINT_CAP
+        if (total > cap) {
+            errors += DeckValidationIssue(
+                code = "POINTS_OVER_CAP",
+                message = "Deck spends $total points — ${DeckFormat.CANADIAN_HIGHLANDER.displayName} allows $cap",
+                cardName = null,
+            )
+        }
+        return DeckPoints(total = total, cap = cap, byCard = byCard)
     }
 
     private fun requiresAnteIssue(cardName: String) = DeckValidationIssue(
@@ -518,6 +561,12 @@ class DeckValidator @Autowired constructor(
             maxCopiesNonBasic = 1,
             formatLabel = format.displayName,
         )
+        DeckFormat.HIGHLANDER, DeckFormat.CANADIAN_HIGHLANDER -> FormatProfile(
+            // 100 is a floor, not an exact size: a Highlander deck may run more.
+            minSize = SINGLETON_HUNDRED_DECK_SIZE,
+            maxCopiesNonBasic = 1,
+            formatLabel = format.displayName,
+        )
         DeckFormat.STANDARD_BRAWL -> FormatProfile(
             // 60-card singleton, Standard pool. Per-card legality is sourced from Scryfall's
             // `standardbrawl` legality field; the construction shape is enforced here.
@@ -565,7 +614,7 @@ class DeckValidator @Autowired constructor(
             for (commander in commanders) merge(commander, 1, Int::plus)
         }
 
-        // Resolve every submitted card; basic lands bypass the pool-membership check (the lobby
+        // Resolve every submitted card; freely added basics (not snow, not Wastes) bypass the pool-membership check (the lobby
         // ships basics out-of-band via lobby.basicLands).
         for ((cardName, submitted) in allCounts) {
             val card = cardRegistry.getCard(cardName)
@@ -577,7 +626,7 @@ class DeckValidator @Autowired constructor(
                 )
                 continue
             }
-            if (card.typeLine.isBasicLand) continue
+            if (card.typeLine.isFreelyAddedBasicLand) continue
 
             val available = poolCounts[cardName] ?: 0
             if (submitted > available) {
@@ -716,7 +765,19 @@ data class DeckValidationResult(
     val valid: Boolean,
     val totalCards: Int,
     val errors: List<DeckValidationIssue>,
-    val warnings: List<DeckValidationIssue>
+    val warnings: List<DeckValidationIssue>,
+    /** The deck's points tally, for formats with a points list (Canadian Highlander); else null. */
+    val points: DeckPoints? = null,
+)
+
+/**
+ * A points-list format's tally: [total] spent of [cap], and the cards that cost points — each
+ * entry is that card's points times its copies, keyed by card name.
+ */
+data class DeckPoints(
+    val total: Int,
+    val cap: Int,
+    val byCard: Map<String, Int>,
 )
 
 data class DeckValidationIssue(

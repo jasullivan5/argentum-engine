@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { computePhases, enterPhase, mergeResult } from './pipelinePhases'
+import { computePhases, dropXCountPickerAtZero, enterPhase, mergeResult } from './pipelinePhases'
 import type { LegalActionInfo } from '@/types/messages'
+import type { PipelinePhase } from '../types'
 
 /**
  * Minimal CastSpell LegalActionInfo factory — only the fields computePhases reads matter.
@@ -44,6 +45,26 @@ describe('computePhases — choose-N modal', () => {
         description: 'creature to blight',
         validBlightTargets: ['fodder1'],
         blightAmount: 2,
+      },
+    })
+    expect(computePhases(info)).toEqual([{ type: 'modalModes' }, { type: 'costPayment' }])
+  })
+
+  it('an entwined cast paid by sacrifice (Betrayal of Flesh) collects the lands after the modes', () => {
+    // "Entwine—Sacrifice three lands" rides the declared cast variant; the engine rejects the
+    // action unless it carries the sacrificed lands, so the modal path must run costPayment.
+    const info = castAction({
+      modalEnumeration: {
+        chooseCount: 2,
+        minChooseCount: 2,
+        allowRepeat: false,
+        modes: [],
+      },
+      additionalCostInfo: {
+        costType: 'SacrificePermanent',
+        description: 'Sacrifice three lands',
+        validSacrificeTargets: ['land1', 'land2', 'land3', 'land4'],
+        sacrificeCount: 3,
       },
     })
     expect(computePhases(info)).toEqual([{ type: 'modalModes' }, { type: 'costPayment' }])
@@ -542,6 +563,21 @@ describe('enterPhase — X-driven target counts', () => {
     expect(captureXTargeting({ xConstrainsTargetCountExactly: true }, 0)).toMatchObject({ minTargets: 0, maxTargets: 0 })
   })
 
+  it('names the chosen X in the banner', () => {
+    expect(captureXTargeting({ targetDescription: 'up to X target creatures' }, 2))
+      .toMatchObject({ targetDescription: 'up to 2 target creatures' })
+    const req = {
+      index: 0,
+      description: 'up to X target creatures or planeswalkers',
+      minTargets: 0,
+      maxTargets: 1,
+      validTargets: ['a'],
+      xConstrainsCount: true,
+    }
+    expect(captureXTargeting({ targetRequirements: [req] }, 3))
+      .toMatchObject({ targetDescription: 'up to 3 target creatures or planeswalkers' })
+  })
+
   it('per-requirement exactness applies to multi-requirement actions', () => {
     const req = (index: number, exact: boolean) => ({
       index,
@@ -630,5 +666,105 @@ describe('Casualty — sacrifice picker', () => {
       {} as never,
     )
     expect(merged).toMatchObject({ casualtyCreature: 'courser', xValue: 2 })
+  })
+})
+
+describe('Sacrifice X creatures — exact-X sacrifice picker', () => {
+  function sacrificeXAction(): LegalActionInfo {
+    return castAction({
+      description: 'Cast Eliminate the Competition',
+      hasXCost: true,
+      maxAffordableX: 3,
+      additionalCostInfo: {
+        costType: 'SacrificeVariable',
+        description: 'Sacrifice X creatures you control',
+        validSacrificeTargets: ['a', 'b', 'c'],
+        sacrificeCount: 0,
+        countIsX: true,
+      },
+    })
+  }
+
+  it('announces X before the sacrifice is picked', () => {
+    expect(computePhases(sacrificeXAction(), { autoTapEnabled: true })).toEqual([
+      { type: 'xSelection' },
+      { type: 'costPayment' },
+    ])
+  })
+
+  it('requires exactly the chosen X sacrifices', () => {
+    const info = sacrificeXAction()
+    let captured: Record<string, unknown> | null = null
+    const store = {
+      startTargeting: (arg: Record<string, unknown>) => { captured = arg },
+    } as unknown as Parameters<typeof enterPhase>[3]
+    enterPhase({ type: 'costPayment' }, info, { ...info.action, xValue: 2 } as never, store, undefined)
+    expect(captured).toMatchObject({
+      validTargets: ['a', 'b', 'c'],
+      minTargets: 2,
+      maxTargets: 2,
+      isSacrificeSelection: true,
+      targetDescription: 'Sacrifice 2 creatures you control',
+    })
+  })
+
+  it('names a single sacrifice in the singular at X = 1', () => {
+    const info = sacrificeXAction()
+    let captured: Record<string, unknown> | null = null
+    const store = {
+      startTargeting: (arg: Record<string, unknown>) => { captured = arg },
+    } as unknown as Parameters<typeof enterPhase>[3]
+    enterPhase({ type: 'costPayment' }, info, { ...info.action, xValue: 1 } as never, store, undefined)
+    expect(captured).toMatchObject({ minTargets: 1, maxTargets: 1, targetDescription: 'Sacrifice 1 creature you control' })
+  })
+
+  it('skips the sacrifice picker when X is 0', () => {
+    const info = sacrificeXAction()
+    const rest: PipelinePhase[] = [{ type: 'costPayment' }, { type: 'targeting' } as PipelinePhase]
+    expect(dropXCountPickerAtZero(rest, info, 0)).toEqual([{ type: 'targeting' }])
+    expect(dropXCountPickerAtZero(rest, info, 2)).toEqual(rest)
+  })
+})
+
+describe('Discard X cards — exact-X discard picker', () => {
+  function discardXAction(): LegalActionInfo {
+    return castAction({
+      description: "Cast Nahiri's Wrath",
+      hasXCost: true,
+      maxAffordableX: 3,
+      additionalCostInfo: {
+        costType: 'DiscardCard',
+        description: 'Discard X cards',
+        validDiscardTargets: ['a', 'b', 'c'],
+        discardCount: 0,
+        discardMaxCount: 3,
+        countIsX: true,
+      },
+    })
+  }
+
+  it('announces X before the discard is picked', () => {
+    expect(computePhases(discardXAction(), { autoTapEnabled: true })[0]).toEqual({ type: 'xSelection' })
+  })
+
+  it('requires exactly the chosen X discards', () => {
+    const info = discardXAction()
+    let captured: Record<string, unknown> | null = null
+    const store = {
+      startTargeting: (arg: Record<string, unknown>) => { captured = arg },
+    } as unknown as Parameters<typeof enterPhase>[3]
+    enterPhase({ type: 'costPayment' }, info, { ...info.action, xValue: 2 } as never, store, undefined)
+    expect(captured).toMatchObject({
+      validTargets: ['a', 'b', 'c'],
+      minTargets: 2,
+      maxTargets: 2,
+      isDiscardSelection: true,
+    })
+  })
+
+  it('skips the discard picker when X is 0', () => {
+    const info = discardXAction()
+    const rest: PipelinePhase[] = [{ type: 'costPayment' }, { type: 'targeting' } as PipelinePhase]
+    expect(dropXCountPickerAtZero(rest, info, 0)).toEqual([{ type: 'targeting' }])
   })
 })

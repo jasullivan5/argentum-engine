@@ -80,18 +80,26 @@ data class GameObjectFilter(
         }
 
     /**
-     * Card predicates in rendering order: color adjectives first, then subtypes, then the card
+     * Card predicates in rendering order: type negations and color adjectives first, then subtypes, then the card
      * type, because Magic templates them that way — "white permanent", "green Elf creature",
      * "Frog, Rabbit, or Squirrel creature", never "permanent white" or "creature Wolf". A stable
      * partition, so every other pairing keeps its original insertion order.
      */
     private fun orderedCardPredicates(): List<CardPredicate> {
-        val (colors, others) = cardPredicates.partition { it.isColorAdjective() }
+        // Card-type negations (nonartifact / nonland / noncreature / nonenchantment) lead, as
+        // Oracle templates them: "nonartifact creature", never "creature nonartifact".
+        val (negations, rest0) = cardPredicates.partition { it.isTypeNegation() }
+        val (colors, others) = rest0.partition { it.isColorAdjective() }
         val (subtypes, rest) = others.partition {
             it is CardPredicate.HasSubtype || it is CardPredicate.HasAnyOfSubtypes
         }
-        return colors + subtypes + rest
+        return negations + colors + subtypes + rest
     }
+
+    /** "Not this card type" predicates — adjectives ahead of the noun ("nonland permanent"). */
+    private fun CardPredicate.isTypeNegation(): Boolean =
+        this == CardPredicate.IsNonartifact || this == CardPredicate.IsNonland ||
+            this == CardPredicate.IsNoncreature || this == CardPredicate.IsNonenchantment
 
     /** One-word color predicates that read as an adjective ahead of the noun ("nonblack", "multicolored"). */
     private fun CardPredicate.isColorAdjective(): Boolean =
@@ -168,6 +176,29 @@ data class GameObjectFilter(
     }
 
     /**
+     * This filter as a plural noun phrase over permanents, the controller after the noun as Oracle
+     * prints it: "creatures you control", "artifacts an opponent controls".
+     */
+    val pluralPermanentDescription: String
+        get() {
+            val controller = controllerPredicate?.description?.takeIf { it.isNotEmpty() }
+                ?: return permanentNounPhrase(plural = true)
+            return copy(controllerPredicate = null).permanentNounPhrase(plural = true, scope = controller)
+        }
+
+    /**
+     * This filter as a singular noun phrase over permanents, the controller after the noun as Oracle
+     * prints it: "artifact you control", "nonland permanent an opponent controls". Pair it with
+     * [indefiniteArticle] for "choose an artifact you control".
+     */
+    val singularPermanentDescription: String
+        get() {
+            val controller = controllerPredicate?.description?.takeIf { it.isNotEmpty() }
+                ?: return permanentNounPhrase(plural = false)
+            return copy(controllerPredicate = null).permanentNounPhrase(plural = false, scope = controller)
+        }
+
+    /**
      * This filter as a noun phrase over permanents, with the controller [scope] placed where Oracle
      * puts it — after the noun, ahead of any trailing clause: "Frog, Rabbit, Raccoon, or Squirrel
      * creature**s** you control that entered the battlefield this turn". A filter with no type words
@@ -177,8 +208,12 @@ data class GameObjectFilter(
         val (lead, trail) = splitStatePredicates()
         val controller = controllerPredicate?.description?.takeIf { it.isNotEmpty() }
         val types = typeWords()
+        // "nontoken" / "token" alone is an adjective, not a noun: "nontoken permanents", not "nontokens".
+        val adjectiveOnly = anyOf.isEmpty() && cardPredicates.isNotEmpty() &&
+            cardPredicates.all { it == CardPredicate.IsToken || it == CardPredicate.IsNontoken }
         val noun = when {
             types.isEmpty() -> if (plural) "permanents" else "permanent"
+            adjectiveOnly -> if (plural) "$types permanents" else "$types permanent"
             !plural -> types
             anyOf.isNotEmpty() -> "$types permanents"
             else -> pluralizeLastWord(types)

@@ -8231,7 +8231,8 @@
     "DUEL",
     "OATHBREAKER",
     "PREDH",
-    "TLR"
+    "TLR",
+    "VINTAGE_RESTRICTED"
   ],
   "Demonic Counsel": [
     "ALCHEMY",
@@ -8412,7 +8413,8 @@
     "DUEL",
     "GLADIATOR",
     "OATHBREAKER",
-    "PREDH"
+    "PREDH",
+    "VINTAGE_RESTRICTED"
   ],
   "Demonic Tutor // Demonic Tutor": [],
   "Demonic Vigor": [
@@ -11472,7 +11474,8 @@
     "OATHBREAKER",
     "PENNY",
     "PIONEER",
-    "TIMELESS"
+    "TIMELESS",
+    "VINTAGE_RESTRICTED"
   ],
   "Dig Up": [
     "BRAWL",

@@ -10,6 +10,7 @@ import com.wingedsheep.sdk.model.Rarity
 import com.wingedsheep.sdk.scripting.GameObjectFilter
 import com.wingedsheep.sdk.scripting.effects.CardDestination
 import com.wingedsheep.sdk.scripting.effects.CardSource
+import com.wingedsheep.sdk.scripting.effects.EmitLibrarySearchedEventEffect
 import com.wingedsheep.sdk.scripting.effects.ZonePlacement
 import com.wingedsheep.sdk.scripting.references.Player
 
@@ -31,7 +32,7 @@ import com.wingedsheep.sdk.scripting.references.Player
  * other Dragon you control entering. Claim Territory is a Cultivate-style "search up to two
  * basics" split (one to battlefield tapped, one to hand) — the [SelectionMode.ChooseExactly]
  * split step auto-selects the only card when one basic is found. The "(Also shuffle this card.)"
- * reminder is handled by the Omen/Adventure exile-and-recast flow.
+ * reminder is the Omen layout's resolution: the card is shuffled into its owner's library.
  */
 val BloomvineRegent = card("Bloomvine Regent") {
     manaCost = "{3}{G}{G}"
@@ -53,7 +54,7 @@ val BloomvineRegent = card("Bloomvine Regent") {
 
     // Claim Territory — Omen. Search your library for up to two basic Forest cards, reveal them,
     // put one onto the battlefield tapped and the other into your hand, then shuffle.
-    adventure("Claim Territory") {
+    omen("Claim Territory") {
         manaCost = "{2}{G}"
         typeLine = "Sorcery — Omen"
         oracleText = "Search your library for up to two basic Forest cards, reveal them, put one " +
@@ -88,6 +89,7 @@ val BloomvineRegent = card("Bloomvine Regent") {
                 )
                 toHand(toHandCards, revealed = true)
                 run(Effects.ShuffleLibrary())
+                run(EmitLibrarySearchedEventEffect)
             }
         }
     }

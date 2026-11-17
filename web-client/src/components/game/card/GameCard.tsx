@@ -499,6 +499,7 @@ function GameCardImpl({
            (action.type === 'CycleCard' && action.cardId === card.id) ||
            (action.type === 'TypecycleCard' && action.cardId === card.id) ||
            (action.type === 'PlotCard' && action.cardId === card.id) ||
+           (action.type === 'ForetellCard' && action.cardId === card.id) ||
            (action.type === 'PutCompanionIntoHand' && action.cardId === card.id) ||
            (action.type === 'SuspendCardFromHand' && action.cardId === card.id)
   }), [legalActions, card.id])
@@ -2412,8 +2413,8 @@ function GameCardImpl({
         </div>
       )}
 
-      {/* Chosen creature type / color / mode / card name / card type badge (e.g., Doom Cannon, Riptide Replicator, Outpost Siege, Petrified Hamlet, Arachne) */}
-      {!faceDown && (card.chosenCreatureType ?? card.chosenColor ?? card.chosenMode ?? card.chosenCardName ?? card.chosenCardType) && (
+      {/* Chosen creature type / color / mode / card name / card type / number badge (e.g., Doom Cannon, Riptide Replicator, Outpost Siege, Petrified Hamlet, Arachne, Haktos) */}
+      {!faceDown && (card.chosenCreatureType ?? card.chosenColor ?? card.chosenMode ?? card.chosenCardName ?? card.chosenCardType ?? card.chosenNumber) != null && (
         <div style={{
           position: 'absolute',
           bottom: card.power != null ? 22 : 4,
@@ -2428,7 +2429,8 @@ function GameCardImpl({
           pointerEvents: 'none',
           zIndex: 5,
         }}>
-          {[card.chosenColor, card.chosenCreatureType, card.chosenMode, card.chosenCardName, card.chosenCardType].filter(Boolean).join(' ')}
+          {[card.chosenColor, card.chosenCreatureType, card.chosenMode, card.chosenCardName, card.chosenCardType,
+            card.chosenNumber != null ? `Number ${card.chosenNumber}` : null].filter(Boolean).join(' ')}
         </div>
       )}
 

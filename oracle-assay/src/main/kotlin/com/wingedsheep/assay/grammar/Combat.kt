@@ -7,6 +7,9 @@ import com.wingedsheep.sdk.core.AbilityFlag
 import com.wingedsheep.sdk.core.ManaCost
 import com.wingedsheep.sdk.core.Subtype
 import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.dsl.DynamicAmounts
+import com.wingedsheep.sdk.dsl.Triggers
+import com.wingedsheep.sdk.scripting.events.Recipient
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.model.CardScript
 import com.wingedsheep.sdk.scripting.GameObjectFilter
@@ -17,7 +20,6 @@ import com.wingedsheep.sdk.scripting.effects.GrantAttackBlockTaxPerCreatureTypeE
 import com.wingedsheep.sdk.scripting.effects.GrantCantBeBlockedExceptByColorEffect
 import com.wingedsheep.sdk.scripting.effects.GrantCantBeBlockedExceptByEffect
 import com.wingedsheep.sdk.scripting.effects.MustBeBlockedEffect
-import com.wingedsheep.sdk.scripting.effects.ReflectCombatDamageEffect
 import com.wingedsheep.sdk.scripting.effects.SkipCombatPhasesEffect
 import com.wingedsheep.sdk.scripting.effects.SkipUntapEffect
 import com.wingedsheep.sdk.scripting.effects.TauntEffect
@@ -312,9 +314,9 @@ object Combat {
      *
      * Each is one effect with one target and no variable, so each is a constant rule paired with the
      * requirement its sentence declares. Note that the *filter* in Exhaustion's printed noun phrase
-     * ("Creatures and lands target opponent controls") is not a slot: `SkipUntapEffect` carries
-     * `affectsCreatures` and `affectsLands` as booleans rather than a filter, so the phrase is a
-     * literal here and a card naming any other combination declines.
+     * ("Creatures and lands target opponent controls") is not a slot yet: `SkipUntapEffect` carries
+     * it as a `permanents` filter, but this rule reads only the default creatures-and-lands phrase,
+     * so a card naming any other combination declines.
      */
     private fun playerEffect(
         template: String,
@@ -454,7 +456,14 @@ object Combat {
             "this turn, whenever an attacking creature deals combat damage to you, it deals that " +
                 "much damage to its controller",
             "reflect combat damage",
-            ReflectCombatDamageEffect(),
+            Effects.CreateDelayedTrigger(
+                trigger = Triggers.a(GameObjectFilter.Creature.attacking()).dealsCombatDamage(to = Recipient.You),
+                effect = Effects.DealDamage(
+                    DynamicAmounts.triggerDamageAmount(), EffectTarget.ControllerOfTriggeringEntity,
+                    damageSource = EffectTarget.TriggeringEntity,
+                ),
+                fireOnce = false,
+            ),
         ),
     ) + restrictionsOnTargets
 }

@@ -1542,7 +1542,8 @@
                 "trigger": "CastThisSpellEvent",
                 "effect": {
                     "type": "CopyTargetSpell",
-                    "target": "TriggeringEntity"
+                    "target": "TriggeringEntity",
+                    "mayChooseNewTargets": false
                 },
                 "descriptionOverride": "When you cast this spell, copy it."
             }
@@ -5686,6 +5687,7 @@
                             }
                         },
                         "ShuffleLibrary",
+                        "EmitLibrarySearchedEvent",
                         {
                             "type": "ConditionalOnCollection",
                             "collection": "selected1",
@@ -6895,7 +6897,8 @@
                                     "zone": "Library",
                                     "filter": "name:Gathering Throng"
                                 },
-                                "storeAs": "gathered0"
+                                "storeAs": "gathered0",
+                                "search": true
                             },
                             {
                                 "type": "SelectFromCollection",
@@ -6913,7 +6916,8 @@
                                 },
                                 "revealed": true
                             },
-                            "ShuffleLibrary"
+                            "ShuffleLibrary",
+                            "EmitLibrarySearchedEvent"
                         ]
                     }
                 }
@@ -12467,9 +12471,12 @@
                     "zone": "Graveyard"
                 },
                 "id": "t0",
-                "totalManaValueAtMost": {
-                    "type": "Fixed",
-                    "amount": 3
+                "totalAtMost": {
+                    "property": "MANA_VALUE",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 3
+                    }
                 }
             }
         ]
@@ -13051,11 +13058,7 @@
                 },
                 "effect": {
                     "type": "DealDamage",
-                    "amount": {
-                        "type": "TurnTracking",
-                        "player": "You",
-                        "tracker": "PERMANENTS_SACRIFICED"
-                    },
+                    "amount": "PermanentsSacrificedThisTurn",
                     "target": {
                         "type": "BoundVariable",
                         "name": "t0"
@@ -15797,8 +15800,7 @@
                         "ChosenBySource"
                     ]
                 },
-                "includeManaAbilities": true,
-                "includeLoyaltyAbilities": false,
+                "abilities": "NON_LOYALTY",
                 "spendAsThoughAnyColor": true
             }
         ],
@@ -17647,61 +17649,6 @@
     ]
 }
 
-// Tavern Swindler
-{
-    "name": "Tavern Swindler",
-    "manaCost": "{1}{B}",
-    "typeLine": "Creature — Human Rogue",
-    "oracleText": "{T}, Pay 3 life: Flip a coin. If you win the flip, you gain 6 life.",
-    "creatureStats": {
-        "power": 2,
-        "toughness": 2
-    },
-    "script": {
-        "activatedAbilities": [
-            {
-                "id": "Tavern Swindler:1",
-                "cost": {
-                    "type": "CostComposite",
-                    "costs": [
-                        "CostTap",
-                        {
-                            "type": "CostAtomWrapper",
-                            "atom": {
-                                "type": "AtomPayLife",
-                                "amount": {
-                                    "type": "Fixed",
-                                    "amount": 3
-                                }
-                            }
-                        }
-                    ]
-                },
-                "effect": {
-                    "type": "FlipCoin",
-                    "wonEffect": {
-                        "type": "GainLife",
-                        "amount": {
-                            "type": "Fixed",
-                            "amount": 6
-                        }
-                    }
-                }
-            }
-        ]
-    },
-    "metadata": {
-        "collectorNumber": "96",
-        "rarity": "UNCOMMON",
-        "artist": "Pauline Voss",
-        "flavorText": "\"Only a chump stops after one unlucky loss. You're not a chump, are you?\"",
-        "imageUri": "https://cards.scryfall.io/normal/front/b/1/b17114ed-f98f-4b82-ba03-ef7ec5f572ba.jpg?1783923124"
-    },
-    "colorIdentityOverride": [
-        "BLACK"
-    ]
-}
-
 // Tenacious Underdog
 {
     "name": "Tenacious Underdog",
@@ -18280,16 +18227,18 @@
         "replacementEffects": [
             {
                 "type": "EntersAsCopy",
-                "entersWithCounters": {
-                    "count": {
-                        "type": "Fixed",
-                        "amount": 1
-                    },
-                    "counterType": "SHIELD",
-                    "ifCopiedMatches": {
-                        "controllerPredicate": "ControlledByYou"
+                "entersWithCounters": [
+                    {
+                        "count": {
+                            "type": "Fixed",
+                            "amount": 1
+                        },
+                        "counterType": "SHIELD",
+                        "ifCopiedMatches": {
+                            "controllerPredicate": "ControlledByYou"
+                        }
                     }
-                }
+                ]
             }
         ]
     },

@@ -69,6 +69,11 @@ class LlmAiPlayerController(
         logger.info("AI deck context set: {} unique cards, {} total", deckList.size, deckList.values.sum())
     }
 
+    /** The LLM is not told the opponent's list; its engine fallback reads it. */
+    override fun setOpponentDeckListSource(source: (EntityId) -> Map<String, Int>?) {
+        fallback?.setOpponentDeckListSource(source)
+    }
+
     // =========================================================================
     // Public decision methods
     // =========================================================================
@@ -684,6 +689,13 @@ class LlmAiPlayerController(
                 }
             }
 
+            // A creature that can only attack alone (Master of Cruelties) stays home beside others.
+            val lone = declareAttackers.loneAttackers.orEmpty()
+            if (attackerMap.size > 1 && attackerMap.keys.any { it in lone }) {
+                val keep = attackerMap.keys.filter { it !in lone }.ifEmpty { listOf(attackerMap.keys.first()) }
+                attackerMap.keys.retainAll(keep.toSet())
+            }
+
             val attackerNames = attackerMap.entries.mapNotNull { (eid, targetId) ->
                 val name = state.cards[eid]?.name ?: return@mapNotNull null
                 val targetName = if (targetId == opponentId) "" else state.cards[targetId]?.name?.let { " -> $it" } ?: ""
@@ -807,7 +819,8 @@ class LlmAiPlayerController(
         packNumber: Int,
         pickNumber: Int,
         picksRequired: Int,
-        passDirection: String
+        passDirection: String,
+        podSize: Int?,
     ): List<String> {
         // Initialize draft history with system prompt on first pick.
         // Explicit cache breakpoint on the system prompt — stable across all picks.
@@ -837,7 +850,7 @@ class LlmAiPlayerController(
         // Fallback: delegate to engine AI
         if (fallback != null) {
             logger.warn("AI draft pick falling back to engine AI P{}p{}", packNumber, pickNumber)
-            return fallback.chooseDraftPick(pack, pickedSoFar, packNumber, pickNumber, picksRequired, passDirection)
+            return fallback.chooseDraftPick(pack, pickedSoFar, packNumber, pickNumber, picksRequired, passDirection, podSize)
         }
 
         // Last-resort: pick by rarity

@@ -16,12 +16,14 @@ import com.wingedsheep.engine.registry.CardRegistry
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.AttachedToComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
+import com.wingedsheep.sdk.core.Color
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.AdditionalManaOnTap
 import com.wingedsheep.sdk.scripting.effects.AddManaOfChoiceEffect
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
 import com.wingedsheep.sdk.scripting.values.ManaColorSet
 import com.wingedsheep.engine.core.Outcome
+import com.wingedsheep.engine.state.components.identity.faceUpCardDefinition
 
 /**
  * Resolves "additional one mana of any color" tap bonuses from [AdditionalManaOnTap] auras with
@@ -52,8 +54,7 @@ class TappedForManaBonusResolver(
         for (entityId in state.getBattlefield()) {
             val container = state.getEntity(entityId) ?: continue
             if (container.get<AttachedToComponent>()?.targetId != landId) continue
-            val card = container.get<CardComponent>() ?: continue
-            val cardDef = cardRegistry.getCard(card.cardDefinitionId) ?: continue
+            val cardDef = container.faceUpCardDefinition(cardRegistry) ?: continue
             for (staticAbility in cardDef.script.staticAbilities) {
                 val bonus = staticAbility as? AdditionalManaOnTap ?: continue
                 if (!bonus.anyColor) continue
@@ -89,7 +90,7 @@ class TappedForManaBonusResolver(
         // five, so this only short-circuits if a future colorSet narrowing is introduced.)
         val singleColor = available.singleOrNull()
         if (singleColor != null) {
-            val added = manaExecutor.addManaToPool(state, bonusEffect(item.amount), contextFor(state, item.auraId, item.controllerId), singleColor, available)
+            val added = addBonus(state, item, singleColor, available)
             return drive(added.state, remaining, accumulatedEvents + added.events)
         }
 
@@ -131,10 +132,19 @@ class TappedForManaBonusResolver(
             ManaColorSet.AnyColor, state, state.projectedState, item.auraId, item.controllerId, cardRegistry,
             predicateEvaluator = dynamicAmountEvaluator.predicates
         )
-        val added = manaExecutor.addManaToPool(state, bonusEffect(item.amount), contextFor(state, item.auraId, item.controllerId), response.color, available)
+        val added = addBonus(state, item, response.color, available)
         val driveResult = drive(added.state, continuation.remaining, added.events.toList())
         if (driveResult.outcome is Outcome.Paused) return driveResult
         return checkForMore(driveResult.state, driveResult.events)
+    }
+
+    /**
+     * Add [item]'s bonus in [color]. The aura is the source of this mana (CR 106.3), so a snow
+     * aura's bonus is snow mana and pays `{S}` (Glittering Frost).
+     */
+    private fun addBonus(state: GameState, item: AnyColorTapBonus, color: Color, available: Set<Color>): com.wingedsheep.engine.core.EffectResult {
+        val added = manaExecutor.addManaToPool(state, bonusEffect(item.amount), contextFor(state, item.auraId, item.controllerId), color, available)
+        return added.copy(state = ManaProvenanceTracker.markSnowProduction(state, added.state, item.auraId, item.controllerId))
     }
 
     private fun bonusEffect(amount: Int): AddManaOfChoiceEffect =

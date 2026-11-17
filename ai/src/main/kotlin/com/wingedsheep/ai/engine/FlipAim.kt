@@ -19,9 +19,10 @@ import kotlin.random.Random
 /**
  * Where the AI throws a dexterity flip (Chaos Orb).
  *
- * The AI plays the mini-game with a human's hands: it picks a goal, then lets go a little early
- * or late and with its hand a little off-centre, like a decent player does — so it usually hits
- * what it aims at, sometimes clips the card beside it, and now and then misses outright. It
+ * The AI plays the mini-game with a human's hands: it picks a goal, then flicks a little too hard
+ * or too soft, a little off line and with a little more or less spin than it meant, like a decent
+ * player does — so it usually hits what it aims at, sometimes clips the card beside it, and now
+ * and then misses outright. It
  * scores each candidate aim point by its *expected* haul under that unsteadiness plus the
  * engine's own scatter: the value of the opponents' permanents it would destroy minus a little
  * more than the value of its own. Candidates are each counted permanent and the midpoints of
@@ -29,10 +30,12 @@ import kotlin.random.Random
  * zero it throws the Orb off the table rather than hurt itself.
  */
 object FlipAim {
-    /** The AI's timing error (one standard deviation of release strength) — about a human's. */
-    const val RELEASE_SPREAD = 0.06
-    /** The AI's sideways error (one standard deviation of hand sway at release). */
-    const val SWAY_SPREAD = 0.3
+    /** The AI's error in flick speed (one standard deviation, as a fraction) — about a human's. */
+    const val SPEED_SPREAD = 0.1
+    /** The AI's error in flick direction (one standard deviation, radians: about 3°). */
+    const val ANGLE_SPREAD = 0.05
+    /** The AI's error in spin (one standard deviation, turns/s) around the clean band's middle. */
+    const val SPIN_SPREAD = 0.8
     private const val OWN_LOSS_WEIGHT = 1.25
     private const val PAIR_REACH = 140.0
     private val ROTATIONS = listOf(-FlipPhysics.CLEAN_SKEW, 0.0, FlipPhysics.CLEAN_SKEW)
@@ -67,9 +70,10 @@ object FlipAim {
         }
 
         val offsets = spread(samples)
-        val releaseSigma = hypot(RELEASE_SPREAD * FlipPhysics.DEPTH_PER_STRENGTH, SWAY_SPREAD * FlipPhysics.SIDE_PER_SWAY)
         fun expected(x: Double, y: Double): Double {
-            val sigma = hypot(FlipPhysics.scatter(table, x, y, FlipPhysics.SWEET_SPOT), releaseSigma)
+            val distance = hypot(x - table.handX, y - table.handY)
+            val handSigma = distance * hypot(SPEED_SPREAD, ANGLE_SPREAD)
+            val sigma = hypot(FlipPhysics.scatter(distance, FlipPhysics.IDEAL_SPIN), handSigma)
             var total = 0.0
             for ((dx, dy) in offsets) for (rotation in ROTATIONS) {
                 val landing = FlipLanding(x + dx * sigma, y + dy * sigma, rotation, halfTurns = 2)
@@ -83,9 +87,11 @@ object FlipAim {
 
         val best = candidates.map { it to expected(it.first, it.second) }.maxByOrNull { it.second }
         val (x, y) = if (best != null && best.second > 0.0) best.first else table.width / 2 to -2 * table.height
-        val strength = (FlipPhysics.SWEET_SPOT + gaussian(hand) * RELEASE_SPREAD).coerceIn(0.0, 1.0)
-        val sway = (gaussian(hand) * SWAY_SPREAD).coerceIn(-1.0, 1.0)
-        return FlipThrowResponse(decision.id, x, y, strength, sway)
+        val (vx, vy) = FlipPhysics.flickToward(table, x, y)
+        val speed = hypot(vx, vy) * (1.0 + gaussian(hand) * SPEED_SPREAD)
+        val angle = kotlin.math.atan2(vy, vx) + gaussian(hand) * ANGLE_SPREAD
+        val spin = FlipPhysics.IDEAL_SPIN + gaussian(hand) * SPIN_SPREAD
+        return FlipThrowResponse(decision.id, speed * cos(angle), speed * sin(angle), spin)
     }
 
     private fun gaussian(random: Random): Double =

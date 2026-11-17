@@ -42,7 +42,7 @@ import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
 import org.springframework.web.socket.WebSocketSession
 
-/** The Jumpstart set a matchmade Jump In game deals from — the home screen's Jump In mode uses it too. */
+/** The Jumpstart set a matchmade Jump In game deals from. The home screen lets a player choose theirs. */
 private const val MATCHMADE_JUMP_IN_SET = "J22"
 
 /** Fresh builds an AI premade seat gets when the lobby rejects one — at ~1% rejection, ample. */
@@ -192,6 +192,12 @@ class LobbyHandler(
         }
     }
 
+    fun handleSubmitMatchDeck(session: WebSocketSession, message: ClientMessage.SubmitMatchDeck) =
+        tournamentMatchHandler.handleSubmitMatchDeck(session, message.deck, message.playFirst)
+
+    fun handleEditMatchDeck(session: WebSocketSession) =
+        tournamentMatchHandler.handleEditMatchDeck(session)
+
     fun handleMatchResult(lobbyId: String, gameSessionId: String, winnerId: EntityId?, winnerLifeRemaining: Int) {
         val lobby = lobbyRepository.findLobbyById(lobbyId)
         if (lobby?.isFreeForAll == true) {
@@ -248,7 +254,7 @@ class LobbyHandler(
         setCodes: List<String>,
         playerCount: Int = 2,
         models: List<String>? = null,
-        heuristicDeckbuilding: Boolean? = null,
+        skipLlmDeckbuilding: Boolean? = null,
         gamesPerMatch: Int? = null,
     ): String {
         require(aiGameManager.isEnabled) { "AI opponent is not enabled on this server" }
@@ -301,12 +307,13 @@ class LobbyHandler(
                     cardPool = playerState.cardPool.map { ConnectionHandler.cardToSealedCardInfo(it) },
                     basicLands = basicLandInfos,
                     poolPlay = lobby.isCubePoolPlay,
+                    maxCopiesPerCard = lobby.limitedCopyCap,
                 ))
             }
         }
 
         // Launch AI deck building in background (handles tournament activation + match start)
-        launchAiDeckBuilding(lobby, heuristicDeckbuilding = heuristicDeckbuilding ?: false)
+        launchAiDeckBuilding(lobby, skipLlmDeckbuilding = skipLlmDeckbuilding ?: false)
 
         lobbyRepository.saveLobby(lobby)
         return lobby.lobbyId
@@ -465,7 +472,7 @@ class LobbyHandler(
 
     /**
      * Seat two players the matchmaking queue paired for Jump In: a private two-seat Jump In lobby on
-     * the same Jumpstart set the home screen's Jump In mode uses, started at once so both land on
+     * [MATCHMADE_JUMP_IN_SET], started at once so both land on
      * their pack choice. Picking the second pack is each player's ready signal, and the one-game
      * match starts when both have. Returns false, creating nothing, when the lobby can't start.
      */
@@ -484,7 +491,7 @@ class LobbyHandler(
             gameMode = LobbyGameMode.TOURNAMENT,
         )
         identities.forEach { lobby.addPlayer(it) }
-        val host = identities.first().playerId
+        val host = lobby.hostPlayerId!!
         if (lobby.jumpstartStartError() != null || !lobby.startJumpstart(host)) {
             identities.forEach { it.currentLobbyId = null }
             return false
@@ -617,7 +624,11 @@ class LobbyHandler(
             val deck = EasterEggDeckInjector.maybeInjectEasterEggs(
                 playerState.session.playerName, deckWithLandArt, gameProperties.easterEggs.enabled
             )
-            gameSession.addPlayer(playerState.session, deck, sideboard = playerState.submittedSideboard)
+            gameSession.addPlayer(
+                playerState.session, deck,
+                // The sideboard's basic-land supply wears the same set art as the deck's basics.
+                sideboard = BoosterGenerator.withBasicLandArt(playerState.submittedSideboard, sealedSession.basicLands),
+            )
             // The legacy two-player sealed flow has no companion field; companions ride the lobby path.
 
             // Store player info for persistence
@@ -794,6 +805,10 @@ class LobbyHandler(
             maxPlayers = maxPlayers,
             pickTimeSeconds = TournamentLobby.clampPickTimeSeconds(message.pickTimeSeconds, 120),
             picksPerRound = initialPicksPerRound,
+            // A new bracket plays best-of-three matches, each pair meeting once — the Magic Tournament
+            // Rules shape. (The old default, three separate one-game matches per pair, stood in for it.)
+            gamesPerMatch = 1,
+            bestOf = 3,
             isPublic = message.isPublic,
             // Commander formats enable Chaos boosters by default — 20-card commander packs
             // need to mix sets to give a workable pool when multiple sets are selected. A pack-shape
@@ -943,6 +958,7 @@ class LobbyHandler(
                     cardPool = poolInfos,
                     basicLands = basicLandInfos,
                     poolPlay = lobby.isCubePoolPlay,
+                    maxCopiesPerCard = lobby.limitedCopyCap,
                 ))
                 ctx.broadcastLobbyUpdate(lobby)
 
@@ -998,6 +1014,7 @@ class LobbyHandler(
             cardPool = poolInfos,
             basicLands = basicLandInfos,
             poolPlay = lobby.isCubePoolPlay,
+            maxCopiesPerCard = lobby.limitedCopyCap,
         ))
         sender.send(session, lobby.buildLobbyUpdate(identity.playerId, aiGameManager::isAiPlayer))
 
@@ -1023,6 +1040,7 @@ class LobbyHandler(
             cardPool = poolInfos,
             basicLands = basicLandInfos,
             poolPlay = lobby.isCubePoolPlay,
+            maxCopiesPerCard = lobby.limitedCopyCap,
         ))
         sender.send(session, lobby.buildLobbyUpdate(identity.playerId, aiGameManager::isAiPlayer))
 
@@ -1401,6 +1419,7 @@ class LobbyHandler(
                             cardPool = poolInfos,
                             basicLands = basicLandInfos,
                             poolPlay = lobby.isCubePoolPlay,
+                            maxCopiesPerCard = lobby.limitedCopyCap,
                         ))
                     }
                 }
@@ -1790,7 +1809,7 @@ class LobbyHandler(
      * host's WebSocket handler thread. LLM deckbuilding can take 30+ seconds,
      * and blocking would prevent the human player from submitting their own deck.
      */
-    private fun launchAiDeckBuilding(lobby: TournamentLobby, heuristicDeckbuilding: Boolean = false) {
+    private fun launchAiDeckBuilding(lobby: TournamentLobby, skipLlmDeckbuilding: Boolean = false) {
         if (lobby.isJumpstart) {
             finishAiJumpstartPicks(lobby)
             ctx.broadcastLobbyUpdate(lobby)
@@ -1805,7 +1824,7 @@ class LobbyHandler(
         ctx.draftScope.launch(Dispatchers.IO) {
             for ((playerId, playerState) in aiPlayers) {
                 try {
-                    val built = buildAiPoolDeck(lobby, playerState.cardPool, heuristicDeckbuilding)
+                    val built = buildAiPoolDeck(lobby, playerState.cardPool, skipLlmDeckbuilding)
                     val submitted = built.submissionList
                     val result = lobby.submitDeck(playerId, submitted, commander = built.commander)
                     when (result) {
@@ -1950,7 +1969,7 @@ class LobbyHandler(
     private fun buildAiPoolDeck(
         lobby: TournamentLobby,
         pool: List<com.wingedsheep.sdk.model.CardDefinition>,
-        heuristic: Boolean,
+        skipLlm: Boolean,
     ): com.wingedsheep.ai.engine.deck.GeneratedDeck {
         if (lobby.usesCommanderRules) {
             val built = runCatching { commanderDeckGenerator.generateFromPool(pool, lobby.deckSizeMin, lobby.allowDuplicates) }
@@ -1963,25 +1982,36 @@ class LobbyHandler(
                 lobby.lobbyId,
             )
         }
-        return com.wingedsheep.ai.engine.deck.GeneratedDeck(buildAiSealedDeck(pool, heuristic))
+        return com.wingedsheep.ai.engine.deck.GeneratedDeck(buildAiSealedDeck(pool, lobby.setCodes, skipLlm))
     }
 
     /**
-     * Build a 40-card sealed deck from a card pool using the LLM.
-     * Falls back to a color-based heuristic if the LLM fails.
+     * Build a 40-card limited deck from a sealed or drafted pool.
+     *
+     * With an LLM API key configured (and the LLM not skipped by [skipLlm], the server's
+     * `skip-llm-deckbuilding` setting, or the jev AI mode) the LLM builds it; otherwise — and whenever
+     * the LLM fails — it is [com.wingedsheep.ai.engine.buildLimitedDeck], the Draftsim autobuilder
+     * scoped to the lobby's sets, the same engine as the deckbuild "Auto-build" button's default.
      */
-    private fun buildAiSealedDeck(pool: List<com.wingedsheep.sdk.model.CardDefinition>, heuristic: Boolean = false): Map<String, Int> {
-        logger.info("AI building sealed deck from pool of {} cards (heuristic={})", pool.size, heuristic)
+    private fun buildAiSealedDeck(
+        pool: List<com.wingedsheep.sdk.model.CardDefinition>,
+        setCodes: List<String>,
+        skipLlm: Boolean = false,
+    ): Map<String, Int> {
+        logger.info("AI building sealed deck from pool of {} cards (skipLlm={})", pool.size, skipLlm)
 
         val aiProperties = gameProperties.ai
-        val forceHeuristic = heuristic || aiProperties.heuristicDeckbuilding || aiProperties.mode.trim().equals("jev", ignoreCase = true)
-        if (!forceHeuristic && aiProperties.enabled && aiProperties.effectiveApiKey.isNotBlank()) {
+        val noLlm = skipLlm || aiProperties.skipLlmDeckbuilding || aiProperties.mode.trim().equals("jev", ignoreCase = true)
+        if (!noLlm && aiProperties.enabled && aiProperties.effectiveApiKey.isNotBlank()) {
             val llmDeck = tryLlmSealedDeck(pool, aiProperties)
             if (llmDeck != null) return llmDeck
-            logger.info("AI LLM deckbuild failed, falling back to heuristic")
+            logger.info("AI LLM deckbuild failed, falling back to the Draftsim autobuilder")
         }
 
-        return buildHeuristicSealedDeck(pool)
+        val deck = com.wingedsheep.ai.engine.buildLimitedDeck(pool, setCodes)
+        logger.info("AI Draftsim deck ({} cards): {}", deck.values.sum(),
+            deck.entries.sortedByDescending { it.value }.joinToString(", ") { "${it.value}x ${it.key}" })
+        return deck
     }
 
     /**
@@ -1992,7 +2022,7 @@ class LobbyHandler(
         aiProperties: com.wingedsheep.gameserver.config.AiProperties
     ): Map<String, Int>? {
         val nonLands = pool.filter { !it.typeLine.isLand }
-        val poolLands = pool.filter { it.typeLine.isLand && !it.typeLine.isBasicLand }
+        val poolLands = pool.filter { it.typeLine.isLand && !it.typeLine.isFreelyAddedBasicLand }
 
         val prompt = buildString {
             appendLine("You are building a 40-card sealed deck from this card pool.")
@@ -2135,16 +2165,6 @@ class LobbyHandler(
     }
 
     /**
-     * Heuristic fallback: pick the best 2 colors, include on-color cards, add correct basics.
-     */
-    private fun buildHeuristicSealedDeck(pool: List<com.wingedsheep.sdk.model.CardDefinition>): Map<String, Int> {
-        val deck = com.wingedsheep.ai.engine.buildHeuristicSealedDeck(pool)
-        logger.info("AI heuristic deck ({} cards): {}", deck.values.sum(),
-            deck.entries.sortedByDescending { it.value }.joinToString(", ") { "${it.value}x ${it.key}" })
-        return deck
-    }
-
-    /**
      * Guess the primary basic land name from the colors of non-land cards already in the deck.
      */
     private fun guessPrimaryBasicLand(
@@ -2216,11 +2236,7 @@ class LobbyHandler(
 
         logger.info("Player ${identity.playerName} left lobby $lobbyId (cannot rejoin)")
 
-        if (lobby.playerCount == 0) {
-            tournamentResultSink.recordAbandoned(lobbyId)
-            lobbyRepository.removeLobby(lobbyId)
-            logger.info("Lobby $lobbyId removed (empty)")
-        } else {
+        if (!closeIfAbandoned(lobby)) {
             // Auto-adjust grid draft booster count when player count changes
             if (lobby.format == TournamentFormat.GRID_DRAFT && lobby.state == LobbyState.WAITING_FOR_PLAYERS) {
                 lobby.boosterCount = gridDraftHandler.gridDraftDefaultBoosters(lobby.players.size)
@@ -2268,13 +2284,21 @@ class LobbyHandler(
 
         logger.info("Player ${identity.playerName} auto-left lobby $lobbyId")
 
-        if (lobby.playerCount == 0) {
-            tournamentResultSink.recordAbandoned(lobbyId)
-            lobbyRepository.removeLobby(lobbyId)
-            logger.info("Lobby $lobbyId removed (empty)")
-        } else {
-            ctx.broadcastLobbyUpdate(lobby)
-        }
+        if (!closeIfAbandoned(lobby)) ctx.broadcastLobbyUpdate(lobby)
+    }
+
+    /**
+     * Close [lobby] once nobody can use it: no seats at all, or — while still gathering players —
+     * only AI seats left. An AI never starts a lobby, so without this the last human leaving a
+     * lobby they had filled with AIs left it listed as open, "hosted" by one of the AIs.
+     */
+    private fun closeIfAbandoned(lobby: TournamentLobby): Boolean {
+        if (lobby.playerCount > 0 && !lobby.isAbandonedByHumans) return false
+        lobby.vacateSeats().forEach { sessionRegistry.removeIdentity(it.token) }
+        tournamentResultSink.recordAbandoned(lobby.lobbyId)
+        lobbyRepository.removeLobby(lobby.lobbyId)
+        logger.info("Lobby ${lobby.lobbyId} removed (no human players left)")
+        return true
     }
 
     private fun handleStopLobby(session: WebSocketSession) {
@@ -2735,6 +2759,8 @@ class LobbyHandler(
             }
         }
         message.gamesPerMatch?.let { lobby.gamesPerMatch = it.coerceIn(1, 5) }
+        // Best of one or best of three — the two match lengths the Magic Tournament Rules use.
+        message.bestOf?.let { lobby.bestOf = if (it >= 3) 3 else 1 }
         message.pickTimeSeconds?.let { lobby.pickTimeSeconds = TournamentLobby.clampPickTimeSeconds(it, 180) }
         message.picksPerRound?.let { lobby.picksPerRound = it.coerceIn(1, 2) }
         message.isPublic?.let { lobby.isPublic = it }
@@ -2769,6 +2795,7 @@ class LobbyHandler(
         }
 
         message.aiAssistEnabled?.let { lobby.aiAssistEnabled = it }
+        message.limitedCopyLimit?.let { lobby.limitedCopyLimit = it }
 
         message.ranked?.let { lobby.ranked = it }
         // Ranked only applies to a TOURNAMENT-mode bracket (1v1 matches); a mode switch in this same

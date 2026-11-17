@@ -7,6 +7,7 @@ import com.wingedsheep.sdk.scripting.SagaChapterAbility
 import com.wingedsheep.sdk.scripting.*
 import com.wingedsheep.sdk.scripting.conditions.Condition
 import com.wingedsheep.sdk.scripting.effects.Effect
+import com.wingedsheep.sdk.scripting.effects.ZonePlacement
 import com.wingedsheep.sdk.scripting.targets.TargetRequirement
 import com.wingedsheep.sdk.scripting.values.DynamicAmount
 import kotlinx.serialization.Serializable
@@ -299,9 +300,32 @@ data class CardScript(
     val selfExileOnResolve: Boolean = false,
 
     /**
-     * Whether this spell shuffles itself into its owner's library on resolution instead of going to
-     * the graveyard. Used for cards that say "Shuffle <card name> into its owner's library." — the
-     * Mirrodin Besieged Zenith cycle (Green Sun's Zenith and its four siblings).
+     * "Exile <card name> with N time counters on it." — the number of time counters the card is
+     * exiled with when [selfExileOnResolve] sends it to exile (0 = a plain "Exile <card name>.").
+     * Every card printing the clause also has a printed suspend keyword (Arc Blade, Suspended
+     * Sentence, Inspiring Refrain, …), so per CR 702.62b ("a card is suspended if it's in the exile
+     * zone, has suspend, and has a time counter on it") the card lands **suspended**: its owner
+     * removes a counter each upkeep and may cast it free when the last is removed, after which it
+     * resolves and exiles itself again. The DSL rejects a nonzero count on a card without
+     * [com.wingedsheep.sdk.scripting.KeywordAbility.Suspend], so the engine never has to decide
+     * whether the card "is suspended".
+     *
+     * The clause is the spell's own last instruction, so a spell that suspends itself is never put
+     * into a graveyard: graveyard-worded replacements — a cast-this-way rider (Quistis Trepe, Kylox's
+     * Voltstrider) or rebound — have nothing to replace. Flashback's "exile it instead" agrees with
+     * it. A countered or fizzled spell never reaches CR 608.2n and goes to the graveyard with no
+     * counters.
+     */
+    val selfExileTimeCounters: Int = 0,
+
+    /**
+     * Where this spell puts itself in its owner's library on resolution instead of going to the
+     * graveyard — `null` when the card prints no such clause. Two placements are legal:
+     *  - [ZonePlacement.Shuffled] — "Shuffle <card name> into its owner's library." (the Mirrodin
+     *    Besieged Zenith cycle: Green Sun's Zenith and its four siblings). The card is added to the
+     *    library, which is then shuffled, emitting a `LibraryShuffledEvent`.
+     *  - [ZonePlacement.Bottom] — "Put <card name> on the bottom of its owner's library." (Sanguine
+     *    Sacrament). The card goes to the bottom and the library is **not** shuffled.
      *
      * The sibling of [selfExileOnResolve], and the same seam: both replace the destination of
      * CR 608.2n ("as the final part of an instant or sorcery spell's resolution, the spell is put
@@ -309,33 +333,30 @@ data class CardScript(
      * other, never both — and setting both is **rejected**, by the `init` block below and again in
      * the DSL, where the message can name the offending card.
      *
-     * Three things this deliberately is **not**:
+     * Two things this deliberately is **not**:
      *  - not a zone-change replacement — [com.wingedsheep.sdk.scripting.ReplacementEffect] shapes
      *    such as `RedirectZoneChange` apply to any card heading to a graveyard from anywhere, while
      *    this is one printed instruction about the spell's own resolution;
      *  - not the cast-this-way rider
-     *    ([com.wingedsheep.sdk.scripting.effects.AfterResolveDestination]), which another effect
-     *    stamps onto a spell *it* is casting — and which this **outranks**: those riders are
-     *    written "if that spell *would be put into a graveyard*, [somewhere] instead" (Kylox's
-     *    Voltstrider), and a spell that shuffles itself into its owner's library never would be, so
-     *    the rider has nothing to replace. On the countered and fizzled paths, where the card really
-     *    is put into a graveyard, the rider still wins;
-     *  - not "put it on the bottom of its owner's library" — the card is shuffled in, so the
-     *    library is randomized and a `LibraryShuffledEvent` is emitted (contrast
-     *    [com.wingedsheep.sdk.scripting.effects.AfterResolveDestination.BOTTOM_OF_LIBRARY], which
-     *    does not shuffle).
+     *    ([com.wingedsheep.sdk.scripting.effects.AfterResolveDestination], whose `BOTTOM_OF_LIBRARY`
+     *    lands in the same place as [ZonePlacement.Bottom]), which another effect stamps onto a
+     *    spell *it* is casting — and which this **outranks**: those riders are written "if that
+     *    spell *would be put into a graveyard*, [somewhere] instead" (Kylox's Voltstrider), and a
+     *    spell that puts itself into its owner's library never would be, so the rider has nothing to
+     *    replace. On the countered and fizzled paths, where the card really is put into a graveyard,
+     *    the rider still wins.
      *
      * It does **not** outrank flashback (CR 702.34a) or harmonize (CR 702.180a), printed or granted.
      * Those two are worded "exile this card instead of putting it anywhere else any time it would
      * leave the stack" rather than naming the graveyard, so unlike every other clause at this seam
-     * they still apply to a spell that shuffles itself in: a flashbacked Blue Sun's Zenith is
-     * exiled, not shuffled into its owner's library.
+     * they still apply to a spell that puts itself into its library: a flashbacked Blue Sun's
+     * Zenith is exiled, not shuffled into its owner's library.
      *
      * Read at resolution-destination time, so — like [selfExileOnResolve] — it is correctly inert
      * when the spell is countered or fizzles: those paths never reach CR 608.2n, and the card goes
      * to its owner's graveyard as usual.
      */
-    val selfShuffleIntoLibraryOnResolve: Boolean = false,
+    val selfLibraryPlacementOnResolve: ZonePlacement? = null,
 
     /**
      * Paradigm (Secrets of Strixhaven). When true, this spell exiles itself on resolution
@@ -402,21 +423,22 @@ data class CardScript(
     val xMaximum: DynamicAmount? = null,
 
     /**
-     * Leyline mechanic. "If this card is in your opening hand, you may begin the game
-     * with it on the battlefield." After all mulligans and bottoming resolve, the engine
-     * walks each player in turn order (starting with the active player) and presents a
-     * yes/no choice per Leyline card still in that player's opening hand. A "yes" puts the
-     * card onto the battlefield under its owner's control through the standard zone-change
-     * pipeline before the first turn begins; a "no" leaves it in hand.
+     * "If this card is in your opening hand, you may begin the game with it on the battlefield"
+     * (CR 103.6a), with any condition, entry counters and "if you do" rider it prints. After all
+     * mulligans and bottoming resolve, the engine walks each player in turn order (starting with
+     * the active player) and presents a yes/no choice per such card still in that player's opening
+     * hand whose [BeginOnBattlefield.onlyIf] holds. A "yes" puts the card onto the battlefield under
+     * its owner's control through the standard zone-change pipeline before the first turn begins,
+     * then runs [BeginOnBattlefield.then]; a "no" leaves it in hand. `null` for every other card.
      *
      * Wired via the `mayBeginGameOnBattlefield()` DSL helper on [com.wingedsheep.sdk.dsl.CardBuilder].
      */
-    val mayStartOnBattlefield: Boolean = false,
+    val beginOnBattlefield: BeginOnBattlefield? = null,
 
     /**
      * "You may reveal this card from your opening hand. If you do, …" (CR 103.6b). When non-null
      * the card carries that opening-hand action: in the same post-mulligan walk as
-     * [mayStartOnBattlefield], its owner is asked whether to reveal it, and a "yes" reveals the card
+     * [beginOnBattlefield], its owner is asked whether to reveal it, and a "yes" reveals the card
      * and runs this effect with the card as source and its owner as controller. The payoff is
      * almost always a delayed trigger (CR 603.7a — created "as a result of a static ability that
      * allows a player to take an action"), e.g. Devourer of Destiny's
@@ -443,14 +465,22 @@ data class CardScript(
     val castTimeCaptures: List<CastTimeCapture> = emptyList()
 ) {
     init {
-        // "Exile <card name>." and "Shuffle <card name> into its owner's library." are two
-        // spellings of one slot — the CR 608.2n destination — so a script that sets both has no
+        // "Exile <card name>." and "Shuffle <card name> into its owner's library." (or "Put <card
+        // name> on the bottom of its owner's library.") are two spellings of one slot — the CR 608.2n destination — so a script that sets both has no
         // answer, only whichever clause `StackResolver` happens to test first. The DSL rejects it
         // too, with a message that names the card; this backstop covers the paths that build a
         // CardScript directly (test fixtures, the Assay compiler), where the DSL guard never runs.
-        require(!(selfExileOnResolve && selfShuffleIntoLibraryOnResolve)) {
-            "A CardScript sets both selfExileOnResolve and selfShuffleIntoLibraryOnResolve; a " +
+        require(!(selfExileOnResolve && selfLibraryPlacementOnResolve != null)) {
+            "A CardScript sets both selfExileOnResolve and selfLibraryPlacementOnResolve; a " +
                 "spell has one CR 608.2n destination, so pick the clause the card actually prints"
+        }
+        require(selfLibraryPlacementOnResolve == null || selfLibraryPlacementOnResolve in SELF_LIBRARY_PLACEMENTS) {
+            "selfLibraryPlacementOnResolve must be one of $SELF_LIBRARY_PLACEMENTS, " +
+                "not $selfLibraryPlacementOnResolve"
+        }
+        require(selfExileTimeCounters >= 0) { "selfExileTimeCounters must be non-negative" }
+        require(selfExileTimeCounters == 0 || selfExileOnResolve) {
+            "selfExileTimeCounters needs selfExileOnResolve — the counters ride on the card's own exile"
         }
     }
 
@@ -563,6 +593,9 @@ data class CardScript(
     }
 
     companion object {
+        /** The placements [selfLibraryPlacementOnResolve] may take: shuffled in, or on the bottom. */
+        val SELF_LIBRARY_PLACEMENTS: Set<ZonePlacement> = setOf(ZonePlacement.Shuffled, ZonePlacement.Bottom)
+
         /**
          * Empty script for vanilla cards with no special behavior.
          */

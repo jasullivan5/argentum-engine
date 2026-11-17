@@ -70,11 +70,13 @@ class CreateTokenExecutor(
 
         // Resolve who receives the token — defaults to the spell/ability controller. A
         // multi-player reference ("each opponent creates ...") fans out: every resolved
-        // player creates their own token(s).
+        // player creates their own token(s). A named controller that resolves to nobody — "its
+        // controller" after an "up to one target" chose none (Cavalier of Dawn) — creates
+        // nothing: the effect names no player, so it never falls back to the source's controller.
         val tokenControllerIds = effect.controller
             ?.let { context.resolvePlayerTargets(it, state) }
-            ?.takeIf { it.isNotEmpty() }
             ?: listOf(context.controllerId)
+        if (tokenControllerIds.isEmpty()) return EffectResult.success(state)
 
         var currentState = state
         val allEvents = mutableListOf<com.wingedsheep.engine.core.GameEvent>()
@@ -144,7 +146,8 @@ class CreateTokenExecutor(
         tokenControllerId: EntityId,
         riders: TokenRiders,
         rootEffect: com.wingedsheep.sdk.scripting.effects.Effect,
-        alreadyApplied: Set<com.wingedsheep.engine.replacement.ActiveReplacement> = emptySet()
+        alreadyApplied: Set<com.wingedsheep.engine.replacement.ActiveReplacement> = emptySet(),
+        delayedTriggerControllerId: EntityId = tokenControllerId
     ): EffectResult {
         if (count <= 0) return EffectResult.success(state)
         val normalized = substitution.token.copy(
@@ -161,7 +164,8 @@ class CreateTokenExecutor(
         )
         return createTokensFor(
             state, normalized, context, count, tokenControllerId, rootEffect,
-            appliedSubstitutions = alreadyApplied + substitution.applied
+            appliedSubstitutions = alreadyApplied + substitution.applied,
+            delayedTriggerControllerId = delayedTriggerControllerId
         )
     }
 
@@ -178,11 +182,28 @@ class CreateTokenExecutor(
         effect: CreateTokenEffect,
         context: EffectContext,
         baseCount: Int,
-        tokenControllerId: EntityId,
+        wouldBeControllerId: EntityId,
         rootEffect: com.wingedsheep.sdk.scripting.effects.Effect,
-        appliedSubstitutions: Set<com.wingedsheep.engine.replacement.ActiveReplacement> = emptySet()
+        appliedSubstitutions: Set<com.wingedsheep.engine.replacement.ActiveReplacement> = emptySet(),
+        delayedTriggerControllerId: EntityId = wouldBeControllerId
     ): EffectResult {
         val substituted = appliedSubstitutions.isNotEmpty()
+        // Inside a redirected batch the groups already run under the new controller; the batch
+        // remembers who it was for, and that player keeps the delayed triggers.
+        val delayedController =
+            (if (TokenCreationBatch.active(context)) TokenCreationBatch.wouldBeController(context) else null)
+                ?: delayedTriggerControllerId
+        // "Created under your control instead" (Crafty Cutpurse) comes before every other token
+        // replacement, so the doublers and substitutions below judge the event under the new
+        // controller. Substitutes belong to an event already redirected, and a batch redirected
+        // the whole event before its groups run.
+        val tokenControllerId = if (substituted || TokenCreationBatch.active(context)) wouldBeControllerId
+        else when (val redirect = TokenCreationReplacementHelper.redirectController(
+            state, wouldBeControllerId, context, rootEffect, amountEvaluator.predicates
+        )) {
+            is TokenControllerRedirect.Resolved -> redirect.controllerId
+            is TokenControllerRedirect.Ask -> return redirect.result
+        }
         // Apply token-count replacements (Doubling Season / Exalted Sunborn,
         // and per-N modifiers) before downstream replacements get a look.
         val requestedCount = if (substituted || TokenCreationBatch.active(context)) baseCount else TokenCreationReplacementHelper.applyCountReplacements(
@@ -226,7 +247,8 @@ class CreateTokenExecutor(
         )?.let { lookup ->
             return when (lookup) {
                 is TokenSubstitution -> createSubstituteTokens(
-                    state, lookup, context, count, tokenControllerId, TokenRiders.of(effect), rootEffect, appliedSubstitutions
+                    state, lookup, context, count, tokenControllerId, TokenRiders.of(effect), rootEffect, appliedSubstitutions,
+                    delayedController
                 )
                 is TokenSubstitutionChoice ->
                     TokenCreationReplacementHelper.askForSubstitution(state, lookup, rootEffect, context, count)
@@ -276,10 +298,12 @@ class CreateTokenExecutor(
                 )
         } else null
 
+        val attackingPlayer = com.wingedsheep.engine.mechanics.combat.CombatDefenders.isAttackingPlayer(state, tokenControllerId)
         val donatedTriggers = donatedTriggeredAbilities(state, effect, context)
 
         var newState = state
         val createdTokens = mutableListOf<EntityId>()
+        val divertedEvents = mutableListOf<ZoneChangeEvent>()
 
         repeat(count) { indexInBatch ->
             val resolvedImageUri = resolvedImageUris[indexInBatch % resolvedImageUris.size]
@@ -325,7 +349,9 @@ class CreateTokenExecutor(
             // (CR 508.4), else it joins the attack of the source creature (CR 802.2a: defender
             // per attacking creature), falling back to the sole active opponent outside
             // combat-derived contexts.
-            val defenderId = if (!effect.attacking) null
+            // Only an attacking player's creature can enter attacking: a token redirected to the
+            // defending player (Crafty Cutpurse) enters tapped, not attacking.
+            val defenderId = if (!effect.attacking || !attackingPlayer) null
                 else if (chosenDefenders != null) chosenDefenders[indexInBatch]
                 else if (namesDefendingPlayer) namedDefendingPlayer
                 else com.wingedsheep.engine.handlers.effects.TargetResolutionUtils
@@ -344,6 +370,15 @@ class CreateTokenExecutor(
                 )
             }
             newState = newState.withEntity(tokenId, container)
+            if (cardRegistry != null) newState = com.wingedsheep.engine.handlers.effects.copy.GrantedEntryCopy.applyBeforeEntry(newState, tokenId, cardRegistry, amountEvaluator.predicates)
+
+            // A battlefield-entry replacement sends it elsewhere instead (Hallowed Moonlight).
+            TokenEntryRedirect.divert(newState, tokenId, state, amountEvaluator.predicates, cardRegistry)?.let { diverted ->
+                newState = diverted.state
+                createdTokens.remove(tokenId)
+                divertedEvents.add(diverted.event)
+                return@repeat
+            }
             // A planeswalker or battle now being attacked is stamped as such (CR 506.4).
             if (defenderId != null) {
                 newState = com.wingedsheep.engine.mechanics.combat.AttackedPermanents.markAttacked(newState, defenderId)
@@ -369,9 +404,15 @@ class CreateTokenExecutor(
 
         // Apply "enters with counters" replacement effects from other battlefield permanents
         // (e.g., Gev, Scaled Scorch granting +1/+1 counters to tokens entering under your control).
+        // A token that entered as a copy of a card (a granted entry copy) has that card's own too.
         val counterEvents = mutableListOf<com.wingedsheep.engine.core.GameEvent>()
         for (tokenId in createdTokens) {
-            val (nextState, events) = EntersWithReplacements.applyGlobal(
+            val enteredAsCopy = newState.getEntity(tokenId)
+                ?.has<com.wingedsheep.engine.state.components.identity.CopyOfComponent>() == true
+            val (nextState, events) = if (enteredAsCopy && cardRegistry != null) EntersWithReplacements.applyOnEntry(
+                newState, tokenId, tokenControllerId, cardRegistry,
+                predicateEvaluator = amountEvaluator.predicates
+            ) else EntersWithReplacements.applyGlobal(
                 newState, tokenId, tokenControllerId, cardRegistry,
                 predicateEvaluator = amountEvaluator.predicates
             )
@@ -396,7 +437,8 @@ class CreateTokenExecutor(
                     sourceId = sourceId,
                     objectReferences = context.objectReferences,
                     sourceName = sourceName,
-                    controllerId = tokenControllerId
+                    // The creating effect's player, even when the token went to someone else.
+                    controllerId = delayedController
                 )
                 newState = newState.addDelayedTrigger(delayedTrigger)
             }
@@ -421,7 +463,8 @@ class CreateTokenExecutor(
                     sourceId = sourceId,
                     objectReferences = context.objectReferences,
                     sourceName = sourceName,
-                    controllerId = tokenControllerId
+                    // The creating effect's player, even when the token went to someone else.
+                    controllerId = delayedController
                 )
                 newState = newState.addDelayedTrigger(delayedTrigger)
             }
@@ -528,7 +571,8 @@ class CreateTokenExecutor(
         // filter, so an added artifact token can't recursively re-trigger.
         val (afterAdditional, additionalEvents) = if (TokenCreationBatch.active(context)) newState to emptyList() else TokenCreationReplacementHelper
             .applyAdditionalTokenReplacements(
-                newState, tokenControllerId, createdTokens, effect.tapped,
+                // Tokens a redirect sent elsewhere were still created (Worldwalker Helm still adds).
+                newState, tokenControllerId, createdTokens + divertedEvents.map { it.entityId }, effect.tapped,
                 cardRegistry, staticAbilityHandler, amountEvaluator.predicates
             )
         newState = afterAdditional
@@ -540,7 +584,7 @@ class CreateTokenExecutor(
         // haste until end of turn").
         return EffectResult(
             state = newState,
-            events = events + counterEvents + additionalEvents,
+            events = divertedEvents + events + counterEvents + additionalEvents,
             updatedCollections = mapOf(CREATED_TOKENS to createdTokens)
         )
     }

@@ -464,7 +464,9 @@ class ConnectionHandler(
                         if (!lobby.players.containsKey(identity.playerId)) {
                             handleAbandonCallback?.invoke(lobbyId, identity.playerId)
                         }
-                        if (lobby.playerCount == 0) {
+                        // Only AI seats left while still gathering players: nobody can start it.
+                        if (lobby.playerCount == 0 || lobby.isAbandonedByHumans) {
+                            lobby.vacateSeats().forEach { sessionRegistry.removeIdentity(it.token) }
                             tournamentResultSink.recordAbandoned(lobbyId)
                             lobbyRepository.removeLobby(lobbyId)
                             lobbyRepository.removeTournament(lobbyId)

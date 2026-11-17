@@ -28,6 +28,7 @@ import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.GrantCantBeCountered
 import com.wingedsheep.sdk.scripting.effects.LibraryChoicePosition
 import com.wingedsheep.sdk.scripting.targets.*
+import com.wingedsheep.engine.state.components.identity.faceUpCardDefinition
 
 /**
  * Removes a spell or ability from the stack without resolving it: countering (CR 701.6) — to the
@@ -39,9 +40,12 @@ import com.wingedsheep.sdk.scripting.targets.*
  * whole [StackResolver] — and the effect handler that comes with it.
  */
 class SpellCounterer(
-    private val cardRegistry: CardRegistry,
-    private val predicateEvaluator: PredicateEvaluator
+    /** Zone moves and their replacement riders; also carries the registry and evaluator. */
+    private val zones: com.wingedsheep.engine.handlers.effects.ZoneTransitionService
 ) {
+    private val cardRegistry: CardRegistry get() = zones.cardRegistry
+    private val predicateEvaluator: PredicateEvaluator get() = zones.predicateEvaluator
+
     /**
      * Counter whatever stack object [entityId] is, spell or ability.
      *
@@ -110,7 +114,8 @@ class SpellCounterer(
         newState = newState.addToZone(destZoneKey, spellId)
         val destinationObject = newState.objectRef(spellId)
         // A card-intrinsic redirect into the library shuffles the card in (Progenitus).
-        if (destZone == Zone.LIBRARY && counterRedirect.shuffleIntoLibrary) {
+        val shuffledIn = destZone == Zone.LIBRARY && counterRedirect.shuffleIntoLibrary
+        if (shuffledIn) {
             newState = SpellZoneMoves.shuffleOwnerLibrary(newState, ownerId)
         }
         if (destZone == Zone.EXILE && counterRedirect.linkSourceId != null) {
@@ -131,11 +136,22 @@ class SpellCounterer(
                 .without<TextReplacementComponent>()
                 .without<TargetsComponent>()
         }
+        // The rider a RedirectZoneChangeWith carries ("exile it with a void counter on it" —
+        // Dauthi Voidwalker) is part of the same replacement, so it applies to a countered spell
+        // exactly as it does to any other card headed for that graveyard.
+        val (afterRider, riderEvents) = counterRedirect.additionalEffect?.let { extra ->
+            com.wingedsheep.engine.handlers.effects.ZoneMovementUtils.applyReplacementAdditionalEffect(
+                zones, newState, extra, counterRedirect.effectControllerId, spellId,
+                sourceId = counterRedirect.effectSourceId,
+                riderTiming = counterRedirect.riderTiming
+            )
+        } ?: (newState to emptyList())
+        newState = afterRider
 
         return ExecutionResult.success(
             newState,
             listOf(
-                SpellCounteredEvent(spellId, cardComponent?.name ?: "Unknown"),
+                SpellCounteredEvent(spellId, cardComponent?.name ?: "Unknown", countererId),
                 ZoneChangeEvent(
                     spellId,
                     cardComponent?.name ?: "Unknown",
@@ -143,7 +159,7 @@ class SpellCounterer(
                     destZone,
                     ownerId, oldObject = state.objectRef(spellId), newObject = destinationObject
                 )
-            )
+            ) + listOfNotNull(LibraryShuffledEvent(ownerId).takeIf { shuffledIn }) + riderEvents
         )
     }
 
@@ -281,7 +297,7 @@ class SpellCounterer(
         return ExecutionResult.success(
             newState,
             listOf(
-                SpellCounteredEvent(spellId, cardComponent?.name ?: "Unknown"),
+                SpellCounteredEvent(spellId, cardComponent?.name ?: "Unknown", countererId),
                 ZoneChangeEvent(
                     spellId,
                     cardComponent?.name ?: "Unknown",
@@ -368,7 +384,7 @@ class SpellCounterer(
         return ExecutionResult.success(
             newState,
             listOf(
-                SpellCounteredEvent(spellId, cardComponent?.name ?: "Unknown"),
+                SpellCounteredEvent(spellId, cardComponent?.name ?: "Unknown", controllerId),
                 ZoneChangeEvent(
                     spellId,
                     cardComponent?.name ?: "Unknown",
@@ -524,7 +540,13 @@ class SpellCounterer(
         // as well as the stack entry keeps that symmetry with the resolution paths, which all call
         // removeEntity — otherwise every countered ability lingers in `entities` for the rest of the
         // game and rides along in every serialized GameState.
-        val newState = state.removeEntity(abilityId)
+        // Its last-known information is kept for an effect that still names it ("copy that
+        // spell or ability" — Repeated Reverberation).
+        val lastKnown = state.objectRef(abilityId)?.let { com.wingedsheep.engine.state.DepartedAbility(it, container) }
+        val newState = state.removeEntity(abilityId).let { removed ->
+            if (lastKnown == null) removed
+            else removed.copy(departedAbilities = removed.departedAbilities + (abilityId to lastKnown))
+        }
 
         return ExecutionResult.success(
             newState,
@@ -623,7 +645,7 @@ class SpellCounterer(
         if (countererId == null) return null
         val projected = state.projectedState
         for (entityId in state.getBattlefield()) {
-            val effects = state.getEntity(entityId)?.get<ReplacementEffectSourceComponent>()?.replacementEffects
+            val effects = state.activeReplacementSource(entityId)?.replacementEffects
                 ?: continue
             val controller = projected.getController(entityId)
                 ?: state.getEntity(entityId)?.get<ControllerComponent>()?.playerId
@@ -634,6 +656,7 @@ class SpellCounterer(
                 val countererMatches = when (pattern.counterer) {
                     Player.You -> countererId == controller
                     Player.EachOpponent -> countererId != controller
+                    Player.EachOtherPlayer -> countererId != controller
                     else -> true
                 }
                 if (countererMatches) return Triple(entityId, controller, effect)
@@ -653,27 +676,23 @@ class SpellCounterer(
             isGrantedCantBeCountered(state, spellId)
 
     /**
-     * The spell's own "if …, this spell can't be countered" (Banefire's "if X is 5 or more").
-     * Evaluated against the spell as it sits on the stack: its locked-in X and its caster as `You`,
-     * so a copy (which copies X, CR 707.10) is judged on its own values.
+     * The spell's own "if …, this spell can't be countered" (Banefire's "if X is 5 or more",
+     * Dragonlord's Prerogative's "if you revealed a Dragon card or controlled a Dragon as you cast
+     * this spell"). Evaluated against the spell as it sits on the stack, with every choice locked
+     * in as it was cast — X, the optional cost it paid, its cast-time captures — and its caster
+     * as `You`, so a copy (which copies those choices, CR 707.10) is judged on its own values.
      */
     private fun ownConditionMakesUncounterable(state: GameState, spellId: EntityId, container: ComponentContainer): Boolean {
         val spell = container.get<SpellOnStackComponent>() ?: return false
         val definitionId = container.get<CardComponent>()?.cardDefinitionId ?: return false
         val condition = cardRegistry.getCard(definitionId)?.script?.cantBeCounteredIf ?: return false
-        val context = EffectContext(
-            sourceId = spellId,
-            controllerId = spell.casterId,
-            xValue = spell.xValue ?: spell.additionalCostPayXLifeAmount,
-        )
-        return predicateEvaluator.conditions.evaluate(state, condition, context)
+        return predicateEvaluator.conditions.evaluate(state, condition, EffectContext.forSpellOnStack(spellId, spell))
     }
 
     private fun isGrantedCantBeCountered(state: GameState, spellId: EntityId): Boolean {
         for (playerId in state.turnOrder) {
             for (entityId in state.getBattlefield(playerId)) {
-                val card = state.getEntity(entityId)?.get<CardComponent>() ?: continue
-                val def = cardRegistry.getCard(card.cardDefinitionId) ?: continue
+                val def = state.getEntity(entityId)?.faceUpCardDefinition(cardRegistry) ?: continue
                 val sourceControllerId =
                     state.getEntity(entityId)?.get<ControllerComponent>()?.playerId ?: playerId
                 val context = PredicateContext(controllerId = sourceControllerId, sourceId = entityId)
@@ -718,8 +737,7 @@ class SpellCounterer(
     private fun isAbilityGrantedCantBeCountered(state: GameState, abilityId: EntityId): Boolean {
         for (playerId in state.turnOrder) {
             for (entityId in state.getBattlefield(playerId)) {
-                val card = state.getEntity(entityId)?.get<CardComponent>() ?: continue
-                val def = cardRegistry.getCard(card.cardDefinitionId) ?: continue
+                val def = state.getEntity(entityId)?.faceUpCardDefinition(cardRegistry) ?: continue
                 val sourceControllerId =
                     state.getEntity(entityId)?.get<ControllerComponent>()?.playerId ?: playerId
                 val context = PredicateContext(controllerId = sourceControllerId, sourceId = entityId)

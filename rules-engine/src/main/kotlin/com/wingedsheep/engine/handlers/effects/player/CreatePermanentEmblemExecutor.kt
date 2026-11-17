@@ -10,6 +10,7 @@ import com.wingedsheep.engine.mechanics.layers.addFloatingEffect
 import com.wingedsheep.engine.state.ComponentContainer
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.identity.CardComponent
+import com.wingedsheep.engine.state.components.battlefield.ReplacementEffectSourceComponent
 import com.wingedsheep.engine.state.components.battlefield.ChoiceValue
 import com.wingedsheep.engine.state.components.battlefield.withCastChoice
 import com.wingedsheep.engine.state.components.identity.ControllerComponent
@@ -74,7 +75,19 @@ class CreatePermanentEmblemExecutor : EffectExecutor<CreatePermanentEmblemEffect
         val (emblemId, stateWithId) = state.newEntity()
         var emblemContainer: ComponentContainer = ComponentContainer.EMPTY
             .with(ControllerComponent(controllerId))
-            .with(EmblemSourceComponent(sourceName = sourceName, description = resolvedDescription))
+            .with(
+                EmblemSourceComponent(
+                    sourceName = sourceName,
+                    description = resolvedDescription,
+                    // The creating object's battlefield visit, so the emblem's "cards exiled with
+                    // <creator>" reads that visit's pile.
+                    creatorId = context.sourceId,
+                    creatorEntryTimestamp = context.sourceBattlefieldTimestamp
+                        ?: context.sourceId?.let {
+                            state.getEntity(it)?.get<com.wingedsheep.engine.state.components.battlefield.BattlefieldEntryTimestampComponent>()?.timestamp
+                        },
+                )
+            )
         if (chosenType != null) {
             emblemContainer = emblemContainer.withCastChoice(
                 ChoiceSlot.CREATURE_TYPE, ChoiceValue.TextChoice(chosenType)
@@ -110,6 +123,15 @@ class CreatePermanentEmblemExecutor : EffectExecutor<CreatePermanentEmblemEffect
                         oracleText = resolvedDescription,
                     )
                 )
+        }
+
+        // Replacement effects the emblem has itself (Serra the Benevolent's "If you control a
+        // creature, damage that would reduce your life total to less than 1 reduces it to 1
+        // instead."), read beside the battlefield through GameState.emblemReplacementHolders.
+        if (effect.ownedReplacementEffects.isNotEmpty()) {
+            emblemContainer = emblemContainer.with(
+                ReplacementEffectSourceComponent(effect.ownedReplacementEffects)
+            )
         }
 
         var newState = stateWithId.withEntity(emblemId, emblemContainer)

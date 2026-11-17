@@ -95,7 +95,7 @@ object LifePaymentService {
     private fun hasLibraryExileReplacement(state: GameState, payerId: EntityId): Boolean {
         for (entityId in state.getBattlefield()) {
             val container = state.getEntity(entityId) ?: continue
-            val replacements = container.get<ReplacementEffectSourceComponent>() ?: continue
+            val replacements = state.activeReplacementSource(entityId) ?: continue
             val sourceControllerId = state.projectedState.getController(entityId)
                 ?: container.get<ControllerComponent>()?.playerId
                 ?: continue

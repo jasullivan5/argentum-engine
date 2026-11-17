@@ -8,6 +8,16 @@ import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.model.CardDefinition
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.KeywordAbility
+import com.wingedsheep.sdk.scripting.CostZone
+import com.wingedsheep.sdk.scripting.costs.CostAtom
+import com.wingedsheep.sdk.scripting.EventPattern
+import com.wingedsheep.sdk.scripting.GameObjectFilter
+import com.wingedsheep.sdk.scripting.events.SpellCastPredicate
+import com.wingedsheep.sdk.scripting.predicates.StatePredicate
+import com.wingedsheep.sdk.scripting.effects.CardSource
+import com.wingedsheep.sdk.scripting.effects.ChooseActionEffect
+import com.wingedsheep.sdk.scripting.effects.GatherCardsEffect
+import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
 import com.wingedsheep.sdk.scripting.references.Player
 import java.lang.reflect.Modifier
 import java.util.IdentityHashMap
@@ -29,12 +39,18 @@ import java.util.concurrent.ConcurrentHashMap
  *  - carries a keyword that is cast or activated from, or feeds on, the graveyard — flashback,
  *    escape, delve, dredge, disturb, embalm, unearth, harmonize, mayhem, aftermath;
  *  - has an ability that works from the graveyard (`activateFromZone`, a trigger's `activeZones`,
- *    a state trigger's `activeZone`);
+ *    a state trigger's `activeZone`), or triggers on casting a spell from a graveyard or
+ *    activating an ability of a card in one;
  *  - moves cards out of a graveyard (`fromZone` / `fromZones` — recursion, cast-from-graveyard
  *    permissions);
  *  - counts or reads **your** graveyard — any object holding `zone = GRAVEYARD` beside
  *    `player = You` (`DynamicAmount.Count(You, GRAVEYARD)` for threshold-style counts, the
- *    distinct-type aggregation behind delirium, a gather from your graveyard).
+ *    distinct-type aggregation behind delirium, a gather from your graveyard). A "search your
+ *    library and/or graveyard" choice is a tutor, not a payoff;
+ *  - exiles cards from **your** graveyard as a cost (`CostAtom.ExileFrom(GRAVEYARD)`, or the
+ *    variable-count `AbilityCost.ExileXFromGraveyard`);
+ *  - targets a card only **your** graveyard holds (a `TargetFilter` in the graveyard owned or
+ *    controlled by you), however the effect then moves it.
  *
  * The walk is reflective over the SDK's pure-data definition graph, so a new effect, amount or
  * keyword ability that names those fields is recognized without touching this file. A false
@@ -50,7 +66,7 @@ object GraveyardSynergy {
 
     private val GRAVEYARD_KEYWORDS: Set<Keyword> = setOf(
         Keyword.FLASHBACK, Keyword.ESCAPE, Keyword.DELVE, Keyword.DREDGE, Keyword.DISTURB,
-        Keyword.EMBALM, Keyword.UNEARTH, Keyword.HARMONIZE, Keyword.MAYHEM, Keyword.AFTERMATH,
+        Keyword.EMBALM, Keyword.ETERNALIZE, Keyword.UNEARTH, Keyword.HARMONIZE, Keyword.MAYHEM, Keyword.AFTERMATH,
     )
 
     private val ZONE_FIELDS = setOf("activateFromZone", "activeZone", "fromZone", "sourceZone", "copyFromZone")
@@ -96,6 +112,35 @@ object GraveyardSynergy {
             if (node is Enum<*>) return false
             if (seen.put(node, Unit) != null) return false
             if (node is KeywordAbility && node.keyword in GRAVEYARD_KEYWORDS) return true
+            // A standing cast-from-graveyard permission names no zone field: the zone is its type.
+            if (node is com.wingedsheep.sdk.scripting.MayCastFromGraveyard) return true
+            // "Whenever you cast a spell from your graveyard" (Secrets of the Dead, Neerdiv) cashes in
+            // the flashback and escape cards a stocked graveyard holds.
+            if (node is SpellCastPredicate.CastFromZone && node.zone == Zone.GRAVEYARD) return true
+            // "Whenever you activate an ability of a card in your graveyard" (Neerdiv) does the same
+            // for embalm, unearth and the other graveyard abilities.
+            if (node is EventPattern.AbilityActivatedEvent && node.sourceFilter?.namesGraveyard() == true) return true
+            // "Exile a creature card from your graveyard" as an activation or additional cost (Null
+            // Caller, Scarred Vinebreeder): the atom's `zone` is the payer's own, with no `player` beside it.
+            // A cost that may take any player's graveyard (Night Soil) is graveyard hate, not a payoff.
+            if (node is CostAtom.ExileFrom) return node.zone == Zone.GRAVEYARD && !node.anyPlayersZone
+            // "Exile X / one or more creature cards from your graveyard" (Corpseweft, Winter, Cursed
+            // Rider, Necropolis Fiend): the variable-count twin, always the payer's own graveyard.
+            if (node is com.wingedsheep.sdk.scripting.AbilityCost.ExileXFromGraveyard) return true
+            // A self-zone permission's price change ("if you pay {1} more to cast it for each other
+            // creature card in your graveyard", Risen Executioner) taxes a stocked graveyard; it never
+            // cashes one in, so the permission is read without it.
+            if (node is com.wingedsheep.sdk.scripting.MayCastSelfFromZones && node.costModification != null) {
+                return visitFields(node.copy(costModification = null))
+            }
+            // A destination fills a graveyard; it never consumes that resource.
+            if (node is com.wingedsheep.sdk.scripting.effects.CardDestination) return false
+            if (node is ChooseActionEffect && isTutorWithGraveyardFallback(node)) return false
+            // A target only our own graveyard can fill — "exile up to one target nonland card of each
+            // card type from your graveyard … cast the copies" (Uldaros Theorix), "exile X target
+            // creature cards from your graveyard" (Hour of Eternity) — names a graveyard card to use.
+            // A pipeline then moves it by collection, so no `fromZone` says where it came from.
+            if (node is TargetFilter && node.zone == Zone.GRAVEYARD && TargetPolarityAnalyzer.ownGraveyardOnly(node)) return true
             return when (node) {
                 is Collection<*> -> node.any(::visit)
                 is Map<*, *> -> node.keys.any(::visit) || node.values.any(::visit)
@@ -109,7 +154,9 @@ object GraveyardSynergy {
             val values = fields.associate { it.name to runCatching { it.get(node) }.getOrNull() }
             for ((name, value) in values) {
                 when (name) {
-                    in ZONE_FIELDS -> if (value == Zone.GRAVEYARD) return true
+                    // A cost's zone is a `CostZone`: "exile any number of creature cards from your
+                    // graveyard" (Gorex, the Tombshell), "exile X cards from your graveyard".
+                    in ZONE_FIELDS -> if (value == Zone.GRAVEYARD || value == CostZone.GRAVEYARD) return true
                     in ZONE_SET_FIELDS -> if (value is Collection<*> && Zone.GRAVEYARD in value) return true
                     in OWN_ZONE_FIELDS -> {
                         val graveyard = value == Zone.GRAVEYARD || (value is Collection<*> && Zone.GRAVEYARD in value)
@@ -121,11 +168,31 @@ object GraveyardSynergy {
         }
     }
 
-    private const val SDK_PACKAGE = "com.wingedsheep.sdk."
+    /** The filter is "a card in a graveyard" — [StatePredicate.InZone] on it or on any of its alternatives. */
+    private fun GameObjectFilter.namesGraveyard(): Boolean =
+        statePredicates.any { it is StatePredicate.InZone && it.zone == Zone.GRAVEYARD } || anyOf.any { it.namesGraveyard() }
+
+    /**
+     * "Search your library and/or graveyard for a card named …" (Vraska's Scorn,
+     * `Patterns.Library.searchLibraryAndOrGraveyard`): a choice between searches of our own zones,
+     * one of which reaches the library. That is a tutor whose graveyard is only where the card may
+     * have ended up, not a use of the graveyard as a resource.
+     */
+    private fun isTutorWithGraveyardFallback(choice: ChooseActionEffect): Boolean {
+        val sources = choice.choices.flatMap { option ->
+            EffectWalker.leaves(option.effect).filterIsInstance<GatherCardsEffect>().map { it.source }
+        }
+        if (sources.isEmpty()) return false
+        val searches = sources.map { it as? CardSource.FromMultipleZones ?: return false }
+        return searches.all { it.player == Player.You } && searches.any { Zone.LIBRARY in it.zones }
+    }
+
+    internal const val SDK_PACKAGE = "com.wingedsheep.sdk."
 
     private val fieldCache = ConcurrentHashMap<Class<*>, List<java.lang.reflect.Field>>()
 
-    private fun fieldsOf(type: Class<*>): List<java.lang.reflect.Field> = fieldCache.getOrPut(type) {
+    /** The instance fields of an SDK data class and its SDK superclasses, made readable — shared with [CardAsks]. */
+    internal fun fieldsOf(type: Class<*>): List<java.lang.reflect.Field> = fieldCache.getOrPut(type) {
         generateSequence(type) { it.superclass }
             .takeWhile { it.name.startsWith(SDK_PACKAGE) }
             .flatMap { it.declaredFields.asSequence() }

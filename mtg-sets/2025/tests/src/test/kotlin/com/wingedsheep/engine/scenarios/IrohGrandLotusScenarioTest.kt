@@ -15,7 +15,7 @@ import io.kotest.matchers.shouldBe
  *     The flashback cost is equal to that card's mana cost."
  *  - "During your turn, each Lesson card in your graveyard has flashback {1}."
  *
- * The two clauses are whole-graveyard flashback grants ([GraveyardCardsHaveFlashback], CR 702.34):
+ * The two clauses are whole-graveyard flashback grants ([GraveyardCardsHaveCastKeyword], CR 702.34):
  * a continuous static that grants flashback to *every* matching card in your graveyard, gated to
  * your turn. These tests pin: a non-Lesson instant/sorcery becomes castable from the graveyard for
  * its own mana cost (and is exiled on resolution — flashback); a Lesson becomes castable for {1};

@@ -84,8 +84,13 @@ class MeaningfulActionFilterTest : FunSpec({
         ) shouldBe false
     }
 
-    test("an unaffordable cast, cycle or crew is not a candidate") {
-        listOf("CastSpell", "CastWithFlashback", "CycleCard", "ForetellCard", "CrewVehicle").forEach { type ->
+    test("an unaffordable cast, ability, cycle, crew, suspend or saddle is not a candidate") {
+        // An activated ability the player can't pay for ("{2}: +1/+0" with no untapped mana) is
+        // enumerated greyed out for the client, but must not stop auto-pass (issue #3672).
+        listOf(
+            "CastSpell", "CastWithFlashback", "ActivateAbility", "CycleCard", "ForetellCard",
+            "CrewVehicle", "SuspendCardFromHand", "SaddleMount",
+        ).forEach { type ->
             MeaningfulActionFilter.isMeaningful(action(type, affordable = false)) shouldBe false
             MeaningfulActionFilter.isMeaningful(action(type, affordable = true)) shouldBe true
         }

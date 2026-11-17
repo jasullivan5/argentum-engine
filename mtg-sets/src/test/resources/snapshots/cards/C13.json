@@ -60,6 +60,86 @@
     ]
 }
 
+// Bane of Progress
+{
+    "name": "Bane of Progress",
+    "manaCost": "{4}{G}{G}",
+    "typeLine": "Creature — Elemental",
+    "oracleText": "When this creature enters, destroy all artifacts and enchantments. Put a +1/+1 counter on this creature for each permanent destroyed this way.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 2
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Bane of Progress:1",
+                "trigger": {
+                    "type": "ZoneChangeEvent",
+                    "to": "Battlefield"
+                },
+                "effect": {
+                    "type": "Composite",
+                    "effects": [
+                        {
+                            "type": "Composite",
+                            "effects": [
+                                {
+                                    "type": "GatherCards",
+                                    "source": {
+                                        "type": "BattlefieldMatching",
+                                        "filter": "artifact|enchantment"
+                                    },
+                                    "storeAs": "destroyAll_gathered"
+                                },
+                                {
+                                    "type": "MoveCollection",
+                                    "from": "destroyAll_gathered",
+                                    "destination": {
+                                        "type": "ToZone",
+                                        "zone": "Graveyard"
+                                    },
+                                    "moveType": "Destroy",
+                                    "storeMovedAs": "stored0"
+                                }
+                            ]
+                        },
+                        {
+                            "type": "AddDynamicCounters",
+                            "counterType": "PLUS_ONE_PLUS_ONE",
+                            "amount": {
+                                "type": "VariableReference",
+                                "variableName": "stored0_count"
+                            },
+                            "target": "Self"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "137",
+        "rarity": "RARE",
+        "artist": "Lars Grant-West",
+        "flavorText": "It sees shaped stone and carved wood as mutilations.",
+        "imageUri": "https://cards.scryfall.io/normal/front/c/b/cb9b492f-a404-400f-be70-8b4901d2d82b.jpg?1783939663",
+        "rulings": [
+            {
+                "date": "2013-10-17",
+                "text": "Bane of Progress's ability destroys all artifacts and enchantments, including those you control."
+            },
+            {
+                "date": "2013-10-17",
+                "text": "If an artifact or enchantment isn't destroyed (perhaps because it has indestructible or it regenerated), it won't count toward the number of +1/+1 counters put on Bane of Progress. However, if an artifact or enchantment is destroyed but doesn't go to its owner's graveyard due to a replacement effect (like the one Rest in Peace creates), it will count."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "GREEN"
+    ]
+}
+
 // Derevi, Empyrial Tactician
 {
     "name": "Derevi, Empyrial Tactician",
@@ -291,6 +371,204 @@
     },
     "colorIdentityOverride": [
         "BLUE"
+    ]
+}
+
+// Nekusar, the Mindrazer
+{
+    "name": "Nekusar, the Mindrazer",
+    "manaCost": "{2}{U}{B}{R}",
+    "typeLine": "Legendary Creature — Zombie Wizard",
+    "oracleText": "At the beginning of each player's draw step, that player draws an additional card.\nWhenever an opponent draws a card, Nekusar deals 1 damage to that player.",
+    "creatureStats": {
+        "power": 2,
+        "toughness": 4
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Nekusar, the Mindrazer:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "DRAW",
+                    "player": "Each"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DrawCards",
+                    "count": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    }
+                }
+            },
+            {
+                "id": "Nekusar, the Mindrazer:2",
+                "trigger": {
+                    "type": "DrawEvent",
+                    "player": "EachOpponent"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "DealDamage",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 1
+                    },
+                    "target": {
+                        "type": "PlayerRef",
+                        "player": "TriggeringPlayer"
+                    }
+                }
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "201",
+        "rarity": "MYTHIC",
+        "artist": "Mark Winters",
+        "flavorText": "His enemies wondered if the lich king's brutal death and unnatural rebirth had been his plan all along.",
+        "imageUri": "https://cards.scryfall.io/normal/front/3/f/3f7f2417-12de-4e57-9714-d878880a1208.jpg?1783939648",
+        "rulings": [
+            {
+                "date": "2020-11-10",
+                "text": "If a spell or ability causes you to put cards into your hand without specifically using the word \"draw,\" it doesn't count as drawing cards and it doesn't cause Nekusar's second ability to trigger."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "BLUE",
+        "BLACK",
+        "RED"
+    ]
+}
+
+// Oloro, Ageless Ascetic
+{
+    "name": "Oloro, Ageless Ascetic",
+    "manaCost": "{3}{W}{U}{B}",
+    "typeLine": "Legendary Creature — Giant Soldier",
+    "oracleText": "At the beginning of your upkeep, you gain 2 life.\nWhenever you gain life, you may pay {1}. If you do, draw a card and each opponent loses 1 life.\nAt the beginning of your upkeep, if Oloro is in the command zone, you gain 2 life.",
+    "creatureStats": {
+        "power": 4,
+        "toughness": 5
+    },
+    "script": {
+        "triggeredAbilities": [
+            {
+                "id": "Oloro, Ageless Ascetic:1",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                "descriptionOverride": "At the beginning of your upkeep, you gain 2 life."
+            },
+            {
+                "id": "Oloro, Ageless Ascetic:2",
+                "trigger": "LifeGainEvent",
+                "binding": "ANY",
+                "effect": {
+                    "type": "Gated",
+                    "gate": {
+                        "type": "Gate.MayPay",
+                        "cost": {
+                            "type": "PayManaCost",
+                            "cost": "{1}"
+                        }
+                    },
+                    "then": {
+                        "type": "Composite",
+                        "effects": [
+                            {
+                                "type": "DrawCards",
+                                "count": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                }
+                            },
+                            {
+                                "type": "LoseLife",
+                                "amount": {
+                                    "type": "Fixed",
+                                    "amount": 1
+                                },
+                                "target": {
+                                    "type": "PlayerRef",
+                                    "player": "EachOpponent"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "descriptionOverride": "Whenever you gain life, you may pay {1}. If you do, draw a card and each opponent loses 1 life."
+            },
+            {
+                "id": "Oloro, Ageless Ascetic:3",
+                "trigger": {
+                    "type": "StepEvent",
+                    "step": "UPKEEP"
+                },
+                "binding": "ANY",
+                "effect": {
+                    "type": "GainLife",
+                    "amount": {
+                        "type": "Fixed",
+                        "amount": 2
+                    }
+                },
+                "activeZones": [
+                    "Command"
+                ],
+                "interveningIf": {
+                    "type": "SourceInZone",
+                    "zones": [
+                        "Command"
+                    ]
+                },
+                "descriptionOverride": "At the beginning of your upkeep, if Oloro is in the command zone, you gain 2 life."
+            }
+        ]
+    },
+    "metadata": {
+        "collectorNumber": "203",
+        "rarity": "MYTHIC",
+        "artist": "Eric Deschamps",
+        "imageUri": "https://cards.scryfall.io/normal/front/a/b/abf8df47-405c-42d8-be9e-0f0d0a49589b.jpg?1783939648",
+        "rulings": [
+            {
+                "date": "2013-10-17",
+                "text": "Oloro's first ability works only if Oloro is on the battlefield."
+            },
+            {
+                "date": "2013-10-17",
+                "text": "If Oloro is your commander, its last ability will trigger at the beginning of the upkeep step on your first turn."
+            },
+            {
+                "date": "2013-10-17",
+                "text": "Oloro's second ability triggers just once for each life-gaining event, no matter how much life is gained."
+            },
+            {
+                "date": "2013-10-17",
+                "text": "You decide whether to pay {1} as the second ability resolves. If you do, you'll draw a card and each opponent will lose 1 life."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "WHITE",
+        "BLUE",
+        "BLACK"
     ]
 }
 
@@ -551,6 +829,130 @@
     },
     "colorIdentityOverride": [
         "GREEN"
+    ]
+}
+
+// Tempt with Vengeance
+{
+    "name": "Tempt with Vengeance",
+    "manaCost": "{X}{R}",
+    "typeLine": "Sorcery",
+    "oracleText": "Tempting offer — Create X 1/1 red Elemental creature tokens with haste. Each opponent may create X 1/1 red Elemental creature tokens with haste. For each opponent who does, create X 1/1 red Elemental creature tokens with haste.",
+    "script": {
+        "spellEffect": {
+            "type": "Composite",
+            "effects": [
+                {
+                    "type": "CreateToken",
+                    "count": "XValue",
+                    "power": 1,
+                    "toughness": 1,
+                    "colors": [
+                        "RED"
+                    ],
+                    "creatureTypes": [
+                        "Elemental"
+                    ],
+                    "keywords": [
+                        "HASTE"
+                    ],
+                    "imageUri": "https://cards.scryfall.io/normal/front/6/8/686d9c3d-41dc-476d-93b7-75857b48b1b6.jpg?1783906799"
+                },
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": "EachOpponent"
+                    },
+                    "body": {
+                        "type": "Gated",
+                        "gate": {
+                            "type": "Gate.MayDecide",
+                            "prompt": "Accept the tempting offer? (Create X 1/1 red Elemental creature tokens with haste)"
+                        },
+                        "then": {
+                            "type": "StorePlayer",
+                            "storeAs": "temptingOfferAccepter"
+                        },
+                        "descriptionOverride": "You may accept the tempting offer"
+                    },
+                    "collectCollections": {
+                        "temptingOfferAccepter": "temptingOfferAccepted"
+                    }
+                },
+                {
+                    "type": "ForEach",
+                    "space": {
+                        "type": "IterationSpace.Players",
+                        "players": {
+                            "type": "InCollection",
+                            "collection": "temptingOfferAccepted"
+                        }
+                    },
+                    "body": {
+                        "type": "CreateToken",
+                        "count": "XValue",
+                        "power": 1,
+                        "toughness": 1,
+                        "colors": [
+                            "RED"
+                        ],
+                        "creatureTypes": [
+                            "Elemental"
+                        ],
+                        "keywords": [
+                            "HASTE"
+                        ],
+                        "imageUri": "https://cards.scryfall.io/normal/front/6/8/686d9c3d-41dc-476d-93b7-75857b48b1b6.jpg?1783906799"
+                    }
+                },
+                {
+                    "type": "RepeatDynamicTimes",
+                    "amount": {
+                        "type": "DistinctEntitiesInCollections",
+                        "collections": [
+                            "temptingOfferAccepted"
+                        ]
+                    },
+                    "body": {
+                        "type": "CreateToken",
+                        "count": "XValue",
+                        "power": 1,
+                        "toughness": 1,
+                        "colors": [
+                            "RED"
+                        ],
+                        "creatureTypes": [
+                            "Elemental"
+                        ],
+                        "keywords": [
+                            "HASTE"
+                        ],
+                        "imageUri": "https://cards.scryfall.io/normal/front/6/8/686d9c3d-41dc-476d-93b7-75857b48b1b6.jpg?1783906799"
+                    }
+                }
+            ],
+            "descriptionOverride": "Tempting offer — Create X 1/1 red Elemental creature tokens with haste. Each opponent may create X 1/1 red Elemental creature tokens with haste. For each opponent who does, create X 1/1 red Elemental creature tokens with haste."
+        }
+    },
+    "metadata": {
+        "collectorNumber": "125",
+        "rarity": "RARE",
+        "artist": "Ryan Barger",
+        "imageUri": "https://cards.scryfall.io/normal/front/4/8/48ad7c26-edb5-4354-9872-87c667183be7.jpg?1783939666",
+        "rulings": [
+            {
+                "date": "2013-10-17",
+                "text": "Your opponents decide in turn order whether or not they accept the offer, starting with the opponent on your left. Each opponent will know the decisions of previous opponents in turn order when making their decision."
+            },
+            {
+                "date": "2013-10-17",
+                "text": "After each opponent has decided, the effect happens simultaneously for each one who accepted the offer. Then, the effect happens again for you a number of times equal to the number of opponents who accepted."
+            }
+        ]
+    },
+    "colorIdentityOverride": [
+        "RED"
     ]
 }
 

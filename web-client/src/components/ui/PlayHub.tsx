@@ -32,6 +32,8 @@ import {
   modeInfo,
   needsDeck,
   needsSet,
+  isJumpIn,
+  jumpstartSetFor,
   opponentRange,
   recipeForOptions,
   rollsDeck,
@@ -50,7 +52,10 @@ import {
 import type { LobbyRecipe } from '../lobby/lobbyRecipe'
 import { AI_DISABLED_ON_SERVER } from '../lobby/modeMatrix'
 import { defaultSetCode } from '../lobby/useApplyRecipe'
+import { JUMPSTART_SETS } from '../lobby/jumpstartSets'
 import { SetPickerModal } from './SetPickerModal'
+import { RANDOM_SET_CODE, isRandomSetCode } from './SetSelector'
+import { setProfile } from '@/components/setGuide/setProfiles'
 import { SetIcon } from './SetIcon'
 import { LaunchDeckChoice } from './LaunchDeckChoice'
 import { useStarterDecks, type StarterDeck } from '@/store/useStarterDecks'
@@ -202,7 +207,9 @@ function LaunchPanel({
     return allStarters.filter((d) => (d.format?.toUpperCase() === 'COMMANDER') === (mode === 'COMMANDER'))
   }, [allStarters, mode])
 
-  const setCode = options.setCode && availableSets.some((s) => s.code === options.setCode)
+  // A deferred Random Set is kept as-is: the server rolls it when the event starts.
+  const setCode = options.setCode
+    && (isRandomSetCode(options.setCode) || availableSets.some((s) => s.code === options.setCode))
     ? options.setCode
     : availableSets.length > 0 ? defaultSetCode(availableSets) : null
   // A remembered set the server no longer offers falls back to "any set" rather than a failed roll.
@@ -217,8 +224,17 @@ function LaunchPanel({
   const opponents = effectiveOpponents(effective)
   const stages = stagesFor(effective)
   const set = availableSets.find((s) => s.code === setCode)
+  const setIsRandom = setCode !== null && isRandomSetCode(setCode)
+  const setTagline = setIsRandom
+    ? 'A set is rolled when the event starts, and revealed then.'
+    : setCode ? setProfile(setCode)?.tagline : undefined
   const randomSet = availableSets.find((s) => s.code === randomSetCode)
   const isAi = effective.playWith === 'AI'
+  // Only the Jumpstart sets this server offers; before the set list arrives, all of them.
+  const jumpstartChoices = JUMPSTART_SETS.filter((j) =>
+    availableSets.length === 0 || availableSets.some((s) => s.code === j.code))
+  const jumpstartSetCode = jumpstartSetFor(effective)
+  const jumpstartSet = availableSets.find((s) => s.code === jumpstartSetCode)
 
   return (
     <section className={styles.panel} aria-labelledby="launch-heading" data-testid="launch-panel">
@@ -318,13 +334,43 @@ function LaunchPanel({
           </Field>
         )}
 
+        {isJumpIn(effective) && jumpstartChoices.length > 1 && (
+          <Field label="Packs from">
+            <Segmented<string>
+              name="jumpstart-set"
+              value={jumpstartSetCode}
+              onChange={(jumpstartSetCode) => setOptions({ jumpstartSetCode })}
+              options={jumpstartChoices.map((j) => {
+                // Jump In only deals packs whose every card is implemented, so a partial set has fewer.
+                const partial = availableSets.find((s) => s.code === j.code)?.partial
+                return { value: j.code, label: j.label, sub: partial ? `${j.year} · some packs` : j.year }
+              })}
+            />
+            <p className={styles.setTagline}>
+              {[jumpstartSet?.name, setProfile(jumpstartSetCode)?.tagline].filter(Boolean).join(' — ')}
+            </p>
+          </Field>
+        )}
+
         {needsSet(effective) && (
           <Field label="Set">
-            <button type="button" className={styles.setButton} onClick={() => setSetPickerOpen(true)}>
-              {setCode && <SetIcon code={setCode} className={styles.setIcon} />}
-              <span className={styles.setName}>{set?.name ?? 'Choose a set'}</span>
+            <button
+              type="button"
+              className={styles.setButton}
+              data-testid="launch-set"
+              onClick={() => setSetPickerOpen(true)}
+            >
+              {setIsRandom
+                ? <span className={styles.setIcon} aria-hidden>🎲</span>
+                : setCode && <SetIcon code={setCode} className={styles.setIcon} />}
+              <span className={styles.setName}>{setIsRandom ? 'Random Set' : set?.name ?? 'Choose a set'}</span>
               <span className={styles.setChange}>Change</span>
             </button>
+            {setTagline && <p className={styles.setTagline}>{setTagline}</p>}
+            {/* A new tab, so the choices made here survive the detour. */}
+            <a href="/sets" target="_blank" rel="noopener" className={styles.setGuideLink}>
+              Not sure which set? Compare them in the Set guide ↗
+            </a>
           </Field>
         )}
 
@@ -419,10 +465,12 @@ function LaunchPanel({
       {setPickerOpen && (
         <SetPickerModal
           sets={availableSets}
-          selectedCodes={setCode ? [setCode] : []}
+          // Single mode ticks its Random Set row when nothing is selected.
+          selectedCodes={setCode && !setIsRandom ? [setCode] : []}
           mode="single"
           title="Choose a set"
           onToggleSet={(code) => setOptions({ setCode: code })}
+          onSelectRandom={() => setOptions({ setCode: RANDOM_SET_CODE })}
           onClose={() => setSetPickerOpen(false)}
         />
       )}
@@ -645,6 +693,7 @@ function loadOptions(mode: ModeId, aiEnabled: boolean): PlayOptions {
     sealedStyle: pick('sealedStyle', ['STANDARD', 'COMMANDER']),
     tableCards: pick('tableCards', ['DECKS', 'JUMP_IN', 'SEALED', 'DRAFT']),
     setCode: typeof stored.setCode === 'string' ? stored.setCode : null,
+    jumpstartSetCode: typeof stored.jumpstartSetCode === 'string' ? stored.jumpstartSetCode : null,
     randomSetCode: typeof stored.randomSetCode === 'string' ? stored.randomSetCode : null,
     deck: storedDeck(stored),
     aiAssist: stored.aiAssist === true,

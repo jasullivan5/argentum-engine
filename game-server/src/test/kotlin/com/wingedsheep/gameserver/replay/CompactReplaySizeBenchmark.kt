@@ -334,11 +334,12 @@ private fun randomDecisionResponse(decision: PendingDecision, rng: Random): Deci
         is CombatResolutionDecision ->
             CombatResolutionResponse(decision.id, decision.edges.map { DamageEdgeAmount(it.id, it.amount) })
 
-        is FlipOntoBattlefieldDecision -> FlipThrowResponse(
+        is FlipOntoBattlefieldDecision -> FlipThrowResponse.toward(
             decision.id,
+            decision.table,
             rng.nextDouble() * decision.table.width,
             rng.nextDouble() * decision.table.height,
-            rng.nextDouble(),
+            rng.nextDouble() * 6.0,
         )
 
         is BudgetModalDecision -> {

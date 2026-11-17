@@ -6,7 +6,6 @@ import com.wingedsheep.engine.core.CountersAddedEvent
 import com.wingedsheep.engine.core.DecisionContext
 import com.wingedsheep.engine.core.DecisionPhase
 import com.wingedsheep.engine.core.EffectResult
-import com.wingedsheep.engine.core.ExecutionResult
 import com.wingedsheep.engine.core.GameEvent
 import com.wingedsheep.engine.core.ProliferateContinuation
 import com.wingedsheep.engine.core.ProliferatedEvent
@@ -20,6 +19,7 @@ import com.wingedsheep.engine.handlers.effects.ReplacementEffectUtils
 import com.wingedsheep.engine.state.GameState
 import com.wingedsheep.engine.state.components.battlefield.CountersComponent
 import com.wingedsheep.engine.state.components.identity.CardComponent
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.model.EntityId
 import com.wingedsheep.sdk.scripting.effects.ProliferateEffect
 import com.wingedsheep.sdk.scripting.targets.EffectTarget
@@ -76,15 +76,18 @@ class ProliferateExecutor(
                 context.resolvePlayerTarget(target, state)
             } else {
                 context.resolveTarget(target, state)
-            } ?: return EffectResult.success(state, emptyList())
+            } ?: return EffectResult(state, updatedCollections = stored(effect.storeAs, emptyList()))
 
             // Only a permanent still on the battlefield, or a player, can receive them.
             if (recipientId !in state.getBattlefield() && recipientId !in state.turnOrder) {
-                return EffectResult.success(state, emptyList())
+                return EffectResult(state, updatedCollections = stored(effect.storeAs, emptyList()))
             }
 
             val (newState, events) = addOneOfEachKind(state, listOf(recipientId), context.controllerId, predicateEvaluator = predicateEvaluator)
-            return EffectResult.success(newState, events)
+            return EffectResult(
+                newState, events,
+                updatedCollections = stored(effect.storeAs, permanentsGivenCounters(newState, events)),
+            )
         }
 
         val sourceName = context.sourceId
@@ -96,8 +99,9 @@ class ProliferateExecutor(
         val times = KeywordActionReplacements.repetitions(
             state, context.controllerId, ReplaceableKeywordAction.PROLIFERATE
         )
-        return EffectResult.from(
-            proliferate(state, context.controllerId, context.sourceId, sourceName, times, emptyList())
+        return proliferate(
+            state, context.controllerId, context.sourceId, sourceName, times, emptyList(),
+            storeAs = effect.storeAs,
         )
     }
 
@@ -108,7 +112,9 @@ class ProliferateExecutor(
          * emits its own [ProliferatedEvent]. A proliferate with nothing eligible completes on the
          * spot; the first one that has a choice to make pauses, carrying the proliferates still
          * owed on its [ProliferateContinuation] so the resumer can pick the loop back up.
-         * [events] are the events already produced by earlier proliferates in the same loop.
+         * [events] are the events already produced by earlier proliferates in the same loop, and
+         * [countered] the permanents they gave a counter — published to [storeAs] (when set) once
+         * the run completes, alongside whatever the rest of the run adds.
          */
         fun proliferate(
             state: GameState,
@@ -116,8 +122,10 @@ class ProliferateExecutor(
             sourceId: EntityId?,
             sourceName: String,
             times: Int,
-            events: List<GameEvent>
-        ): ExecutionResult {
+            events: List<GameEvent>,
+            storeAs: String? = null,
+            countered: List<EntityId> = emptyList(),
+        ): EffectResult {
             val accumulated = events.toMutableList()
             repeat(times) { done ->
                 val eligible = findEntitiesWithCounters(state)
@@ -138,7 +146,8 @@ class ProliferateExecutor(
                     options = eligible,
                     minSelections = 0,
                     maxSelections = eligible.size,
-                    useTargetingUI = true
+                    useTargetingUI = true,
+                    recommendedSelection = recommendedRecipients(state, controllerId, eligible),
                 ) }
 
                 val continuation = ProliferateContinuation(
@@ -146,13 +155,93 @@ class ProliferateExecutor(
                     eligibleEntities = eligible,
                     sourceName = sourceName,
                     sourceId = sourceId,
-                    proliferatesRemaining = times - done - 1
+                    proliferatesRemaining = times - done - 1,
+                    storeAs = storeAs,
+                    countered = countered
                 )
 
-                return state.suspendForDecision(decision, continuation, accumulated, eventType = "PROLIFERATE")
+                return EffectResult.from(
+                    state.suspendForDecision(decision, continuation, accumulated, eventType = "PROLIFERATE")
+                )
             }
-            return ExecutionResult.success(state, accumulated)
+            return EffectResult(state, accumulated, updatedCollections = stored(storeAs, countered))
         }
+
+        /** The `storeAs` collection, or nothing when the effect doesn't store one. */
+        fun stored(storeAs: String?, countered: List<EntityId>): Map<String, List<EntityId>> =
+            if (storeAs == null) emptyMap() else mapOf(storeAs to countered)
+
+        /**
+         * The permanents [events] put at least one counter on — the "permanents that had a counter
+         * put on them this way". A placement a replacement reduced to zero emits no event, so it
+         * isn't counted; players (poison, experience) are dropped.
+         */
+        fun permanentsGivenCounters(state: GameState, events: List<GameEvent>): List<EntityId> =
+            events.asSequence()
+                .filterIsInstance<CountersAddedEvent>()
+                .map { it.entityId }
+                .filter { it !in state.turnOrder }
+                .distinct()
+                .toList()
+
+        /**
+         * The recipients among [eligible] that [controllerId] usually wants another counter on — the
+         * proliferate decision's "Recommended" pick. A rule of thumb read off the counters' polarity,
+         * not a simulation:
+         *
+         * - **Yourself and your permanents** (and a teammate's, CR 810) — unless something on it is a counter that hurts its
+         *   holder ([HARMFUL_TO_HOLDER]: a -1/-1 counter on your creature, poison on you).
+         * - **Opponents and their permanents** — only when they carry a counter that hurts them and
+         *   none that helps them ([HELPFUL_TO_HOLDER]): a -1/-1 counter on their creature, poison on
+         *   them; never their planeswalker's loyalty or their creature's +1/+1 counters.
+         *
+         * A kind it doesn't classify (charge, lore, experience) counts as fine to grow on your own
+         * stuff and as no reason to grow on an opponent's.
+         */
+        fun recommendedRecipients(
+            state: GameState,
+            controllerId: EntityId,
+            eligible: List<EntityId>,
+        ): List<EntityId> {
+            val projected = state.projectedState
+            val team = state.teamOf(controllerId)
+            return eligible.filter { id ->
+                val kinds = state.getEntity(id)?.get<CountersComponent>()?.counters
+                    ?.filterValues { it > 0 }?.keys.orEmpty()
+                if (kinds.isEmpty()) return@filter false
+                val holder = if (id in state.turnOrder) id else projected.getController(id)
+                when {
+                    holder in team -> kinds.none(::isHarmfulToHolder)
+                    holder != null && state.isOpponentOf(holder, controllerId) ->
+                        kinds.any(::isHarmfulToHolder) && kinds.none(::isHelpfulToHolder)
+                    else -> false
+                }
+            }
+        }
+
+        /** A counter whose growth hurts the object or player it's on. */
+        private fun isHarmfulToHolder(kind: CounterType): Boolean =
+            kind.ptDelta?.let { (power, toughness) -> power <= 0 && toughness <= 0 }
+                ?: (kind in HARMFUL_TO_HOLDER)
+
+        /** A counter whose growth clearly helps the object or player it's on. */
+        private fun isHelpfulToHolder(kind: CounterType): Boolean =
+            kind.ptDelta?.let { (power, toughness) -> power >= 0 && toughness >= 0 }
+                ?: (kind in HELPFUL_TO_HOLDER)
+
+        private val HARMFUL_TO_HOLDER = setOf(
+            CounterType.POISON, CounterType.RAD, CounterType.STUN, CounterType.FINALITY,
+            // Cumulative upkeep grows with each age counter; a battle's controller is the one
+            // trying to remove its defense counters (its protector wants them).
+            CounterType.AGE, CounterType.DEFENSE,
+        )
+
+        private val HELPFUL_TO_HOLDER = setOf(
+            CounterType.LOYALTY, CounterType.SHIELD,
+            CounterType.FLYING, CounterType.FIRST_STRIKE, CounterType.DOUBLE_STRIKE, CounterType.VIGILANCE,
+            CounterType.LIFELINK, CounterType.INDESTRUCTIBLE, CounterType.DEATHTOUCH, CounterType.TRAMPLE,
+            CounterType.HEXPROOF, CounterType.REACH, CounterType.HASTE, CounterType.MENACE, CounterType.SHADOW,
+        )
 
         /**
          * All battlefield permanents + all players that currently have at least one
@@ -180,8 +269,8 @@ class ProliferateExecutor(
          * [com.wingedsheep.engine.handlers.effects.permanent.counters.AddCountersExecutor] and
          * every other counter-placing path honors (Blossombind; CR 614.17 "can't" effects). It applies to
          * proliferate exactly as it does to "put a +1/+1 counter on target creature", so both
-         * shapes of this effect check it here. Players are never affected: the flag is a keyword
-         * grant, and a player id never carries one.
+         * shapes of this effect check it here. A player under a `LockPlayerCountersEffect` lock
+         * (Suncleanser) is skipped through the same check.
          *
          * Placement goes through [ReplacementEffectUtils.applyCounterPlacementModifiers] (Hardened
          * Scales and friends), is recorded via [DamageUtils.recordCounterPlacement] with the kind
@@ -238,7 +327,8 @@ class ProliferateExecutor(
                             modifiedAmount,
                             entityName,
                             firstThisTurn, firstOfTypeThisTurn = firstOfTypeThisTurn,
-                            placedBy = controllerId
+                            placedBy = controllerId,
+                            totalCount = before.getCount(counterType) + modifiedAmount
                         )
                     )
                 }

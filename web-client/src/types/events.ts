@@ -33,7 +33,9 @@ export type ClientEvent =
   | SpellCounteredEvent
   | AbilityTriggeredEvent
   | AbilityActivatedEvent
+  | AbilityResolvedEvent
   | AbilityAutoAnsweredEvent
+  | TriggersOrderedAutomaticallyEvent
   | PermanentTappedEvent
   | PermanentUntappedEvent
   | CounterAddedEvent
@@ -291,12 +293,38 @@ export interface AbilityActivatedEvent {
   readonly description: string
 }
 
+/**
+ * A triggered or activated ability finished resolving (the ability-side `spellResolved`).
+ * `abilityId` is the stack object that just left; `abilityDescription` is empty for an activated
+ * ability. Delivered per update only — the server keeps it out of the persistent game log.
+ */
+export interface AbilityResolvedEvent {
+  readonly type: 'abilityResolved'
+  readonly sourceId: EntityId
+  readonly sourceName: string
+  readonly abilityDescription: string
+  readonly abilityId?: EntityId
+  readonly controllerId?: EntityId
+  readonly isYours?: boolean
+  readonly description: string
+}
+
 /** A "you may" may-question was auto-resolved from the viewer's persistent yield (backlog §C). */
 export interface AbilityAutoAnsweredEvent {
   readonly type: 'abilityAutoAnswered'
   readonly sourceId: EntityId
   readonly sourceName: string
   readonly answer: boolean
+  readonly description: string
+}
+
+/**
+ * Automatic ordering put [count] of the viewer's simultaneous triggers on the stack in an order
+ * they could have chosen (CR 603.3b). Sent only to that player.
+ */
+export interface TriggersOrderedAutomaticallyEvent {
+  readonly type: 'triggersOrderedAutomatically'
+  readonly count: number
   readonly description: string
 }
 

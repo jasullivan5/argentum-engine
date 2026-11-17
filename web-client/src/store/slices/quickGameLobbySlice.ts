@@ -71,6 +71,8 @@ export interface QuickGameLobbySliceActions {
     secondCommander?: string | null,
     /** The deck's companion (CR 702.139), a sideboard card; null for none. */
     companion?: string | null,
+    /** The format the deck was built for, or null; see `SubmitQuickGameLobbyDeckMessage.deckFormat`. */
+    deckFormat?: string | null,
   ) => void
   setQuickGameLobbyReady: (ready: boolean) => void
   setQuickGameLobbySetCode: (setCodes: readonly string[]) => void
@@ -112,10 +114,10 @@ export const createQuickGameLobbySlice: SliceCreator<QuickGameLobbySlice> = (set
     set({ quickGameLobbyState: null })
   },
 
-  submitQuickGameLobbyDeck: (deckList, commander, sideboard, secondCommander, companion) => {
+  submitQuickGameLobbyDeck: (deckList, commander, sideboard, secondCommander, companion, deckFormat) => {
     getWebSocket()?.send(
       createSubmitQuickGameLobbyDeckMessage(
-        deckList, commander, undefined, undefined, sideboard, secondCommander, undefined, companion,
+        deckList, commander, undefined, undefined, sideboard, secondCommander, undefined, companion, deckFormat,
       ),
     )
   },

@@ -5,6 +5,7 @@ import com.wingedsheep.ai.engine.advisor.CardAdvisorRegistry
 import com.wingedsheep.ai.engine.evaluation.*
 import com.wingedsheep.ai.engine.knowledge.IntentCatalog
 import com.wingedsheep.ai.engine.hidden.Determinizer
+import com.wingedsheep.ai.engine.hidden.OpponentKnowledge
 import com.wingedsheep.ai.engine.hidden.OpponentModel
 import com.wingedsheep.ai.insight.AiInsightSink
 import com.wingedsheep.ai.engine.rollout.CandidateEvaluator
@@ -51,7 +52,20 @@ class AIPlayer(
      * [MeaningfulActionFilter.canAutoPassWithoutEnumerating] can decide from the state alone.
      */
     private val useMeaningfulFilter: Boolean = false,
+    /**
+     * What this seat knows of its opponents' decklists — the [Determinizer]'s sampling models and
+     * the unseen cards removal patience reads. Empty unless a caller teaches it ([learnOpponentDecklist]).
+     */
+    val opponentKnowledge: OpponentKnowledge? = null,
 ) {
+    /**
+     * Tell this AI [opponentId]'s registered decklist (card name → copies). Live games hand the AI
+     * every opponent's full list by design; see [OpponentKnowledge].
+     */
+    fun learnOpponentDecklist(opponentId: EntityId, cards: Map<String, Int>) {
+        opponentKnowledge?.learnDecklist(opponentId, cards)
+    }
+
     init {
         responder.forcedPlayPicker = { state, seat ->
             val plays = simulator.getLegalActions(state, seat)
@@ -70,12 +84,21 @@ class AIPlayer(
      * ~20-30 windows it crosses.
      */
     fun chooseAction(state: GameState): GameAction {
-        if (useMeaningfulFilter && MeaningfulActionFilter.canAutoPassWithoutEnumerating(state, playerId)) {
+        if (useMeaningfulFilter && MeaningfulActionFilter.canAutoPassWithoutEnumerating(state, playerId) &&
+            !wantsWindowItWouldAutoPass(state)
+        ) {
             return PassPriority(playerId)
         }
         val legalActions = simulator.getLegalActions(state, playerId)
         return chooseFrom(state, legalActions).action
     }
+
+    /**
+     * Whether this seat wants a priority window that smart auto-pass skips without asking — the
+     * opponent's upkeep while we hold an instant-speed cast ban ([Strategist.wantsWindowForABan]).
+     * Read by [chooseAction]'s shortcut here and by the game server's auto-pass loop for AI seats.
+     */
+    fun wantsWindowItWouldAutoPass(state: GameState): Boolean = strategist.wantsWindowForABan(state, playerId)
 
     /**
      * Choose the best [LegalAction] from the given list.
@@ -259,6 +282,7 @@ class AIPlayer(
             val intents = if (profile.useCardIntent) IntentCatalog.of(cardRegistry) else IntentCatalog.NONE
 
             val simulator = newSimulator()
+            val opponentKnowledge = OpponentKnowledge(cardRegistry, opponentModels)
             // Raw Phase 9 vectors contain CardIntent-derived facts even when the surrounding
             // legacy-based arena profile deliberately keeps Phase 6 timing/targeting behavior off.
             // Give only the evaluator the full catalog so the fitted training schema and runtime
@@ -283,6 +307,12 @@ class AIPlayer(
                 evasionAfterAttacking = profile.evasionAfterAttacking,
                 pendingLandDropIsMana = profile.pendingLandDropIsMana,
                 surplusAwareLands = profile.surplusAwareLands,
+                libraryClock = profile.libraryClock,
+                surplusLandsReadTheHand = profile.surplusLandsReadTheHand,
+                oneShotManaIsMana = profile.oneShotManaIsMana,
+                payoffsReadTheirFuel = profile.payoffsReadTheirFuel,
+                finishersEndTheGame = profile.finishersEndTheGame,
+                marksBeforeTheSweep = profile.marksBeforeTheSweep,
             )
             val combatAdvisor = CombatAdvisor(
                 simulator, evaluator, cardRegistry, advisorRegistry,
@@ -295,10 +325,20 @@ class AIPlayer(
                 chumpForTheClock = profile.chumpForTheClock,
                 walkerEngines = if (profile.walkersPricedAsEngines) IntentCatalog.of(cardRegistry) else null,
                 stackChumpsOnTramplers = profile.stackChumpsOnTramplers,
+                freeGangBlocks = profile.freeGangBlocks,
                 attacksReadTheRace = profile.attacksReadTheRace,
+                borrowedCreaturesGoHome = profile.borrowedCreaturesGoHome,
                 raceWeight = EvalWeights.resolve(profile.evalWeightsId).threatAssessment,
                 pressWhenAhead = profile.pressWhenAhead,
                 anticipateCombatResponses = profile.anticipateCombatResponses,
+                minimalLethalInPods = profile.minimalLethalInPods,
+                threatAwareDefender = profile.threatAwareDefender,
+                blockTriggersKill = profile.blockTriggersKill,
+                stressCrackBack = profile.stressCrackBack,
+                crackBackAfterCleanup = profile.crackBackAfterCleanup,
+                soundBlockMath = profile.soundBlockMath,
+                blockSearchTriesSwaps = profile.blockSearchTriesSwaps,
+                departuresAreGone = profile.departuresAreGone,
             )
             val responder = DecisionResponder(
                 simulator, evaluator,
@@ -315,6 +355,7 @@ class AIPlayer(
                 targetPolarityFromEffect = profile.targetPolarityFromEffect,
                 selectionSeesWhoseCards = profile.selectionSeesWhoseCards,
                 topOrBottomWeighsTheDraw = profile.topOrBottomWeighsTheDraw,
+                lookDigsForLand = profile.lookDigsForLand,
             )
 
             // Wire up the decision resolver so simulations can resolve non-trivial
@@ -337,6 +378,8 @@ class AIPlayer(
                     intents = intents,
                     combatTricksWaitForBlocks = profile.combatTricksWaitForBlocks,
                     holdRemovalForBetterTargets = profile.holdRemovalForBetterTargets,
+                    payoffsReadTheirFuel = profile.payoffsReadTheirFuel,
+                    removalWorthReadsGrowth = profile.creatureValuation.growthPotential,
                     holdCountersForBetterSpells = profile.holdCountersForBetterSpells,
                     cashCantripsInTheEndStep = profile.cashCantripsInTheEndStep,
                     holdFlashPermanentsForAmbush = profile.holdFlashPermanentsForAmbush,
@@ -352,15 +395,24 @@ class AIPlayer(
                     defendPlaneswalkers = profile.defendPlaneswalkers,
                     spendFuelWalkers = profile.spendFuelWalkers,
                     landDropUnlocksSpells = profile.landDropUnlocksSpells,
+                    libraryClock = profile.libraryClock,
                     activatedPumpsNeedAPlannedAttack = profile.activatedPumpsNeedAPlannedAttack,
                     enablersFirst = profile.enablersFirst,
+                    setupFromHandFirst = profile.marksBeforeTheSweep,
                     fetchedLandDropFollowUp = profile.fetchedLandDropFollowUp,
+                    recastBouncedPermanents = profile.recastBouncedPermanents,
+                    anticipateTargetResponses = profile.anticipateTargetResponses,
                     precombatPumpsForThePlan = profile.precombatPumpsForThePlan,
                     holdInstantSpeedDeploys = profile.holdInstantSpeedDeploys,
                     taxCountersReadTheirMana = profile.taxCountersReadTheirMana,
                     refuseWastedPayoffs = profile.refuseWastedPayoffs,
                     lifelinkWaitsForBlocks = profile.lifelinkWaitsForBlocks,
                     tapToGrowAtTheirEndStep = profile.tapToGrowAtTheirEndStep,
+                    tapToPingAtTheirEndStep = profile.tapToPingAtTheirEndStep,
+                    borrowedCreaturesGoHome = profile.borrowedCreaturesGoHome,
+                    castBansDenyTheirTurn = profile.castBansDenyTheirTurn,
+                    forcedAttacksOnTheirTurn = profile.forcedAttacksOnTheirTurn,
+                    holdXSpellsForBiggerX = profile.holdXSpellsForBiggerX,
                     convokeLandsFirst = profile.convokeLandsFirst,
                     // Same seam as `CombatAdvisor`'s `lifeWeight`: a raw Phase 9 profile resolves
                     // to the compiled fallback here, which is the right answer for a policy that
@@ -373,16 +425,18 @@ class AIPlayer(
                     stateSampler = if (profile.determinizeHiddenInformation) {
                         val determinizer = Determinizer(cardRegistry)
                         val sampler: (GameState, EntityId) -> GameState = { state, viewer ->
-                            determinizer.sampleForSearch(state, viewer, opponentModels)
+                            determinizer.sampleForSearch(state, viewer, opponentKnowledge.models)
                         }
                         sampler
                     } else {
                         null
                     },
                     insightSink = insightSink,
+                    opponentKnowledge = opponentKnowledge.takeIf { profile.holdRemovalForUnseenThreats },
                 ),
                 responder = responder,
                 useMeaningfulFilter = profile.useMeaningfulFilter,
+                opponentKnowledge = opponentKnowledge,
             )
         }
 

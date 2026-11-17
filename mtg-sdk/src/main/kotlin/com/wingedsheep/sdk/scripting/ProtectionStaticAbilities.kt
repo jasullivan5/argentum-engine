@@ -1,5 +1,6 @@
 package com.wingedsheep.sdk.scripting
 
+import com.wingedsheep.sdk.scripting.references.Player
 import com.wingedsheep.sdk.core.CardType
 import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.sdk.core.Color
@@ -149,9 +150,11 @@ data class GrantHexproofFromToGroup(
             is ProtectionScope.Color, is ProtectionScope.Colors, is ProtectionScope.NonColor,
             ProtectionScope.Monocolored, ProtectionScope.Multicolored, is ProtectionScope.CardType,
             ProtectionScope.Spells, ProtectionScope.PermanentsCastThisTurn, ProtectionScope.RingBearers,
-            ProtectionScope.ActivatedAbilities, ProtectionScope.TriggeredAbilities -> true
-            is ProtectionScope.Subtype, is ProtectionScope.Supertype,
-            ProtectionScope.Everything, ProtectionScope.EachOpponent -> false
+            ProtectionScope.ActivatedAbilities, ProtectionScope.TriggeredAbilities,
+            is ProtectionScope.ManaValueParity -> true
+            is ProtectionScope.Subtype, is ProtectionScope.Supertype, is ProtectionScope.ChosenCardType,
+            is ProtectionScope.ChosenCardName, ProtectionScope.Everything, ProtectionScope.EachOpponent,
+            is ProtectionScope.ManaValueOtherThan -> false
         }
     }
 }
@@ -198,11 +201,13 @@ data class GrantProtectionFromToGroup(
         fun isSupported(scope: ProtectionScope): Boolean = when (scope) {
             is ProtectionScope.Colors, ProtectionScope.Multicolored,
             is ProtectionScope.Subtype, is ProtectionScope.Supertype,
-            ProtectionScope.EachOpponent,
+            ProtectionScope.EachOpponent, is ProtectionScope.ChosenCardType,
             ProtectionScope.Spells, ProtectionScope.PermanentsCastThisTurn, ProtectionScope.RingBearers,
-            ProtectionScope.ActivatedAbilities, ProtectionScope.TriggeredAbilities -> true
+            ProtectionScope.ActivatedAbilities, ProtectionScope.TriggeredAbilities,
+            is ProtectionScope.ManaValueParity, is ProtectionScope.ManaValueOtherThan -> true
             is ProtectionScope.Color, is ProtectionScope.CardType,
-            is ProtectionScope.NonColor, ProtectionScope.Monocolored, ProtectionScope.Everything -> false
+            is ProtectionScope.NonColor, ProtectionScope.Monocolored, ProtectionScope.Everything,
+            is ProtectionScope.ChosenCardName -> false
         }
     }
 }
@@ -263,18 +268,68 @@ data class GrantProtectionFromLinkedExiledCardTypes(
 }
 
 /**
- * Prevents a permanent from having counters put on it.
- * Used for Auras like Blossombind.
+ * Prevents matching permanents from having counters put on them — every kind (Blossombind,
+ * Solemnity), or only [counterType] when it is set ("Creatures your opponents control can't have
+ * +1/+1 counters put on them" — Blightbeetle; Melira's "-1/-1 counters").
+ *
+ * A typed prohibition stops only placements of that kind: a creature that would enter with
+ * +1/+1 counters enters without them, other kinds still go on, and counters it already has stay
+ * (unlike [MaxCounters] at zero, there is no state-based removal). A cost that would put that kind
+ * on it can't be paid (CR 614.17b).
  */
 @SerialName("CantReceiveCounters")
 @Serializable
 data class CantReceiveCounters(
-    val filter: GroupFilter = GroupFilter.attachedCreature()
+    val filter: GroupFilter = GroupFilter.attachedCreature(),
+    val counterType: CounterType? = null
 ) : StaticAbility {
-    override val description: String = "${filter.description} can't have counters put on it"
+    override val description: String =
+        if (counterType == null) "${filter.description} can't have counters put on it"
+        else "${filter.description} can't have ${counterType.printed} counters put on it"
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
+    }
+}
+
+/**
+ * "Players can't get counters" (Solemnity) — a static prohibition on players getting counters
+ * (CR 122.1: players can have counters too), for the [affected] players relative to the source's
+ * controller: every kind, or only [counterType] when it is set ("You can't get poison counters" —
+ * Melira, Sylvok Outcast).
+ *
+ * Every counter-placing path already asks `ProjectedState.canReceiveCounters` of a player, so the
+ * prohibition reaches effect placement (poison, energy, experience), proliferate, infect and toxic
+ * damage, and costs that would give the payer counters (a ward cost "get N poison counters" can't be
+ * paid). Counters a player already has stay, and paying counters a player already has (energy) is
+ * untouched. The prohibition holds only while the source is on the battlefield with its abilities.
+ *
+ * Closest types: [CantReceiveCounters] prohibits *permanents* through a projected flag over a
+ * [GroupFilter] — players aren't projected and no group filter names them;
+ * `LockPlayerCountersEffect` (Suncleanser) is a one-shot that stamps a lock on a player for a
+ * duration, so it can't follow a static's source losing its abilities and would leave a window
+ * between the source entering and its trigger resolving.
+ */
+@SerialName("PlayersCantGetCounters")
+@Serializable
+data class PlayersCantGetCounters(
+    val affected: Player = Player.Each,
+    val counterType: CounterType? = null
+) : StaticAbility {
+    init {
+        require(affected is Player.Each || affected is Player.You || affected is Player.EachOpponent) {
+            "PlayersCantGetCounters supports Player.Each, You and EachOpponent, not $affected"
+        }
+    }
+
+    override val description: String = run {
+        val who = when (affected) {
+            is Player.You -> "You"
+            is Player.EachOpponent -> "Your opponents"
+            else -> "Players"
+        }
+        val what = counterType?.let { "${it.printed} counters" } ?: "counters"
+        "$who can't get $what"
     }
 }
 
@@ -308,19 +363,44 @@ data class MaxCounters(
 }
 
 /**
- * Permanents matching [filter] can't be sacrificed.
+ * Permanents matching [filter] can't be sacrificed — at all, or only to pay a cost ([scope]).
  *
- * Projected as the [com.wingedsheep.sdk.core.AbilityFlag.CANT_BE_SACRIFICED] flag, which the
- * sacrifice executor honors by refusing to sacrifice such a permanent. Wrap in a
+ * [Scope.ANY] projects the [com.wingedsheep.sdk.core.AbilityFlag.CANT_BE_SACRIFICED] flag, which
+ * every sacrifice path honors: the sacrifice executor refuses such a permanent, and a cost of
+ * casting a spell or activating an ability can't sacrifice it. Wrap in a
  * [ConditionalStaticAbility] for time-restricted forms (e.g. Zurgo, Thunder's Decree:
  * "During your end step, Warrior tokens you control have 'This token can't be sacrificed.'").
+ *
+ * [Scope.CASTING_AND_ACTIVATION_COSTS] projects
+ * [com.wingedsheep.sdk.core.AbilityFlag.CANT_BE_SACRIFICED_FOR_COSTS] instead: "Players can't
+ * sacrifice creatures to cast spells or activate abilities" (Angel of Jubilation) is
+ * `CantBeSacrificed(GroupFilter.AllCreatures, Scope.CASTING_AND_ACTIVATION_COSTS)`. The prohibition
+ * is per permanent, as the ruling reads it — an artifact creature can't pay "Sacrifice an artifact",
+ * a noncreature artifact still can — and it reaches additional and alternative costs (emerge,
+ * casualty) and mana abilities alike. A sacrifice a resolving spell or ability performs (an edict,
+ * exploit, "sacrifice it unless you pay") is untouched.
  */
 @SerialName("CantBeSacrificed")
 @Serializable
 data class CantBeSacrificed(
-    val filter: GroupFilter = GroupFilter.attachedCreature()
+    val filter: GroupFilter = GroupFilter.attachedCreature(),
+    val scope: Scope = Scope.ANY,
 ) : StaticAbility {
-    override val description: String = "${filter.description} can't be sacrificed"
+    /** When the matching permanents can't be sacrificed. */
+    @Serializable
+    enum class Scope {
+        /** Never — by an effect or to pay a cost. */
+        ANY,
+
+        /** Not to pay a cost of casting a spell or activating an ability (mana abilities included). */
+        CASTING_AND_ACTIVATION_COSTS,
+    }
+
+    override val description: String = when (scope) {
+        Scope.ANY -> "${filter.description} can't be sacrificed"
+        Scope.CASTING_AND_ACTIVATION_COSTS ->
+            "${filter.description} can't be sacrificed to cast spells or activate abilities"
+    }
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
@@ -351,26 +431,47 @@ data object GrantHexproofToController : StaticAbility {
 }
 
 /**
- * Spells and abilities your opponents control can't cause you to sacrifice permanents
- * (Sigarda, Host of Herons).
+ * What a resolving spell or ability can tell a player to do to their own cards — the actions
+ * [OpponentsCantCauseYouTo] forbids an opponent's source from compelling.
+ */
+@Serializable
+enum class CompelledAction(val phrase: String) {
+    /** Discard a card from hand (CR 701.9). */
+    DISCARD("discard cards"),
+
+    /** Sacrifice a permanent (CR 701.21). */
+    SACRIFICE("sacrifice permanents"),
+}
+
+/**
+ * Spells and abilities your opponents control can't cause you to discard cards and/or sacrifice
+ * permanents, per [actions] — Sigarda, Host of Herons (sacrifice), Tamiyo, Collector of Tales
+ * (both).
  *
  * A player-scoped "can't" that outranks the instruction (CR 101.2): as an opponent's spell or
- * ability resolves, the sacrifice it would impose on this permanent's controller simply doesn't
- * happen, and an *optional* sacrifice offered by such a source can't be chosen — including
- * paying a sacrifice cost the opponent's spell or ability imposes (a ward—sacrifice, or an
- * "unless you sacrifice …" clause). Effects the controller themselves controls are untouched,
- * and so is every non-sacrifice way a permanent leaves the battlefield (lethal damage, 0
- * toughness, the legend rule, destruction) — those aren't sacrifices.
+ * ability resolves, the discard or sacrifice it would impose on this permanent's controller simply
+ * doesn't happen, and an *optional* one offered by such a source can't be chosen — including
+ * paying a discard or sacrifice cost the opponent's spell or ability imposes (a ward cost, or an
+ * "unless you discard / sacrifice …" clause). Effects the controller themselves controls are
+ * untouched, and so are the game rules: cleanup's hand-size discard, lethal damage, 0 toughness,
+ * the legend rule and destruction aren't a spell or ability making you discard or sacrifice.
  *
- * Stamped as `GrantsSacrificeImmunityComponent` by the static-ability handler and read by
- * `SacrificeImmunity`, which every sacrifice site consults; it is not a Rule 613 continuous
- * effect.
+ * Stamped as one marker per action (`GrantsDiscardImmunityComponent`,
+ * `GrantsSacrificeImmunityComponent`) by the static-ability handler and read by
+ * `CompelledActionImmunity`, which every discard and sacrifice site consults (including a
+ * `ChooseAction` option that would discard or sacrifice); it is not a Rule 613
+ * continuous effect.
  */
-@SerialName("OpponentsCantMakeYouSacrifice")
+@SerialName("OpponentsCantCauseYouTo")
 @Serializable
-data object OpponentsCantMakeYouSacrifice : StaticAbility {
+data class OpponentsCantCauseYouTo(val actions: Set<CompelledAction>) : StaticAbility {
+    init {
+        require(actions.isNotEmpty()) { "OpponentsCantCauseYouTo needs at least one action" }
+    }
+
     override val description: String =
-        "Spells and abilities your opponents control can't cause you to sacrifice permanents"
+        "Spells and abilities your opponents control can't cause you to " +
+            CompelledAction.entries.filter { it in actions }.joinToString(" or ") { it.phrase }
 }
 
 /**
@@ -384,7 +485,9 @@ data object OpponentsCantMakeYouSacrifice : StaticAbility {
  * the protection goes with it — no cleanup needed.
  *
  * General-purpose over any [ProtectionScope]: `EachOpponent` (Absolute Virtue —
- * "You have protection from each of your opponents."), a single color, `Everything`, etc.
+ * "You have protection from each of your opponents."), a single color, `Everything`, etc., and the
+ * choices the permanent made as it entered — `ChosenCardType` (Serra's Emissary) and
+ * `ChosenCardName` (Runed Halo — "You have protection from the chosen card name.").
  *
  * @property scope The quality the controller is protected from.
  */
@@ -401,6 +504,8 @@ data class GrantProtectionToController(
             ProtectionScope.Multicolored -> "multicolored"
             ProtectionScope.Monocolored -> "monocolored"
             is ProtectionScope.CardType -> s.cardType.lowercase() + "s"
+            is ProtectionScope.ChosenCardType -> "the chosen card type"
+            is ProtectionScope.ChosenCardName -> "the chosen card name"
             is ProtectionScope.Subtype -> s.subtype + "s"
             is ProtectionScope.Supertype -> s.supertype.lowercase() + " permanents"
             ProtectionScope.Everything -> "everything"
@@ -410,6 +515,8 @@ data class GrantProtectionToController(
             ProtectionScope.RingBearers -> "Ring-bearers"
             ProtectionScope.ActivatedAbilities -> "activated abilities"
             ProtectionScope.TriggeredAbilities -> "triggered abilities"
+            is ProtectionScope.ManaValueParity -> "each ${s.parity.displayName} mana value"
+            is ProtectionScope.ManaValueOtherThan -> "each mana value other than ${s.value}"
         }
 }
 
@@ -428,8 +535,8 @@ data object CantBeTargetedByOpponentAbilities : StaticAbility {
 /**
  * Creatures matching [filter] can't be the target of *abilities from sources of a given card type*
  * ([sourceType]) — hexproof keyed to a source *category* (the source's card type) rather than a
- * controller or color. This blocks only abilities (activated/triggered), not spells, and applies
- * regardless of who controls the source (the ability's source per CR 113.7).
+ * controller or color. This blocks only abilities (activated/triggered), not spells, and by default
+ * applies regardless of who controls the source (the ability's source per CR 113.7).
  *
  * Projected as the keyword `CANT_BE_TARGETED_BY_CARDTYPE_<TYPE>_SOURCE_ABILITIES`; enforced at
  * targeting by the engine (`TargetFinder`/`StackResolver`), which checks the targeting source's
@@ -439,17 +546,31 @@ data object CantBeTargetedByOpponentAbilities : StaticAbility {
  * Deliberately *not* protection-from-[type]: protection would also stop the creature from being
  * enchanted/equipped/blocked/damaged by such sources, which this clause does not.
  *
+ * [sourceController] narrows it to sources the affected permanent's controller's opponents control
+ * ("can't be the target of abilities from artifact sources your opponents control" — Species 8472),
+ * read relative to the affected permanent's controller the way hexproof is (CR 702.11b).
+ *
  * @property sourceType The card type the restricted source must have (e.g. [CardType.ARTIFACT]).
  * @property filter What this applies to — defaults to the attached/enchanted creature for Auras.
+ * @property sourceController Whose sources are restricted: [Player.Each] (anyone's, the default —
+ *   Artifact Ward) or [Player.EachOpponent] (only the affected permanent's controller's opponents').
  */
 @SerialName("CantBeTargetedBySourceTypeAbilities")
 @Serializable
 data class CantBeTargetedBySourceTypeAbilities(
     val sourceType: CardType,
-    val filter: GroupFilter = GroupFilter.attachedCreature()
+    val filter: GroupFilter = GroupFilter.attachedCreature(),
+    val sourceController: Player = Player.Each
 ) : StaticAbility {
+    init {
+        require(sourceController == Player.Each || sourceController == Player.EachOpponent) {
+            "CantBeTargetedBySourceTypeAbilities.sourceController must be Player.Each or Player.EachOpponent"
+        }
+    }
+
     override val description: String =
-        "${filter.description} can't be the target of abilities from ${sourceType.displayName.lowercase()} sources"
+        "${filter.description} can't be the target of abilities from ${sourceType.displayName.lowercase()} sources" +
+            if (sourceController == Player.EachOpponent) " your opponents control" else ""
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
@@ -498,6 +619,46 @@ sealed interface UntargetableBy {
             return if (new == subtype) this else copy(subtype = new)
         }
     }
+
+    /**
+     * Spells of a colour quality and abilities from sources of that quality — "can't be the target
+     * of nongreen spells or abilities from nongreen sources" (Gaea's Revenge), "… of white spells or
+     * abilities from white sources" (Rebel Informer). [scope] is a [ProtectionScope.Color] or
+     * [ProtectionScope.NonColor]; "non<color>" includes colorless sources (CR 105.2c).
+     *
+     * This is the targeting half of protection from that quality (it doesn't stop damage, blocking
+     * or attaching), and the twin of hexproof from it that isn't controller-gated — it binds the
+     * permanent's own controller too, which hexproof never does.
+     */
+    @SerialName("UntargetableBy.SourcesOfColor")
+    @Serializable
+    data class SourcesOfColor(val scope: ProtectionScope) : UntargetableBy {
+        init {
+            require(scope is ProtectionScope.Color || scope is ProtectionScope.NonColor) {
+                "UntargetableBy.SourcesOfColor.scope must be ProtectionScope.Color or ProtectionScope.NonColor, was $scope"
+            }
+        }
+
+        private val quality: String
+            get() = when (scope) {
+                is ProtectionScope.Color -> scope.color.displayName.lowercase()
+                is ProtectionScope.NonColor -> "non${scope.color.displayName.lowercase()}"
+                else -> error("unreachable")
+            }
+
+        override val description: String
+            get() = "$quality spells or abilities from $quality sources"
+
+        override fun applyTextReplacement(replacer: TextReplacer): UntargetableBy = when (scope) {
+            is ProtectionScope.Color -> replacer.replaceColor(scope.color).let {
+                if (it == scope.color) this else copy(scope = ProtectionScope.Color(it))
+            }
+            is ProtectionScope.NonColor -> replacer.replaceColor(scope.color).let {
+                if (it == scope.color) this else copy(scope = ProtectionScope.NonColor(it))
+            }
+            else -> this
+        }
+    }
 }
 
 /**
@@ -532,35 +693,77 @@ data class CantBeTargetedBy(
 }
 
 /**
- * Cards matching [filter] in [zones] can't be the targets of spells or abilities — "Cards in
- * graveyards can't be the targets of spells or abilities" (Ground Seal; Dennick, Pious Apprentice).
+ * Objects matching [filter] in [zones] can't be the targets of spells or abilities [sourceController]
+ * controls — "Cards in graveyards can't be the targets of spells or abilities" (Ground Seal; Dennick,
+ * Pious Apprentice), "Lands on the battlefield and land cards in graveyards can't be the targets of
+ * spells or abilities your opponents control" (Tomik, Distinguished Advokist).
  *
  * Closest neighbours: [CantBeTargetedBy] is projected as a keyword onto *battlefield permanents*
  * (a [GroupFilter] scope) and scoped by a [UntargetableBy] quality, and [CantEnterTheBattlefield]
  * is the same zone-scoped, printer-owned shape for a different action (entering the battlefield).
- * A card in a graveyard has no projection entry to carry a keyword, so this lock is read off the
- * printing permanent's projected statics at each targeting site instead — which is also why it
- * stops working when that permanent loses its abilities. Not controller-gated, and covers every
- * graveyard, its controller's own included. Choosing a card without targeting it ("return a card
- * from your graveyard") is untouched.
+ * Hexproof is relative to each permanent's *own* controller, so it can't say "opponents of this
+ * lock's controller" about permanents anyone controls. A card in a graveyard has no projection entry
+ * to carry a keyword, so this lock is read off the printing permanent's projected statics at each
+ * targeting site instead — which is also why it stops working when that permanent loses its
+ * abilities. [Zone.BATTLEFIELD] in [zones] reaches permanents too, whoever controls them. Choosing a
+ * card without targeting it ("return a card from your graveyard") is untouched.
  *
- * @property zones The zones whose cards are untargetable.
- * @property filter Which cards in those zones, matched where they are.
+ * @property zones The zones whose objects are untargetable.
+ * @property filter Which objects in those zones, matched where they are.
+ * @property sourceController Whose spells and abilities can't target them, relative to the lock's
+ *   controller: [Player.Each] (anyone's, the lock's own controller included) or
+ *   [Player.EachOpponent] ("spells or abilities your opponents control").
+ * @property spellFilter Narrows the lock to *spells* matching it — "can't be the targets of blue or
+ *   black spells your opponents control" (Display of Dominance) — so abilities, even from sources
+ *   matching it, may still target. Null (the default): every spell and ability.
+ *
+ * A resolving spell can create this lock "this turn" by granting it to its controller
+ * ([com.wingedsheep.sdk.dsl.Effects.GrantStaticAbility] with `EffectTarget.Controller`): a rule
+ * about the game rather than an ability of the permanents, so it covers permanents that come under
+ * that player's control later in the turn and survives their losing all abilities.
  */
 @SerialName("CardsInZonesCantBeTargeted")
 @Serializable
 data class CardsInZonesCantBeTargeted(
     val zones: Set<Zone> = setOf(Zone.GRAVEYARD),
-    val filter: GameObjectFilter = GameObjectFilter.Any
+    val filter: GameObjectFilter = GameObjectFilter.Any,
+    val sourceController: Player = Player.Each,
+    val spellFilter: GameObjectFilter? = null
 ) : StaticAbility {
+    init {
+        require(sourceController == Player.Each || sourceController == Player.EachOpponent) {
+            "CardsInZonesCantBeTargeted.sourceController must be Player.Each or Player.EachOpponent, was $sourceController"
+        }
+    }
+
     override val description: String = buildString {
-        append(if (filter == GameObjectFilter.Any) "Cards" else "${filter.description.replaceFirstChar { it.uppercase() }} cards")
-        append(" in ${zonePhrase(zones, "and")} can't be the targets of spells or abilities")
+        val noun = if (filter == GameObjectFilter.Any) "card" else "${filter.description} card"
+        val offBattlefield = zones - Zone.BATTLEFIELD
+        val parts = buildList {
+            if (Zone.BATTLEFIELD in zones) {
+                val permanents = filter.pluralPermanentDescription
+                // A battlefield-only lock ("permanents you control can't be …") needs no zone phrase.
+                add(if (offBattlefield.isEmpty()) permanents else "$permanents on the battlefield")
+            }
+            if (offBattlefield.isNotEmpty()) add("${noun}s in ${zonePhrase(offBattlefield, "and")}")
+        }
+        append(parts.joinToString(" and ").replaceFirstChar { it.uppercase() })
+        append(
+            when (spellFilter) {
+                null -> " can't be the targets of spells or abilities"
+                GameObjectFilter.Any -> " can't be the targets of spells"
+                else -> " can't be the targets of ${spellFilter.description} spells"
+            }
+        )
+        if (sourceController == Player.EachOpponent) append(" your opponents control")
     }
 
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
-        return if (newFilter !== filter) copy(filter = newFilter) else this
+        val newSpellFilter = spellFilter?.applyTextReplacement(replacer)
+        return if (newFilter !== filter || newSpellFilter !== spellFilter) {
+            copy(filter = newFilter, spellFilter = newSpellFilter)
+        } else this
     }
 }
 
@@ -618,8 +821,8 @@ data object GrantCantLoseGameFromLife : StaticAbility {
 }
 
 /**
- * Creatures matching [filter] can be the targets of spells and abilities as though
- * they didn't have hexproof.
+ * Permanents matching [filter], and the [players] named, can be the targets of spells and abilities
+ * you control as though they didn't have hexproof.
  *
  * Used for Nowhere to Run: "Creatures your opponents control can be the targets of
  * spells and abilities as though they didn't have hexproof."
@@ -628,14 +831,32 @@ data object GrantCantLoseGameFromLife : StaticAbility {
  * so [GroupFilter.AllCreaturesOpponentsControl] means "creatures opponents of the
  * controller of this permanent control" — which is what "your opponents" means.
  *
- * Does NOT suppress shroud (shroud still prevents targeting by all players).
+ * [players] widens it to players: the players it names (read relative to this permanent's
+ * controller) can be targeted as though they didn't have hexproof too. Kaya, Bane of the Dead —
+ * "Your opponents and permanents your opponents control with hexproof can be the targets of
+ * spells and abilities you control as though they didn't have hexproof" — is
+ * `players = Player.EachOpponent` over a permanents-opponents-control [filter]. Null (the
+ * default) leaves players' hexproof alone.
+ *
+ * Only spells and abilities this permanent's controller controls get the bypass, and it reaches
+ * "hexproof from [quality]" as well (CR 702.11e). Does NOT suppress shroud (shroud still prevents
+ * targeting by all players).
+ *
+ * A resolving effect can hand it out for a duration with
+ * [com.wingedsheep.sdk.dsl.Effects.GrantStaticAbility]; granted to a player
+ * (`EffectTarget.Controller`) that player is the "you", and the bypass outlives the source.
+ * Detection Tower — "{1}, {T}: Until end of turn, your opponents and creatures your opponents
+ * control with hexproof can be the targets …" — grants it to its activator for end of turn.
  */
 @SerialName("SuppressHexproofForGroup")
 @Serializable
 data class SuppressHexproofForGroup(
-    val filter: GroupFilter = GroupFilter.AllCreaturesOpponentsControl
+    val filter: GroupFilter = GroupFilter.AllCreaturesOpponentsControl,
+    val players: Player? = null
 ) : StaticAbility {
-    override val description: String = "${filter.description} can be targeted as though they didn't have hexproof"
+    override val description: String =
+        (players?.let { "${it.description.replaceFirstChar(Char::uppercase)} and " } ?: "") +
+            "${filter.description} can be targeted as though they didn't have hexproof"
     override fun applyTextReplacement(replacer: TextReplacer): StaticAbility {
         val newFilter = filter.applyTextReplacement(replacer)
         return if (newFilter !== filter) copy(filter = newFilter) else this
