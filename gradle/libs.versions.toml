@@ -12,7 +12,7 @@ mockk = "1.14.11"
 springBoot = "4.1.2"
 springdocOpenapi = "3.2.0"
 kover = "0.9.11"
-classgraph = "4.8.184"
+classgraph = "6.0.1"
 testcontainers = "2.0.5"
 
 [libraries]

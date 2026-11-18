@@ -76,13 +76,16 @@ object CardDiscovery {
 
     private fun indexClasses(packageName: String): ClassIndex =
         ClassGraph()
+            // ClassGraph 5+ scans nothing until a source is enabled. The corpus is plain
+            // classpath (including a Spring Boot fat jar's nested jars), never JPMS modules.
+            .enableClasspath()
             .acceptPackages(packageName)
             .enableClassInfo()
             .scan()
             .use { scanResult ->
                 ClassIndex(
                     classNamesByPackage = scanResult.allClasses.groupBy({ it.packageName }, { it.name }),
-                    setClassNames = scanResult.getClassesImplementing(MtgSet::class.java.name)
+                    setClassNames = scanResult.getAllClassesImplementing(MtgSet::class.java.name)
                         .filter { !it.isInterface && !it.isAbstract }
                         .map { it.name },
                 )
