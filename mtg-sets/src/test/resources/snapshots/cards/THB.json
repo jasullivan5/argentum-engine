@@ -9618,12 +9618,15 @@
             }
         ]
     },
+    "oracleId": "9ec5a487-d8ed-459a-8f58-56f6e9a2dfe8",
     "metadata": {
         "collectorNumber": "243",
         "rarity": "RARE",
         "artist": "Jonas De Ro",
         "flavorText": "For centuries, the minotaur polis of Skophos was unknown to humans. It remains unexplored.",
         "imageUri": "https://cards.scryfall.io/normal/front/f/f/ff0dd221-2660-43f6-8e28-8000e3fe72a4.jpg?1783931509",
+        "scryfallId": "ff0dd221-2660-43f6-8e28-8000e3fe72a4",
+        "releaseDate": "2020-01-24",
         "rulings": [
             {
                 "date": "2020-01-24",

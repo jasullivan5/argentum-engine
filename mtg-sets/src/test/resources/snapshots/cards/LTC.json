@@ -645,12 +645,15 @@
             ]
         }
     },
+    "oracleId": "3b22d21f-e19a-40df-840b-a2b7f11f79c2",
     "metadata": {
         "collectorNumber": "38",
         "rarity": "RARE",
         "artist": "John Di Giovanni",
         "flavorText": "\"None of the Orcs will ever return out of Lórien.\"\n—Haldir",
         "imageUri": "https://cards.scryfall.io/normal/front/e/6/e69e06f0-6142-4f80-9208-362b3e74d51d.jpg?1783916026",
+        "scryfallId": "e69e06f0-6142-4f80-9208-362b3e74d51d",
+        "releaseDate": "2023-06-23",
         "rulings": [
             {
                 "date": "2023-06-16",

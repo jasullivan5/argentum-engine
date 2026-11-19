@@ -4,7 +4,7 @@ Canonical fork: [jasullivan5/argentum-engine](https://github.com/jasullivan5/arg
 
 `app-stable` is the maintained application-compatible integration branch. The application normally uses its sibling checkout and records the actual engine SHA in builds/results. `main` is reserved for original-project tracking and explicit fast-forward synchronization. Feature/fix branches and internal PRs normally target `app-stable`; upstream PRs are not part of our workflow. See [AGENTS.md](AGENTS.md) for the fork policy and selective upstream review procedure.
 
-This isolated integration branch merges upstream `21bc1908bad22b3a6d4c84e5447d7b736655dbd0` with app-stable `bd26b756b8b4d347f19e92bc77ef020919ebfa48` under the 17 November full-convergence assignment. It is a review candidate, not an accepted application-compatible baseline. JDK 21 and ClassGraph 4.8.184 are retained deliberately; all upstream modules remain present. `fix/collection-counter-placement` (d72f2c365a3006b0c3eb41271c4f0e35f782c392) remains a historical modern-upstream compatibility experiment. Do not merge it into app-stable or delete it without approval.
+Engine PR #8 merged the full upstream snapshot `21bc1908bad22b3a6d4c84e5447d7b736655dbd0` into `app-stable`; its historical partial-integration report describes the pre-merge verification and unresolved application blockers. A merge alone does not establish application compatibility. The native-consolidation candidate incorporates fixed upstream snapshot `1e2783f51bdd0436f7bc45ed6e2fce1c8c13a796`, associates reviewed physical identities with native definitions and removes redundant application implementations. JDK 25 and ClassGraph 6 match the incorporated upstream toolchain and shared discovery implementation; no separate JDK 21 compatibility policy is retained. All upstream modules remain present. The historical collection-counter experiment `d72f2c365a3006b0c3eb41271c4f0e35f782c392` and its evidence remain preserved.
 
 **Fork-sync caution:** the default branch is app-stable. Synchronize upstream only into `main` with explicit Git refs and a fast-forward check; do not use the generic GitHub fork-sync action on app-stable. Changes selected for app-stable require separate native/application regression evidence.
 
@@ -12,7 +12,7 @@ This isolated integration branch merges upstream `21bc1908bad22b3a6d4c84e5447d7b
 
 Human assignments define our scope. We are not automatically implementing upstream's full card backlog, running autonomous card loops, adding server features or deploying a public game. The inherited technical documentation remains useful; its roadmap, contribution invitations and public service links do not set this fork's priorities.
 
-Keep the normal sibling engine checkout on clean app-stable. Isolate feature/fix work when the application is using that checkout and open internal PRs targeting app-stable. Require native and complete application compatibility checks against the exact candidate before acceptance. There is no separate application dependency-pin PR. The Application compatibility workflow runs on PRs into app-stable and after stable pushes; inspect its results before merging. See the [application workflow](https://github.com/jasullivan5/mtg-deckbuilding-assistant/blob/main/docs/ENGINE_WORKFLOW.md).
+Keep the normal sibling engine checkout on clean app-stable. Isolate feature/fix work when the application is using that checkout and open internal PRs targeting app-stable. Require native and complete application compatibility checks against the exact candidate before acceptance. There is no separate application dependency-pin PR. The retained CI and Application compatibility workflows use manual dispatch; PR updates and stable pushes do not automatically enforce these checks. Record local results and dispatch hosted checks when useful. See the [application workflow](https://github.com/jasullivan5/mtg-deckbuilding-assistant/blob/main/docs/ENGINE_WORKFLOW.md).
 
 Reserve temporary worktrees for simultaneous revisions, isolated application integration or independent build outputs. Reuse a suitable clean checkout; preserve results and check active consumers, status, untracked/unpushed work and locks before removing ended temporary worktrees with `git worktree remove` without force. Preserve branches and published history. Shared Git storage and nested independent clones require special care; a directory name alone never establishes obsolescence.
 
@@ -65,7 +65,7 @@ Distinct implemented cards, day by day since the project began. Regenerated dail
 
 ### Prerequisites
 
-- JDK 21+
+- JDK 25+
 - Node.js 18+
 - Docker (optional, for Redis)
 - [just](https://github.com/casey/just) command runner
@@ -388,7 +388,7 @@ It checks your setup, then asks three questions:
 Cards that need new engine features aren't faked: the agent records them as gaps and builds each
 missing capability properly (with the `add-feature` skill) before the cards that need it.
 
-**You'll need:** JDK 21+, [`just`](https://github.com/casey/just), `git`, `jq`, Python 3, and
+**You'll need:** JDK 25+, [`just`](https://github.com/casey/just), `git`, `jq`, Python 3, and
 Claude Code or Codex. The [GitHub CLI](https://cli.github.com) (`gh`) is optional — it lets the agent
 skip cards someone else's open PR already adds.
 

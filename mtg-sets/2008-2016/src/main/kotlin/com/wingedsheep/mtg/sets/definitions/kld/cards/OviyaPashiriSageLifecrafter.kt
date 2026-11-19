@@ -72,4 +72,5 @@ val OviyaPashiriSageLifecrafter = card("Oviya Pashiri, Sage Lifecrafter") {
             "The Construct token you're creating doesn't count towards X for the ability that creates it."
         )
     }
-}
+}.let { it.copy(oracleId = "41e03224-bcdd-4127-a19a-fe66196339b9",
+    metadata = it.metadata.copy(scryfallId = "27eb9d40-958b-41b8-b04b-7f45adc0a862", releaseDate = "2016-09-30")) }

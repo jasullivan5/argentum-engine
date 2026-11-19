@@ -82,7 +82,7 @@
   <h2>Quick Start</h2>
   <p>Already comfortable with Git, GitHub, and a terminal? Here's the condensed path. Each step links to the full section if you need more detail.</p>
   <ol>
-    <li>Install dependencies: <a href="#part-9">Git</a>, <a href="#part-10">JDK 21+</a>, <a href="#part-11">Node.js LTS</a>, <a href="#part-12">just</a> &mdash; or skip the manual clicking entirely with <code>mise</code> (see the callout at the top of <a href="#part-9">Part 9</a>).</li>
+    <li>Install dependencies: <a href="#part-9">Git</a>, <a href="#part-10">JDK 25+</a>, <a href="#part-11">Node.js LTS</a>, <a href="#part-12">just</a> &mdash; or skip the manual clicking entirely with <code>mise</code> (see the callout at the top of <a href="#part-9">Part 9</a>).</li>
     <li>Get a paid plan for a frontier-LLM coding tool &mdash; this guide defaults to <a href="#part-14">Claude Pro and Claude Code</a>, though other tools work via the project's AGENTS.md setup (more in Part 14). Budget to pay for whichever one you pick; free tiers generally aren't enough for this kind of work.</li>
     <li><a href="#part-15">Fork and clone</a> <code>wingedsheep/argentum-engine</code>.</li>
     <li>Run <code>just init</code>, then <code>just server</code> and <code>just client</code> in separate terminals &mdash; see <a href="#part-16">Part 16</a>.</li>
@@ -406,7 +406,7 @@ mise ls
       <span class="icons-row"><img class="mana-icon" src="assets/images/mana/red.png" width="26" height="26" alt="red mana" loading="lazy"><img class="mana-icon" src="assets/images/mana/green.png" width="26" height="26" alt="green mana" loading="lazy"></span>
       <span class="eyebrow small">SECTION 10 &middot; <span class="guild-name">Gruul</span></span>
     </div>
-    <h2 class="part-title">Install Java (JDK 21+)</h2>
+    <h2 class="part-title">Install Java (JDK 25+)</h2>
   </summary>
   <div class="section-body">
     <p><strong>Mac:</strong> the steps below are written for Windows. On a Mac, either use <code>mise use -g java@latest</code> from Part 9's callout, or run <code>brew install openjdk@21</code> in Terminal — Homebrew handles PATH automatically, no manual setup needed. Otherwise, adoptium.net (Step 45) also offers a macOS <code>.pkg</code> installer that works almost identically to the Windows steps below, just without the PATH checkboxes (macOS handles that step itself).</p>
@@ -670,14 +670,14 @@ mise ls
 <li>Close <strong>every</strong> open Command Prompt window, not just one.</li>
 <li>Open a brand new one and try again — new installs often don't register until the terminal restarts.</li>
 <li>Still failing? Restart your whole computer, then retry. Some installers need a full restart.</li>
-<li>Still failing? Manually check PATH: Start menu → type "environment variables" → open <strong>"Edit the system environment variables"</strong> → click <strong>"Environment Variables..."</strong> → under "System variables," select <strong>Path</strong> → <strong>Edit</strong>. Look for a folder related to the program (e.g. containing "Java" or "nodejs"). If missing, click <strong>New</strong> and add it — for Java, typically <code>C:\Program Files\Eclipse Adoptium\jdk-21.x.x-hotspot\bin</code>; for Node, typically <code>C:\Program Files\nodejs\</code>.</li>
+<li>Still failing? Manually check PATH: Start menu → type "environment variables" → open <strong>"Edit the system environment variables"</strong> → click <strong>"Environment Variables..."</strong> → under "System variables," select <strong>Path</strong> → <strong>Edit</strong>. Look for a folder related to the program (e.g. containing "Java" or "nodejs"). If missing, click <strong>New</strong> and add it — for Java, typically <code>C:\Program Files\Eclipse Adoptium\jdk-25.x.x-hotspot\bin</code>; for Node, typically <code>C:\Program Files\nodejs\</code>.</li>
 <li>Click OK on everything, fully restart Command Prompt.</li>
 </ol>
 <h3>Java shows the wrong (older) version</h3>
 <p>An old Java install can shadow the new one in PATH.
 1. Try the "not recognized" steps above first (sometimes fixes it).
 2. Open Environment Variables as above, edit <strong>Path</strong>.
-3. You'll likely see two Java entries — select the JDK 21 one and click <strong>Move Up</strong> so it's listed before the old one.
+3. You'll likely see two Java entries — select the JDK 25 one and click <strong>Move Up</strong> so it's listed before the old one.
 4. OK everything, restart Command Prompt, recheck.
 5. To remove the old version instead: Windows Settings → Apps → Installed apps → find the old Java entry → Uninstall → restart your computer.</p>
 <h3><code>npm</code> specifically says "not recognized" even though <code>node</code> works</h3>

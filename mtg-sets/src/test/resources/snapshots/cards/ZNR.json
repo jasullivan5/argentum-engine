@@ -9409,10 +9409,13 @@
             }
         ]
     },
+    "oracleId": "902eb71f-62b3-40cb-816b-f6b7e92e91e7",
     "metadata": {
         "collectorNumber": "194",
         "artist": "Lie Setiawan",
-        "imageUri": "https://cards.scryfall.io/normal/front/4/2/42914fd9-e56e-4c3e-a445-fdfa45a45178.jpg?1783929336"
+        "imageUri": "https://cards.scryfall.io/normal/front/4/2/42914fd9-e56e-4c3e-a445-fdfa45a45178.jpg?1783929336",
+        "scryfallId": "42914fd9-e56e-4c3e-a445-fdfa45a45178",
+        "releaseDate": "2020-09-25"
     },
     "colorIdentityOverride": [
         "GREEN"
@@ -17870,12 +17873,16 @@
             }
         ]
     },
+    "oracleId": "7e8198e9-0f3b-420b-ab09-74f13f4fd548",
     "metadata": {
         "collectorNumber": "265",
         "rarity": "RARE",
         "artist": "Igor Kieryluk",
-        "imageUri": "https://cards.scryfall.io/normal/front/d/5/d5a0563e-c83b-40df-abf6-51c83bf6792d.jpg"
-    }
+        "imageUri": "https://cards.scryfall.io/normal/front/d/5/d5a0563e-c83b-40df-abf6-51c83bf6792d.jpg",
+        "scryfallId": "d5a0563e-c83b-40df-abf6-51c83bf6792d",
+        "releaseDate": "2020-09-25"
+    },
+    "colorIdentityOverride": []
 }
 
 // Thundering Rebuke

@@ -16,7 +16,7 @@ plugins {
 
 kotlin {
     // Use a specific Java version to make it easier to work in different environments.
-    jvmToolchain(21)
+    jvmToolchain(25)
 }
 
 // Bound concurrent Kotlin compilations build-wide — they all share one compile-daemon heap, so

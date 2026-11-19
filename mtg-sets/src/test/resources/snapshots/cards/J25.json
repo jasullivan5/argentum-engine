@@ -3465,12 +3465,15 @@
             }
         ]
     },
+    "oracleId": "2d09e689-c163-48c5-af5d-766f110d041e",
     "metadata": {
         "collectorNumber": "26",
         "rarity": "UNCOMMON",
         "artist": "Brent Hollowell",
         "flavorText": "\"Drive the beasts into the enemy ranks, then stay back and let them do the work.\"\n—Koth",
         "imageUri": "https://cards.scryfall.io/normal/front/b/b/bb589caa-bba4-4d23-bdfe-7fc37f19bfd6.jpg?1783908862",
+        "scryfallId": "bb589caa-bba4-4d23-bdfe-7fc37f19bfd6",
+        "releaseDate": "2024-11-15",
         "rulings": [
             {
                 "date": "2024-11-08",

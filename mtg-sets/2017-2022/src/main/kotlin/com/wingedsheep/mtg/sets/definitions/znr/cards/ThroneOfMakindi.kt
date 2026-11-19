@@ -22,6 +22,7 @@ import com.wingedsheep.sdk.scripting.targets.EffectTarget
  * one chosen color, added once.
  */
 val ThroneOfMakindi = card("Throne of Makindi") {
+    colorIdentity = ""
     typeLine = "Land"
     oracleText = "{T}: Add {C}.\n" +
         "{1}, {T}: Put a charge counter on this land.\n" +
@@ -54,4 +55,5 @@ val ThroneOfMakindi = card("Throne of Makindi") {
         artist = "Igor Kieryluk"
         imageUri = "https://cards.scryfall.io/normal/front/d/5/d5a0563e-c83b-40df-abf6-51c83bf6792d.jpg"
     }
-}
+}.let { it.copy(oracleId = "7e8198e9-0f3b-420b-ab09-74f13f4fd548",
+    metadata = it.metadata.copy(scryfallId = "d5a0563e-c83b-40df-abf6-51c83bf6792d", releaseDate = "2020-09-25")) }

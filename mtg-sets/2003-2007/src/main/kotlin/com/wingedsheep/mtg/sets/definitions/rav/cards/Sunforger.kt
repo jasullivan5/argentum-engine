@@ -38,20 +38,16 @@ import com.wingedsheep.sdk.scripting.references.Player
  *   "cast it" case — hand / battlefield / graveyard / top of library are all it can reach.
  *   `ChooseUpTo(1)` rather than `ChooseExactly(1)` is the "search … and cast" reading every such
  *   card gets: a search may always fail to find (CR 701.19c).
- * - **Shuffle before the cast, not after.** The printed order is "cast that card … Then shuffle",
- *   but the two are order-independent here: the found card is already held in a pipeline
- *   collection, and `CastFromCollectionWithoutPayingCost` re-finds its current zone, so shuffling
- *   with it still in the library and then pulling it out reaches the same state as the reverse.
- *   Doing it in this order keeps the shuffle from having to survive the pause the cast opens for
- *   the spell's own targets. `Patterns.Library.searchLibrary` takes the same liberty for its
- *   top-of-library destination.
+ * - Cast before shuffling, preserving the printed sequence even when announcing the found
+ *   spell pauses for target selection. The native pipeline continuation resumes the shuffle
+ *   after that cast; it does not wait for the newly cast spell to resolve.
  * - Casting "without paying its mana cost" carries the printed rulings for free: no alternative
  *   costs, mandatory additional costs still owed, and X = 0 — all of them properties of
  *   [CastFromCollectionWithoutPayingCostEffect] rather than of this card.
  */
 val Sunforger = card("Sunforger") {
     manaCost = "{3}"
-    colorIdentity = ""
+    colorIdentity = "RW"
     typeLine = "Artifact — Equipment"
     oracleText = "Equipped creature gets +4/+0.\n" +
         "{R}{W}, Unattach this Equipment: Search your library for a red or white instant card " +
@@ -81,9 +77,9 @@ val Sunforger = card("Sunforger") {
                 prompt = "Search for a red or white instant card with mana value 4 or less to " +
                     "cast without paying its mana cost"
             )
+            run(Effects.CastFromCollectionWithoutPayingCost(from = sunforgerFound))
             run(Effects.ShuffleLibrary())
             run(EmitLibrarySearchedEventEffect)
-            run(Effects.CastFromCollectionWithoutPayingCost(from = sunforgerFound))
         }
     }
 
@@ -111,4 +107,5 @@ val Sunforger = card("Sunforger") {
                 "it without paying its mana cost."
         )
     }
-}
+}.let { it.copy(oracleId = "d1421070-a3cc-4af3-bf91-0f97372f4161",
+    metadata = it.metadata.copy(scryfallId = "c8d5e027-aa74-444b-a945-1bafa9bdec4c", releaseDate = "2005-10-07")) }

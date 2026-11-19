@@ -58,4 +58,5 @@ val PlanewideCelebration = card("Planewide Celebration") {
         artist = "Wisnu Tan"
         imageUri = "https://cards.scryfall.io/normal/front/1/1/11016840-56b6-4759-bde6-3dc0e339e87e.jpg?1783933409"
     }
-}
+}.let { it.copy(oracleId = "af23d348-adc9-451e-af08-bf9b1986c591",
+    metadata = it.metadata.copy(scryfallId = "11016840-56b6-4759-bde6-3dc0e339e87e", releaseDate = "2019-05-03")) }

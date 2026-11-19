@@ -3247,7 +3247,10 @@
         "replacementEffects": [
             {
                 "type": "PreventDamage",
-                "amount": 1,
+                "amount": {
+                    "type": "Fixed",
+                    "amount": 1
+                },
                 "appliesTo": {
                     "type": "DamageEvent",
                     "recipient": {
@@ -6144,12 +6147,15 @@
             ]
         }
     },
+    "oracleId": "51ff3e53-90bb-41bf-80e4-bb3fd51d574a",
     "metadata": {
         "collectorNumber": "120",
         "rarity": "RARE",
         "artist": "Jonas De Ro",
         "flavorText": "With the Hekma breached and its protection removed, the deserts swept in.",
         "imageUri": "https://cards.scryfall.io/normal/front/c/5/c5ee374f-31dc-4b2c-beba-431d5b1126d0.jpg?1783936018",
+        "scryfallId": "c5ee374f-31dc-4b2c-beba-431d5b1126d0",
+        "releaseDate": "2017-07-14",
         "rulings": [
             {
                 "date": "2017-07-14",

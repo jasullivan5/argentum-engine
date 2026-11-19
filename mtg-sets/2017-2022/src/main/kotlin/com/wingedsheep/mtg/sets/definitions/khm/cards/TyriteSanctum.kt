@@ -68,4 +68,5 @@ val TyriteSanctum = card("Tyrite Sanctum") {
                 "You'll put a +1/+1 counter on it."
         )
     }
-}
+}.let { it.copy(oracleId = "38c83332-2d21-450c-ae97-34109b565f59",
+    metadata = it.metadata.copy(scryfallId = "309ff3bf-acd3-4bea-b518-6e25f6cfce61", releaseDate = "2021-02-05")) }

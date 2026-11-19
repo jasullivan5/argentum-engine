@@ -25,7 +25,7 @@ The following upstream guidance describes the inherited implementation. Fork pri
 Argentum Engine — Magic: The Gathering rules engine + online play platform in Kotlin. Pure ECS,
 immutable `GameState`, pure functional `(GameState, GameAction) -> ExecutionResult(GameState, List<GameEvent>)`.
 
-**Stack:** Kotlin / JDK 21 / Gradle / Kotest / Spring Boot; React / TypeScript / Zustand / Vite. Exact
+**Stack:** Kotlin / JDK 25 / Gradle / Kotest / Spring Boot; React / TypeScript / Zustand / Vite. Exact
 versions live in `gradle/libs.versions.toml` and `web-client/package.json` — don't trust remembered ones.
 
 This file is a map plus the gotchas that aren't discoverable from the code. Depth lives in the skills and

@@ -40,4 +40,5 @@ val MightOfMurasa = card("Might of Murasa") {
         artist = "Lie Setiawan"
         imageUri = "https://cards.scryfall.io/normal/front/4/2/42914fd9-e56e-4c3e-a445-fdfa45a45178.jpg?1783929336"
     }
-}
+}.let { it.copy(oracleId = "902eb71f-62b3-40cb-816b-f6b7e92e91e7",
+    metadata = it.metadata.copy(scryfallId = "42914fd9-e56e-4c3e-a445-fdfa45a45178", releaseDate = "2020-09-25")) }
