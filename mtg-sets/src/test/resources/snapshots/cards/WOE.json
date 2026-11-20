@@ -21042,11 +21042,12 @@
                     "to": "Battlefield"
                 },
                 "effect": {
-                    "type": "ExileUntilLeaves",
+                    "type": "MoveUntilSourceLeaves",
                     "target": {
                         "type": "BoundVariable",
                         "name": "t0"
-                    }
+                    },
+                    "destination": "Exile"
                 },
                 "targetRequirement": {
                     "type": "TargetObject",
@@ -21066,37 +21067,11 @@
                     "id": "t0"
                 },
                 "descriptionOverride": "When this creature enters, exile up to one other target non-Fox creature until this creature leaves the battlefield."
-            },
-            {
-                "id": "Werefox Bodyguard:2",
-                "trigger": {
-                    "type": "ZoneChangeEvent",
-                    "from": "Battlefield"
-                },
-                "effect": {
-                    "type": "Composite",
-                    "effects": [
-                        {
-                            "type": "GatherCards",
-                            "source": "FromLinkedExile",
-                            "storeAs": "linked_return"
-                        },
-                        {
-                            "type": "MoveCollection",
-                            "from": "linked_return",
-                            "destination": {
-                                "type": "ToZone",
-                                "zone": "Battlefield"
-                            },
-                            "underOwnersControl": true
-                        }
-                    ]
-                }
             }
         ],
         "activatedAbilities": [
             {
-                "id": "Werefox Bodyguard:3",
+                "id": "Werefox Bodyguard:2",
                 "cost": {
                     "type": "CostComposite",
                     "costs": [
