@@ -11,6 +11,8 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.core.YesNoDecision
+import com.wingedsheep.engine.support.*
 
 /**
  * Fiend Hunter — {1}{W}{W} Creature — Human Cleric 1/3
@@ -18,6 +20,52 @@ import io.kotest.matchers.shouldBe
  * When this creature leaves the battlefield, return the exiled card under its owner's control.
  */
 class FiendHunterScenarioTest : FunSpec({
+
+    test("source requirement - a legal target is mandatory even when intending to decline") {
+        val d=exileReturnDriver()
+        val victim=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val source=d.castExileControl("Fiend Hunter");d.bothPass()
+        val decision=d.pendingDecision as ChooseTargetsDecision
+        d.recordExileCheckpoint("Fiend Hunter","target-announcement",source,victim)
+        val omitted=d.submitTargetSelection(d.player1,emptyList())
+        d.recordExileCheckpoint("Fiend Hunter","attempted-targetless-announcement",source,victim,omitted.events)
+        (omitted.error!=null) shouldBe true
+        decision.targetRequirements.single().minTargets shouldBe 1
+    }
+    test("source requirement - selection precedes the resolution-time choice to decline") {
+        val d=exileReturnDriver()
+        val victim=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val source=d.castExileControl("Fiend Hunter");d.bothPass()
+        d.submitTargetSelection(d.player1,listOf(victim)).error shouldBe null
+        d.pendingDecision shouldBe null
+        val resolution=d.bothPass()
+        d.recordExileCheckpoint("Fiend Hunter","entry-resolution-choice",source,victim,resolution.events)
+        (d.pendingDecision is YesNoDecision) shouldBe true
+        d.getPermanents(d.player2).contains(victim) shouldBe true
+        d.submitYesNo(d.player1,false).error shouldBe null
+        d.getPermanents(d.player2).contains(victim) shouldBe true
+        d.getExile(d.player2).contains(victim) shouldBe false
+    }
+    test("source requirement - departure and empty return do not cancel accepted late exile") {
+        val d=exileReturnDriver()
+        val victim=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val source=d.castExileControl("Fiend Hunter");d.bothPass()
+        d.submitTargetSelection(d.player1,listOf(victim)).error shouldBe null
+        d.recordExileCheckpoint("Fiend Hunter","entry-pending",source,victim)
+        d.castExileControl("Boomerang",source)
+        val departed=d.bothPass();departed.error shouldBe null
+        d.recordExileCheckpoint("Fiend Hunter","departed",source,victim,departed.events)
+        d.stackSize shouldBe 2
+        val empty=d.bothPass();empty.error shouldBe null
+        d.recordExileCheckpoint("Fiend Hunter","empty-return-resolved",source,victim,empty.events)
+        d.stackSize shouldBe 1
+        val late=d.bothPass();late.error shouldBe null
+        if(d.pendingDecision is YesNoDecision) d.submitYesNo(d.player1,true).error shouldBe null
+        d.recordExileCheckpoint("Fiend Hunter","late-entry-resolved",source,victim,late.events)
+        d.getExile(d.player2).contains(victim) shouldBe true
+        d.stackSize shouldBe 0
+        d.state.zoneReturns.isEmpty() shouldBe true
+    }
 
     fun driver(): GameTestDriver {
         val d = GameTestDriver()

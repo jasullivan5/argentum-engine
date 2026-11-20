@@ -12,6 +12,7 @@ import com.wingedsheep.sdk.model.EntityId
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import com.wingedsheep.engine.core.Outcome
+import com.wingedsheep.engine.support.*
 
 /**
  * Savior of Ollenbock (VOW #34) — {1}{W}{W} 1/2 Creature — Human Soldier, Training + a
@@ -32,6 +33,36 @@ import com.wingedsheep.engine.core.Outcome
  * nothing.
  */
 class SaviorOfOllenbockScenarioTest : FunSpec({
+
+    for(graveyard in listOf(false,true)) test("source requirement - pending training exile survives departure, graveyard=$graveyard") {
+        val d=exileReturnDriver()
+        val source=d.putCreatureOnBattlefield(d.player1,"Savior of Ollenbock")
+        val partner=d.putCreatureOnBattlefield(d.player1,"Hill Giant")
+        val victim=if(graveyard) d.putCardInGraveyard(d.player2,"Centaur Courser")
+            else d.putCreatureOnBattlefield(d.player2,"Centaur Courser")
+        d.removeSummoningSickness(source);d.removeSummoningSickness(partner)
+        d.passPriorityUntil(Step.DECLARE_ATTACKERS)
+        d.declareAttackers(d.player1,listOf(source,partner),d.player2).error shouldBe null
+        repeat(20) {
+            if(d.pendingDecision !is ChooseTargetsDecision) {
+                if(d.pendingDecision==null) d.bothPass() else d.autoResolveDecision()
+            }
+        }
+        val selection=d.pendingDecision as ChooseTargetsDecision
+        selection.legalTargets[0].orEmpty().contains(victim) shouldBe true
+        d.submitTargetSelection(d.player1,listOf(victim)).error shouldBe null
+        d.recordExileCheckpoint("Savior of Ollenbock","training-exile-pending",source,victim)
+        d.castExileControl("Boomerang",source)
+        val departed=d.bothPass();departed.error shouldBe null
+        d.recordExileCheckpoint("Savior of Ollenbock","departed-before-exile",source,victim,departed.events)
+        val empty=d.bothPass();empty.error shouldBe null
+        d.recordExileCheckpoint("Savior of Ollenbock","empty-return-resolved",source,victim,empty.events)
+        val late=d.bothPass();late.error shouldBe null
+        d.recordExileCheckpoint("Savior of Ollenbock","late-exile-resolved",source,victim,late.events)
+        d.getExile(d.player2).contains(victim) shouldBe true
+        d.stackSize shouldBe 0
+        d.state.zoneReturns.isEmpty() shouldBe true
+    }
 
     fun newDriver(): GameTestDriver {
         val driver = GameTestDriver()

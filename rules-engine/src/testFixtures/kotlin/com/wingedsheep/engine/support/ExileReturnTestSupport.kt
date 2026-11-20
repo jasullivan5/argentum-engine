@@ -7,6 +7,9 @@ import com.wingedsheep.sdk.core.Step
 import com.wingedsheep.sdk.model.Deck
 import com.wingedsheep.sdk.model.EntityId
 import io.kotest.matchers.shouldBe
+import com.wingedsheep.engine.state.ObjectRef
+import com.wingedsheep.engine.state.components.stack.TriggeredAbilityOnStackComponent
+import kotlinx.serialization.json.*
 
 /** Real registered cards, native actions and priority; state seeding is left to each scenario. */
 fun exileReturnDriver() = GameTestDriver().apply {
@@ -42,4 +45,27 @@ fun GameTestDriver.settleExileControl(targetForNewEntry: EntityId?=null) {
         }
     }
     error("Unsettled exile/return scenario")
+}
+
+/** Observed native checkpoints, not a second exile/return interpreter. */
+fun GameTestDriver.recordExileCheckpoint(card: String, checkpoint: String, source: EntityId,
+    target: EntityId, events: List<GameEvent> = emptyList()) {
+    println("LEGACY_EXILE " + buildJsonObject {
+        put("card",card);put("checkpoint",checkpoint)
+        put("source",state.objectRef(source)?.let { Json.encodeToJsonElement(ObjectRef.serializer(),it) } ?: JsonNull)
+        put("target",state.objectRef(target)?.let { Json.encodeToJsonElement(ObjectRef.serializer(),it) } ?: JsonNull)
+        put("sourceZone",state.logicalZone(source)?.zoneType?.name)
+        put("targetZone",state.logicalZone(target)?.zoneType?.name)
+        put("priority",priorityPlayer?.toString());put("decision",pendingDecision?.javaClass?.simpleName)
+        put("stack",JsonArray(state.stack.map { id -> buildJsonObject {
+            put("id",id.toString())
+            state.getEntity(id)?.get<TriggeredAbilityOnStackComponent>()?.let {
+                put("source",it.sourceId.toString());put("sourceVisit",it.sourceBattlefieldTimestamp)
+                put("effect",Json.encodeToJsonElement(com.wingedsheep.sdk.scripting.effects.Effect.serializer(),it.effect))
+            }
+        }}))
+        put("zoneEvents",JsonArray(events.filterIsInstance<ZoneChangeEvent>().map {
+            Json.encodeToJsonElement(ZoneChangeEvent.serializer(),it)
+        }))
+    })
 }
