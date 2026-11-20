@@ -73,13 +73,14 @@ class BanisherPriestScenarioTest : FunSpec({
         val original=checkNotNull(d.state.objectRef(target))
         val source=d.enterExileSource("Banisher Priest",target)
         d.state.zoneReturns.single().source shouldBe d.state.objectRef(source)
+        val response=d.putCardInHand(d.player1,"Opt")
         d.castExileControl("Boomerang",source)
         val departure=d.bothPass()
         departure.error shouldBe null
         val atPriority=d.getPermanents(d.player2).contains(target)
         val responseStack=d.stackSize
         // Announce a real instant at this priority checkpoint; the return cannot be waiting below it.
-        d.castExileControl("Opt")
+        d.castExileControl("Opt",cardId=response)
         atPriority shouldBe true
         responseStack shouldBe 0
         d.state.isCurrentObject(original) shouldBe false
