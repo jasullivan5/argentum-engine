@@ -27,6 +27,22 @@ import com.wingedsheep.engine.support.*
  */
 class FiendHunterScenarioTest : FunSpec({
 
+    test("multiple legal creatures require one selected target before choosing the exile effect") {
+        val d=exileReturnDriver()
+        val mine=d.putCreatureOnBattlefield(d.player1,"Hill Giant")
+        val theirs=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val source=d.castExileControl("Fiend Hunter");d.bothPass().error shouldBe null
+        val choice=d.pendingDecision as ChooseTargetsDecision
+        choice.legalTargets[0].orEmpty().containsAll(listOf(mine,theirs)) shouldBe true
+        choice.legalTargets[0].orEmpty().contains(source) shouldBe false
+        d.submitTargetSelection(d.player1,listOf(mine)).error shouldBe null
+        d.bothPass().error shouldBe null
+        (d.pendingDecision is YesNoDecision) shouldBe true
+        d.submitYesNo(d.player1,true).error shouldBe null
+        d.getExile(d.player1).contains(mine) shouldBe true
+        d.getPermanents(d.player2).contains(theirs) shouldBe true
+    }
+
     test("without another legal creature the entry trigger cannot be announced") {
         val d=exileReturnDriver()
         d.castExileControl("Fiend Hunter");d.bothPass().error shouldBe null
