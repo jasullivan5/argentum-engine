@@ -226,11 +226,12 @@
                     "to": "Battlefield"
                 },
                 "effect": {
-                    "type": "ExileUntilLeaves",
+                    "type": "MoveUntilSourceLeaves",
                     "target": {
                         "type": "BoundVariable",
                         "name": "t0"
-                    }
+                    },
+                    "destination": "Exile"
                 },
                 "targetRequirement": {
                     "type": "TargetObject",
@@ -238,32 +239,6 @@
                         "baseFilter": "creature ctrl:opponent"
                     },
                     "id": "t0"
-                }
-            },
-            {
-                "id": "Banisher Priest:2",
-                "trigger": {
-                    "type": "ZoneChangeEvent",
-                    "from": "Battlefield"
-                },
-                "effect": {
-                    "type": "Composite",
-                    "effects": [
-                        {
-                            "type": "GatherCards",
-                            "source": "FromLinkedExile",
-                            "storeAs": "linked_return"
-                        },
-                        {
-                            "type": "MoveCollection",
-                            "from": "linked_return",
-                            "destination": {
-                                "type": "ToZone",
-                                "zone": "Battlefield"
-                            },
-                            "underOwnersControl": true
-                        }
-                    ]
                 }
             }
         ]
