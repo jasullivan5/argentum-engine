@@ -68,7 +68,8 @@ class SaviorOfOllenbockScenarioTest : FunSpec({
     }
     test("a renewed Savior cannot inherit its old training trigger's late graveyard exile") {
         val d=exileReturnDriver()
-        val source=d.putCreatureOnBattlefield(d.player1,"Savior of Ollenbock")
+        val source=d.castExileControl("Savior of Ollenbock")
+        d.bothPass().error shouldBe null
         val target=d.putCardInGraveyard(d.player2,"Centaur Courser")
         val old=checkNotNull(d.state.objectRef(source))
         val visit=d.state.getEntity(source)!!.get<BattlefieldEntryTimestampComponent>()!!.timestamp
