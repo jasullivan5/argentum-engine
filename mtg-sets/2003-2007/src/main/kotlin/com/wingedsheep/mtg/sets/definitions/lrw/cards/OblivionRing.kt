@@ -16,8 +16,8 @@ import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
  *
  * Two *separate* triggers, not one "exile until ~ leaves" — that's the whole point of the 2007-10-01
  * ruling: if the Ring leaves before its ETB trigger resolves, the leaves trigger fires first and
- * finds nothing, and the ETB then exiles its target permanently. Modelling this as `ExileUntilLeaves`
- * plus a linked return (rather than a duration-scoped exile) keeps that ordering honest.
+ * finds nothing, and the ETB then exiles its target permanently. Modelling this as ordinary linked exile
+ * plus an independent linked return keeps that ordering honest even after this source visit has ended.
  *
  * "another target nonland permanent" is [TargetFilter.OtherNonlandPermanent] — any controller's, but
  * never the Ring itself.
@@ -32,7 +32,7 @@ val OblivionRing = card("Oblivion Ring") {
     triggeredAbility {
         trigger = Triggers.self.enters()
         val exiled = target(TargetFilter.OtherNonlandPermanent)
-        effect = Effects.ExileUntilLeaves(exiled)
+        effect = Effects.ExileLinkedToSource(exiled)
     }
 
     triggeredAbility {

@@ -12889,11 +12889,13 @@
                     "to": "Battlefield"
                 },
                 "effect": {
-                    "type": "ExileUntilLeaves",
+                    "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
                         "name": "t0"
-                    }
+                    },
+                    "destination": "Exile",
+                    "linkToSource": true
                 },
                 "targetRequirement": {
                     "type": "TargetObject",
