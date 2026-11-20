@@ -12,6 +12,12 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import com.wingedsheep.engine.core.YesNoDecision
+import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.effects.linkedexile.LinkedExileLookup
+import com.wingedsheep.engine.state.components.battlefield.*
+import com.wingedsheep.engine.state.components.identity.TokenComponent
+import com.wingedsheep.sdk.core.Zone
+import com.wingedsheep.sdk.core.CounterType
 import com.wingedsheep.engine.support.*
 
 /**
@@ -20,6 +26,33 @@ import com.wingedsheep.engine.support.*
  * When this creature leaves the battlefield, return the exiled card under its owner's control.
  */
 class FiendHunterScenarioTest : FunSpec({
+
+    test("without another legal creature the entry trigger cannot be announced") {
+        val d=exileReturnDriver()
+        d.castExileControl("Fiend Hunter");d.bothPass().error shouldBe null
+        d.pendingDecision shouldBe null
+        d.stackSize shouldBe 0
+    }
+    test("owner return renews a stolen creature without old attachments counters damage or modifiers") {
+        val d=exileReturnDriver()
+        val target=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        d.castExileControl("Control Magic",target);d.settleExileControl()
+        d.state.projectedState.getController(target) shouldBe d.player1
+        d.castExileControl("Holy Strength",target);d.settleExileControl()
+        d.replaceState(d.state.updateEntity(target) { it.with(CountersComponent(mapOf(CounterType.PLUS_ONE_PLUS_ONE to 2))).with(DamageComponent(1)) })
+        d.giveMana(d.player1,Color.GREEN,1)
+        d.castExileControl("Giant Growth",target);d.settleExileControl()
+        val old=checkNotNull(d.state.objectRef(target))
+        val source=d.enterExileSource("Fiend Hunter",target)
+        d.castExileControl("Boomerang",source);d.settleExileControl()
+        d.getController(target) shouldBe d.player2
+        d.state.isCurrentObject(old) shouldBe false
+        d.state.projectedState.getPower(target) shouldBe 3
+        d.state.getEntity(target)?.get<CountersComponent>()?.counters.orEmpty().isEmpty() shouldBe true
+        (d.state.getEntity(target)?.get<DamageComponent>()?.amount ?: 0) shouldBe 0
+        for(aura in listOf("Holy Strength","Control Magic"))
+            d.getGraveyard(d.player1).any { d.getCardName(it)==aura } shouldBe true
+    }
 
     test("source requirement - a legal target is mandatory even when intending to decline") {
         val d=exileReturnDriver()
@@ -60,8 +93,8 @@ class FiendHunterScenarioTest : FunSpec({
         d.recordExileCheckpoint("Fiend Hunter","empty-return-resolved",source,victim,empty.events)
         d.stackSize shouldBe 1
         val late=d.bothPass();late.error shouldBe null
-        if(d.pendingDecision is YesNoDecision) d.submitYesNo(d.player1,true).error shouldBe null
-        d.recordExileCheckpoint("Fiend Hunter","late-entry-resolved",source,victim,late.events)
+        val accepted=d.submitYesNo(d.player1,true);accepted.error shouldBe null
+        d.recordExileCheckpoint("Fiend Hunter","late-entry-resolved",source,victim,late.events+accepted.events)
         d.getExile(d.player2).contains(victim) shouldBe true
         d.stackSize shouldBe 0
         d.state.zoneReturns.isEmpty() shouldBe true
@@ -89,7 +122,8 @@ class FiendHunterScenarioTest : FunSpec({
 
         (d.pendingDecision is ChooseTargetsDecision) shouldBe true
         d.submitTargetSelection(p1, listOf(victim))
-        d.bothPass() // resolve the ETB exile trigger
+        d.bothPass() // resolve the ETB exile trigger to its optional effect
+        d.submitYesNo(p1, true).error shouldBe null
 
         // Victim is exiled (under its owner p2's control zone), off the battlefield.
         d.getExile(p2) shouldContain victim
@@ -122,12 +156,86 @@ class FiendHunterScenarioTest : FunSpec({
         d.bothPass()
 
         (d.pendingDecision is ChooseTargetsDecision) shouldBe true
-        // Optional "you may" — choose no target.
-        d.submitTargetSelection(p1, emptyList())
+        // The target is required even when the resolution-time choice will be No.
+        d.submitTargetSelection(p1, listOf(bystander)).error shouldBe null
         d.bothPass()
+        d.submitYesNo(p1, false).error shouldBe null
 
         // Nothing was exiled; the bystander stays on the battlefield.
         d.getExile(p2) shouldNotContain bystander
         d.state.getBattlefield(p2) shouldContain bystander
+    }
+    test("a renewed source keeps its new pile separate from the old visit's late exile") {
+        val d=exileReturnDriver()
+        val a=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val b=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val source=d.castExileControl("Fiend Hunter")
+        d.bothPass().error shouldBe null
+        val choice=d.pendingDecision as ChooseTargetsDecision
+        d.submitTargetSelection(choice.playerId,listOf(a)).error shouldBe null
+        val old=checkNotNull(d.state.objectRef(source))
+        val visit=d.state.getEntity(source)!!.get<BattlefieldEntryTimestampComponent>()!!.timestamp
+        d.castExileControl("Flicker of Fate",source)
+        d.settleExileControl(b)
+        d.state.isCurrentObject(old) shouldBe false
+        d.getExile(d.player2).containsAll(listOf(a,b)) shouldBe true
+        LinkedExileLookup.exiledCards(d.state,source) shouldBe listOf(b)
+        LinkedExileLookup.exiledCards(d.state,EffectContext(sourceId=source,controllerId=d.player1,sourceBattlefieldTimestamp=visit)) shouldBe listOf(a)
+        d.castExileControl("Boomerang",source);d.settleExileControl()
+        d.getPermanents(d.player2).contains(b) shouldBe true
+        d.getExile(d.player2).contains(a) shouldBe true
+    }
+    test("same-name sources have independent linked piles") {
+        val d=exileReturnDriver()
+        val a=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val b=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val first=d.enterExileSource("Fiend Hunter",a)
+        val second=d.enterExileSource("Fiend Hunter",b)
+        d.castExileControl("Boomerang",first);d.settleExileControl()
+        d.getPermanents(d.player2).contains(a) shouldBe true
+        LinkedExileLookup.exiledCards(d.state,second) shouldBe listOf(b)
+        d.castExileControl("Boomerang",second);d.settleExileControl()
+        d.getPermanents(d.player2).contains(b) shouldBe true
+    }
+    test("target departure and renewal before resolution invalidate the old target object") {
+        val d=exileReturnDriver()
+        val target=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        d.castExileControl("Fiend Hunter");d.bothPass()
+        val choice=d.pendingDecision as ChooseTargetsDecision
+        d.submitTargetSelection(choice.playerId,listOf(target))
+        d.castExileControl("Boomerang",target);d.bothPass()
+        // Native zone service seeds a return of the same card with a different generation.
+        d.replaceState(d.zones.moveToZone(d.state,target,Zone.BATTLEFIELD).state)
+        d.settleExileControl()
+        d.getPermanents(d.player2).contains(target) shouldBe true
+        d.getExile(d.player2).contains(target) shouldBe false
+    }
+    test("entry targeting excludes lands and the source itself") {
+        val d=exileReturnDriver()
+        val target=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val land=d.putLandOnBattlefield(d.player1,"Forest")
+        val source=d.castExileControl("Fiend Hunter");d.bothPass()
+        val legal=(d.pendingDecision as ChooseTargetsDecision).legalTargets[0].orEmpty()
+        legal.contains(target) shouldBe true
+        legal.contains(land) shouldBe false
+        legal.contains(source) shouldBe false
+    }
+    test("a card leaving exile and entering it again has lost the old link") {
+        val d=exileReturnDriver()
+        val target=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        val source=d.enterExileSource("Fiend Hunter",target)
+        d.replaceState(d.zones.moveToZone(d.state,target,Zone.HAND).state)
+        d.replaceState(d.zones.moveToZone(d.state,target,Zone.EXILE).state)
+        d.castExileControl("Boomerang",source);d.settleExileControl()
+        d.getExile(d.player2).contains(target) shouldBe true
+        d.getPermanents(d.player2).contains(target) shouldBe false
+    }
+    test("an exiled token is not returned as an original card") {
+        val d=exileReturnDriver()
+        val token=d.putCreatureOnBattlefield(d.player2,"Hill Giant")
+        d.replaceState(d.state.updateEntity(token) { it.with(TokenComponent) })
+        val source=d.enterExileSource("Fiend Hunter",token)
+        d.castExileControl("Boomerang",source);d.settleExileControl()
+        d.state.getBattlefield().contains(token) shouldBe false
     }
 })
