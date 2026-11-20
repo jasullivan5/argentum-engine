@@ -1,5 +1,6 @@
 package com.wingedsheep.mtg.sets.definitions.m14.cards
 
+import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
 import com.wingedsheep.sdk.dsl.card
@@ -26,12 +27,7 @@ val BanisherPriest = card("Banisher Priest") {
     triggeredAbility {
         trigger = Triggers.self.enters()
         val creature = target(TargetFilter(GameObjectFilter.Creature.opponentControls()))
-        effect = Effects.ExileUntilLeaves(creature)
-    }
-
-    triggeredAbility {
-        trigger = Triggers.self.leaves()
-        effect = Effects.ReturnLinkedExileUnderOwnersControl()
+        effect = Effects.MoveUntilSourceLeaves(creature, Zone.EXILE)
     }
 
     metadata {
