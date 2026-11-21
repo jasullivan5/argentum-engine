@@ -29,8 +29,8 @@ import com.wingedsheep.sdk.scripting.targets.TargetObject
  *    another creature on the battlefield ([TargetFilter.OtherCreature]) OR a creature card in
  *    any graveyard ([TargetFilter.CreatureInGraveyard]), built with [TargetFilter.or]. `optional`
  *    on the [TargetObject] models "up to one" so the trigger can resolve exiling nothing.
- *    [Effects.ExileUntilLeaves] links each exiled object to this permanent — the executor accepts
- *    both battlefield and graveyard sources (the Savior engine relaxation).
+ *    [Effects.ExileLinkedToSource] supports both zones and retains the original resolving source
+ *    visit even if its independent departure trigger already resolved.
  *  - A leaves-the-battlefield trigger returning every linked exiled card under its owner's control
  *    ([Effects.ReturnLinkedExileUnderOwnersControl]). Because each train exiles independently and
  *    all link to the same source, they all come back together when the Savior leaves.
@@ -53,7 +53,7 @@ val SaviorOfOllenbock = card("Savior of Ollenbock") {
     triggeredAbility {
         trigger = Triggers.self.trains()
         val victim = target(TargetFilter.OtherCreature.or(TargetFilter.CreatureInGraveyard), optional = true)
-        effect = Effects.ExileUntilLeaves(victim)
+        effect = Effects.ExileLinkedToSource(victim)
     }
 
     triggeredAbility {

@@ -2,6 +2,7 @@ package com.wingedsheep.mtg.sets.definitions.woe.cards
 
 import com.wingedsheep.sdk.core.Keyword
 import com.wingedsheep.sdk.core.Subtype
+import com.wingedsheep.sdk.core.Zone
 import com.wingedsheep.sdk.dsl.Costs
 import com.wingedsheep.sdk.dsl.Effects
 import com.wingedsheep.sdk.dsl.Triggers
@@ -20,9 +21,9 @@ import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
  * leaves the battlefield.
  * {1}{W}, Sacrifice this creature: You gain 2 life.
  *
- * O-Ring-style linked exile: the ETB exiles the target ("up to one" → optional) via
- * [Effects.ExileUntilLeaves], and a companion `Triggers.self.leaves()` trigger returns the
- * exiled card with [Effects.ReturnLinkedExileUnderOwnersControl]. The target filter is
+ * Duration-bound exile uses [Effects.MoveUntilSourceLeaves], with no separate return trigger.
+ * Its source visit must still exist at establishment; leaving ends the duration before priority,
+ * including when the source is sacrificed as an activation cost. The target filter is
  * `Creature.notSubtype(Fox)` with `excludeSelf` (Werefox is itself a Fox, and the oracle says
  * "other"). The sacrifice ability lets its owner cash it in for 2 life before an opponent can
  * remove it to free the exiled creature.
@@ -46,14 +47,9 @@ val WerefoxBodyguard = card("Werefox Bodyguard") {
             TargetFilter(GameObjectFilter.Creature.notSubtype(Subtype("Fox")), excludeSelf = true),
             optional = true,
         )
-        effect = Effects.ExileUntilLeaves(creature)
+        effect = Effects.MoveUntilSourceLeaves(creature, Zone.EXILE)
         description = "When this creature enters, exile up to one other target non-Fox creature " +
             "until this creature leaves the battlefield."
-    }
-
-    triggeredAbility {
-        trigger = Triggers.self.leaves()
-        effect = Effects.ReturnLinkedExileUnderOwnersControl()
     }
 
     activatedAbility {

@@ -19,14 +19,11 @@ import com.wingedsheep.sdk.scripting.filters.unified.TargetFilter
  * Unlike "exile until ~ leaves the battlefield" wordings, Fiend Hunter uses two separate
  * triggers (CR ruling): if it leaves before the exile trigger resolves, the leaves trigger
  * finds nothing linked and does nothing, then the enter trigger exiles the creature with no
- * pending return — exiling it indefinitely. Modeled here as [Effects.ExileUntilLeaves] (which
- * only exiles + links, it does not auto-return) paired with an explicit leaves-battlefield
- * [Effects.ReturnLinkedExileUnderOwnersControl]. Ordering the leaves trigger before a linked
- * exile exists naturally reproduces the indefinite-exile interaction.
+ * pending return — exiling it indefinitely. Ordinary [Effects.ExileLinkedToSource] retains
+ * the resolving source visit even after departure; a separate leaves trigger consumes its pile.
  *
- * "you may exile another target creature" is modeled as an optional target (the player may
- * choose no target to decline); "another" excludes Fiend Hunter itself via
- * [TargetFilter.OtherCreature].
+ * Target selection is mandatory at announcement. The ability's `optional` effect wrapper
+ * presents the exile choice at resolution; it does not make the target optional.
  */
 val FiendHunter = card("Fiend Hunter") {
     manaCost = "{1}{W}{W}"
@@ -37,11 +34,12 @@ val FiendHunter = card("Fiend Hunter") {
     oracleText = "When this creature enters, you may exile another target creature.\n" +
         "When this creature leaves the battlefield, return the exiled card to the battlefield under its owner's control."
 
-    // ETB: you may exile another target creature (until this leaves).
+    // Independent ETB: choose the target now, decide whether to exile at resolution.
     triggeredAbility {
         trigger = Triggers.self.enters()
-        val creature = target(TargetFilter.OtherCreature, optional = true)
-        effect = Effects.ExileUntilLeaves(creature)
+        optional = true
+        val creature = target(TargetFilter.OtherCreature)
+        effect = Effects.ExileLinkedToSource(creature)
     }
 
     // LTB: return the exiled card under its owner's control.

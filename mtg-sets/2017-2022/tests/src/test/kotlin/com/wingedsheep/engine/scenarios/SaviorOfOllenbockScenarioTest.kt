@@ -12,6 +12,11 @@ import com.wingedsheep.sdk.model.EntityId
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import com.wingedsheep.engine.core.Outcome
+import com.wingedsheep.engine.support.*
+import com.wingedsheep.engine.handlers.EffectContext
+import com.wingedsheep.engine.handlers.effects.linkedexile.LinkedExileLookup
+import com.wingedsheep.engine.state.components.battlefield.BattlefieldEntryTimestampComponent
+import com.wingedsheep.sdk.core.Zone
 
 /**
  * Savior of Ollenbock (VOW #34) — {1}{W}{W} 1/2 Creature — Human Soldier, Training + a
@@ -21,7 +26,7 @@ import com.wingedsheep.engine.core.Outcome
  *  - Training puts a +1/+1 counter when the Savior (power 1) attacks alongside a greater-power
  *    creature. That counter placement emits the parameterless `TrainedEvent` — the Savior "trains".
  *  - "Whenever this creature trains, exile up to one other target creature from the battlefield or
- *    creature card from a graveyard." ([Effects.ExileUntilLeaves] links the exiled card to the
+ *    creature card from a graveyard." ([Effects.ExileLinkedToSource] links the exiled card to the
  *    Savior.) "Up to one" means it can also exile nothing.
  *  - "When this creature leaves the battlefield, put the exiled cards onto the battlefield under
  *    their owners' control." ([Effects.ReturnLinkedExileUnderOwnersControl] — back to the
@@ -32,6 +37,92 @@ import com.wingedsheep.engine.core.Outcome
  * nothing.
  */
 class SaviorOfOllenbockScenarioTest : FunSpec({
+
+    fun GameTestDriver.train(source: EntityId,target: EntityId) {
+        val partner=putCreatureOnBattlefield(player1,"Hill Giant")
+        removeSummoningSickness(source);removeSummoningSickness(partner)
+        passPriorityUntil(Step.DECLARE_ATTACKERS)
+        declareAttackers(player1,listOf(source,partner),player2).error shouldBe null
+        repeat(20) {
+            if(pendingDecision !is ChooseTargetsDecision) {
+                if(pendingDecision==null) bothPass() else autoResolveDecision()
+            }
+        }
+        submitTargetSelection(player1,listOf(target)).error shouldBe null
+    }
+    test("graveyard exile returns a renewed original under its owner through the separate departure trigger") {
+        val d=exileReturnDriver()
+        val source=d.putCreatureOnBattlefield(d.player1,"Savior of Ollenbock")
+        val target=d.putCardInGraveyard(d.player2,"Centaur Courser")
+        val old=checkNotNull(d.state.objectRef(target))
+        d.train(source,target);d.settleExileControl()
+        d.getExile(d.player2).contains(target) shouldBe true
+        LinkedExileLookup.exiledCards(d.state,source) shouldBe listOf(target)
+        d.castExileControl("Boomerang",source);d.bothPass().error shouldBe null
+        d.getExile(d.player2).contains(target) shouldBe true
+        d.stackSize shouldBe 1
+        d.bothPass().error shouldBe null
+        d.getPermanents(d.player2).contains(target) shouldBe true
+        d.getController(target) shouldBe d.player2
+        d.state.isCurrentObject(old) shouldBe false
+    }
+    test("a renewed Savior cannot inherit its old training trigger's late graveyard exile") {
+        val d=exileReturnDriver()
+        val source=d.castExileControl("Savior of Ollenbock")
+        d.bothPass().error shouldBe null
+        val target=d.putCardInGraveyard(d.player2,"Centaur Courser")
+        val old=checkNotNull(d.state.objectRef(source))
+        val visit=d.state.getEntity(source)!!.get<BattlefieldEntryTimestampComponent>()!!.timestamp
+        d.train(source,target)
+        d.castExileControl("Cloudshift",source);d.settleExileControl()
+        d.state.isCurrentObject(old) shouldBe false
+        d.getExile(d.player2).contains(target) shouldBe true
+        LinkedExileLookup.exiledCards(d.state,source).isEmpty() shouldBe true
+        LinkedExileLookup.exiledCards(d.state,EffectContext(sourceId=source,controllerId=d.player1,sourceBattlefieldTimestamp=visit)) shouldBe listOf(target)
+        d.castExileControl("Boomerang",source);d.settleExileControl()
+        d.getExile(d.player2).contains(target) shouldBe true
+    }
+    test("a graveyard card that leaves exile cannot return through its stale training link") {
+        val d=exileReturnDriver()
+        val source=d.putCreatureOnBattlefield(d.player1,"Savior of Ollenbock")
+        val target=d.putCardInGraveyard(d.player2,"Centaur Courser")
+        d.train(source,target);d.settleExileControl()
+        d.replaceState(d.zones.moveToZone(d.state,target,Zone.HAND).state)
+        d.replaceState(d.zones.moveToZone(d.state,target,Zone.EXILE).state)
+        d.castExileControl("Boomerang",source);d.settleExileControl()
+        d.getExile(d.player2).contains(target) shouldBe true
+        d.getPermanents(d.player2).contains(target) shouldBe false
+    }
+
+    for(graveyard in listOf(false,true)) test("source requirement - pending training exile survives departure, graveyard=$graveyard") {
+        val d=exileReturnDriver()
+        val source=d.putCreatureOnBattlefield(d.player1,"Savior of Ollenbock")
+        val partner=d.putCreatureOnBattlefield(d.player1,"Hill Giant")
+        val victim=if(graveyard) d.putCardInGraveyard(d.player2,"Centaur Courser")
+            else d.putCreatureOnBattlefield(d.player2,"Centaur Courser")
+        d.removeSummoningSickness(source);d.removeSummoningSickness(partner)
+        d.passPriorityUntil(Step.DECLARE_ATTACKERS)
+        d.declareAttackers(d.player1,listOf(source,partner),d.player2).error shouldBe null
+        repeat(20) {
+            if(d.pendingDecision !is ChooseTargetsDecision) {
+                if(d.pendingDecision==null) d.bothPass() else d.autoResolveDecision()
+            }
+        }
+        val selection=d.pendingDecision as ChooseTargetsDecision
+        selection.legalTargets[0].orEmpty().contains(victim) shouldBe true
+        d.submitTargetSelection(d.player1,listOf(victim)).error shouldBe null
+        d.recordExileCheckpoint("Savior of Ollenbock","training-exile-pending",source,victim)
+        d.castExileControl("Boomerang",source)
+        val departed=d.bothPass();departed.error shouldBe null
+        d.recordExileCheckpoint("Savior of Ollenbock","departed-before-exile",source,victim,departed.events)
+        val empty=d.bothPass();empty.error shouldBe null
+        d.recordExileCheckpoint("Savior of Ollenbock","empty-return-resolved",source,victim,empty.events)
+        val late=d.bothPass();late.error shouldBe null
+        d.recordExileCheckpoint("Savior of Ollenbock","late-exile-resolved",source,victim,late.events)
+        d.getExile(d.player2).contains(victim) shouldBe true
+        d.stackSize shouldBe 0
+        d.state.zoneReturns.isEmpty() shouldBe true
+    }
 
     fun newDriver(): GameTestDriver {
         val driver = GameTestDriver()

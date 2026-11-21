@@ -17001,11 +17001,13 @@
                 "id": "Savior of Ollenbock:2",
                 "trigger": "TrainedEvent",
                 "effect": {
-                    "type": "ExileUntilLeaves",
+                    "type": "MoveToZone",
                     "target": {
                         "type": "BoundVariable",
                         "name": "t0"
-                    }
+                    },
+                    "destination": "Exile",
+                    "linkToSource": true
                 },
                 "targetRequirement": {
                     "type": "TargetObject",
